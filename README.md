@@ -9,124 +9,144 @@
 
 # pluggy
 
-A CLI for Minecraft plugin development. Scaffold a project, pull
-dependencies from Modrinth / Maven / local jars / sibling workspaces,
-build a real plugin jar with the full Maven transitive closure on the
-classpath, and boot a live Paper / Spigot / Velocity server with a
-file-watcher that rebuilds on save.
-
-Ships as a single native binary — no Gradle wrapper, no `pom.xml`, no
-JVM-based toolchain to install. One JSON file per project, one lockfile
-per repo.
+pluggy is a Minecraft plugin toolchain that fits in one binary. Scaffold a project, install plugins from Modrinth, pull Maven artifacts with their full transitive closure, and run a live Paper, Spigot, or Velocity server that rebuilds on save.
 
 ## Install
 
-macOS / Linux:
+Install pluggy with the script for your platform. Both scripts drop the binary on your `PATH` without root or administrator rights.
+
+On macOS and Linux:
 
 ```bash
 curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
 ```
 
-Windows (PowerShell):
+On Windows (PowerShell):
 
 ```powershell
 irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
 ```
 
-Both scripts drop the binary somewhere on your `PATH`. Verify:
+Open a new terminal and verify:
 
 ```bash
 pluggy -V
 ```
 
-Upgrade in place any time with `pluggy upgrade`.
+To upgrade in place later, run `pluggy upgrade`.
 
-## Quick tour
+## Quick start
 
-```bash
-# Scaffold
-mkdir my-plugin && cd my-plugin
-pluggy init --yes --name my_plugin --main com.example.myplugin.Main
+Go from an empty directory to a running server in three commands:
 
-# Add deps
-pluggy install worldedit                            # Modrinth
-pluggy install maven:net.kyori:adventure-api@4.17.0 # Maven
-pluggy install ./libs/proprietary.jar               # Local jar
+```text
+$ pluggy init --yes --name shop --main com.example.shop.Main
 
-# Build
-pluggy build
-# → bin/my_plugin-1.0.0.jar
+$ pluggy install worldedit
+Installed worldedit into shop (1 resolved).
 
-# Run a live Paper server with rebuild-on-save
-pluggy dev
+$ pluggy dev
+dev: starting shop
 ```
 
-For the full walkthrough, read
-[docs/getting-started.md](./docs/getting-started.md).
+That gives you this layout:
 
-## What it supports
+```text
+shop/
+├── project.json
+├── pluggy.lock
+└── src/
+    ├── com/example/shop/Main.java
+    └── config.yml
+```
 
-- **Platforms.** paper, folia, spigot, bukkit, velocity, waterfall,
-  travertine. Each is a first-class provider with its own descriptor
-  family and Maven API coordinate.
-- **Dependency sources.** Modrinth slugs, Maven coordinates, local jars
-  (content-addressed by SHA-256), and sibling workspaces.
-- **Transitive resolution.** The Maven resolver parses POMs, folds in
-  `<dependencyManagement>` BOM imports, and handles `-SNAPSHOT` versions
-  by fetching per-version metadata. Full closure on the classpath.
-- **Workspaces.** Monorepo layouts with inheritance, topological build
-  ordering, and `workspace:` source kind for sibling deps.
-- **Cross-platform.** macOS, Linux, Windows — identical behaviour, same
-  native binary format (arm64 + amd64 where available).
-- **IDE integration.** VS Code, Eclipse, IntelliJ. Set `"ide": [...]` in
-  `project.json` (or pick them at `init` time) and builds scaffold the
-  right project files for every listed editor.
-- **Reproducible.** Every resolved dep carries a SHA-256 integrity
-  hash. `pluggy.lock` is sorted, LF-terminated, atomic-written.
+And this `project.json`:
 
-## Commands at a glance
+```json
+{
+  "name": "shop",
+  "version": "1.0.0",
+  "main": "com.example.shop.Main",
+  "compatibility": {
+    "versions": ["1.21.8"],
+    "platforms": ["paper"]
+  },
+  "dependencies": {
+    "worldedit": {
+      "source": "modrinth:worldedit",
+      "version": "7.3.15"
+    }
+  }
+}
+```
+
+Save a `.java` file and pluggy rebuilds the jar, restarts the server, and lands you back at the Paper console, typically inside a second. Ship a release jar with one more command:
+
+```text
+$ pluggy build
+✔ shop: bin/shop-1.0.0.jar (142.4 KB, 3821ms)
+```
+
+## Why pluggy
+
+pluggy collapses every step of plugin development into one binary: scaffold, dependency resolution, build, dev loop, and IDE setup. The list below covers what that buys you, with the command that demonstrates each.
+
+- **Modrinth in one line.** `pluggy install worldedit` resolves the latest stable, downloads it, and locks the SHA-256. No registry config, no version pinning required up front.
+- **Maven without XML.** `pluggy install maven:net.kyori:adventure-api@4.17.0` parses the POM, folds in `<dependencyManagement>` BOM imports, and lands the full transitive closure on the classpath. SNAPSHOT versions resolve through per-version metadata.
+- **Live server in one command.** `pluggy dev` downloads the matching Paper, Spigot, or Velocity jar, accepts the EULA, hardlinks your plugin and runtime deps into `plugins/`, and boots the server. File saves trigger a debounced rebuild and restart.
+- **Seven server platforms.** paper, folia, spigot, bukkit, velocity, waterfall, and travertine, each with its own descriptor format and Maven API coordinate. Switch by editing `compatibility.platforms` in `project.json`.
+- **Cross-platform, identically.** The same binary runs on macOS, Linux, and Windows. Paths normalize to forward slashes, generated files use LF line endings, and shutdown handling works the same on every OS.
+- **Reproducible by default.** Every resolved dep is recorded in `pluggy.lock` with a SHA-256 hash. The lockfile is sorted, LF-terminated, and written atomically. Diffs stay small and merges stay sane.
+- **IDE-aware.** List editors in `"ide": ["vscode", "eclipse", "intellij"]` and `pluggy build` scaffolds the right project files for every entry.
+- **Workspaces.** Monorepo layouts with inheritance, topological build order, and a `workspace:` source kind for sibling dependencies.
+
+## Commands
+
+pluggy exposes a small set of commands. Every command supports `--json` for structured output and `--help` for inline help.
 
 | Command                      | Summary                                            |
 | ---------------------------- | -------------------------------------------------- |
 | `pluggy init`                | Scaffold a new project.                            |
-| `pluggy install [plugin]`    | Add a dep or reconcile the lockfile.               |
-| `pluggy remove <plugin>`     | Drop a dep (and its cached jar).                   |
+| `pluggy install [plugin]`    | Add a dependency or reconcile the lockfile.        |
+| `pluggy remove <plugin>`     | Drop a dependency and its cached jar.              |
 | `pluggy info <plugin>`       | Inspect a source.                                  |
 | `pluggy search <query>`      | Query Modrinth.                                    |
 | `pluggy list`                | Show declared deps, resolved versions, registries. |
-| `pluggy build`               | Compile → resources → descriptor → shade → jar.    |
+| `pluggy build`               | Compile, package resources, and produce a jar.     |
 | `pluggy test`                | Compile and run JUnit tests under `test/`.         |
-| `pluggy dev`                 | Live server with rebuild-on-save.                  |
-| `pluggy doctor`              | Validate environment and every workspace.          |
+| `pluggy dev`                 | Run a live server that rebuilds on save.           |
+| `pluggy doctor`              | Validate the environment and every workspace.      |
 | `pluggy upgrade`             | Replace the binary with the latest release.        |
 | `pluggy completions <shell>` | Print a shell completion script.                   |
 
-Every command is documented in [docs/commands/](./docs/commands/).
+For per-command flags, JSON envelopes, and sample output, see the [command reference](./docs/commands/).
 
 ## Documentation
 
-- **Start here:** [docs/getting-started.md](./docs/getting-started.md)
-- **Config reference:** [docs/project-json.md](./docs/project-json.md)
-- **Dependencies:** [docs/dependencies.md](./docs/dependencies.md)
-- **Workspaces:** [docs/workspaces.md](./docs/workspaces.md)
-- **Build pipeline:** [docs/build-pipeline.md](./docs/build-pipeline.md)
-- **Dev server:** [docs/dev-server.md](./docs/dev-server.md)
-- **IDE integration:** [docs/ide.md](./docs/ide.md)
-- **Cross-platform notes:** [docs/cross-platform.md](./docs/cross-platform.md)
-- **Troubleshooting:** [docs/troubleshooting.md](./docs/troubleshooting.md)
-- **All docs:** [docs/README.md](./docs/README.md)
+The full documentation lives under [`docs/`](./docs/). Start with the getting-started guide; the rest is reference.
+
+- [Getting started](./docs/getting-started.md): install, scaffold, build, run a dev server.
+- [project.json reference](./docs/project-json.md): every field and validation rule.
+- [Dependency sources](./docs/dependencies.md): the Modrinth, Maven, file, and workspace grammar.
+- [Build pipeline](./docs/build-pipeline.md): what happens between `pluggy build` and the jar.
+- [Dev server](./docs/dev-server.md): staging directory, EULA, reload semantics, shutdown.
+- [Workspaces](./docs/workspaces.md): monorepo layout, inheritance, topological order.
+- [IDE integration](./docs/ide.md): what pluggy writes for VS Code, Eclipse, and IntelliJ.
+- [Cross-platform notes](./docs/cross-platform.md): paths, line endings, signal handling.
+- [Troubleshooting](./docs/troubleshooting.md): common failures and how to fix them.
 
 ## Contributing
 
-Source is TypeScript, organized around a commander command tree and a
-pluggable platform registry. `vp check` (format + lint + typecheck) and
-`vp test` (Vitest) validate changes. The shipped CLI binary is produced
-by `bun build --compile`.
+pluggy is written in TypeScript. The development loop runs through Vite+ (`vp check`, `vp test`) and the shipped CLI binary is produced by `bun build --compile`.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development loop and
-[CLAUDE.md](./CLAUDE.md) for repo conventions (cross-platform rules,
-command conventions, stub-module workflow).
+For the development loop, see [CONTRIBUTING.md](./CONTRIBUTING.md). For repo conventions (cross-platform rules, command shape, and the stub-module workflow), see [CLAUDE.md](./CLAUDE.md).
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+pluggy is released under the MIT License. See [LICENSE](./LICENSE).
+
+## Next steps
+
+- New to pluggy: read the [getting started guide](./docs/getting-started.md).
+- Migrating from Maven or Gradle: see the [migration recipe](./docs/recipes/migrating-from-maven-gradle.md).
+- Setting up CI: see the [CI without global pluggy recipe](./docs/recipes/ci-without-global-pluggy.md).
