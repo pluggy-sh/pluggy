@@ -115,6 +115,7 @@ pluggy exposes a small set of commands. Every command supports `--json` for stru
 | `pluggy list`                | Show declared deps, resolved versions, registries. |
 | `pluggy build`               | Compile, package resources, and produce a jar.     |
 | `pluggy test`                | Compile and run JUnit tests under `test/`.         |
+| `pluggy docs`                | Generate Javadoc HTML for the project.             |
 | `pluggy dev`                 | Run a live server that rebuilds on save.           |
 | `pluggy sdk`                 | Manage the JDKs pluggy provisions for builds.      |
 | `pluggy doctor`              | Validate the environment and every workspace.      |
