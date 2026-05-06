@@ -61,18 +61,24 @@ export interface ProjectJdkSelection {
 }
 
 /**
- * Resolve which JDK to install for a project. Pure compute — no FS or
- * network beyond `getJavaRange`'s 5s probe (which silently falls through
- * to the heuristic on failure).
+ * Resolve which JDK to install for a specific MC version of a project. Pure
+ * compute — no FS or network beyond `getJavaRange`'s 5s probe (which silently
+ * falls through to the heuristic on failure).
+ *
+ * `mcVersion` is taken explicitly so matrix-style callers (the test command
+ * iterating `compatibility.versions`) can pick the right JDK per cell rather
+ * than always using `versions[0]`.
  */
-export async function selectJdkForProject(project: ResolvedProject): Promise<ProjectJdkSelection> {
+export async function selectJdkForVersion(
+  project: ResolvedProject,
+  mcVersion: string | undefined,
+): Promise<ProjectJdkSelection> {
   const distribution = project.jdk?.distribution ?? DEFAULT_DISTRIBUTION;
 
   if (project.jdk?.major !== undefined) {
     return { major: project.jdk.major, distribution, source: "project-pin" };
   }
 
-  const mcVersion = project.compatibility?.versions?.[0];
   if (mcVersion === undefined) {
     return { major: 21, distribution, source: "fallback-default" };
   }
@@ -93,4 +99,9 @@ export async function selectJdkForProject(project: ResolvedProject): Promise<Pro
   // No prefix match — current latest LTS as the default. Better to over-install
   // than to refuse to build; user can pin if this is wrong.
   return { major: 21, distribution, source: "fallback-default" };
+}
+
+/** Resolve the JDK for the project's primary MC version (`versions[0]`). */
+export function selectJdkForProject(project: ResolvedProject): Promise<ProjectJdkSelection> {
+  return selectJdkForVersion(project, project.compatibility?.versions?.[0]);
 }
