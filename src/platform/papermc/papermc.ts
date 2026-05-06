@@ -27,11 +27,16 @@ interface Version {
   builds: number[];
 }
 
-/** List every version of a PaperMC project, newest-first. */
+/**
+ * List every version of a PaperMC project that has at least one
+ * published build, newest-first. Upstream sometimes publishes a
+ * version entry before any build artifacts exist (e.g. Folia 26.1.2);
+ * such entries are filtered out because they aren't downloadable.
+ */
 export function versions(project: Project): Promise<Version[]> {
   return fetch(`${PAPER_ENDPOINT}/${project}/versions`)
     .then((res) => res.json() as Promise<{ versions: Version[] }>)
-    .then((data) => data.versions);
+    .then((data) => data.versions.filter((v) => v.builds.length > 0));
 }
 
 /**
