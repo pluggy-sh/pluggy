@@ -55,9 +55,28 @@ export interface CacheKeyParts {
   arch: DiscoArch;
 }
 
-/** Build the cache key — stable per (distribution, major, os, arch). */
+/**
+ * Build the cache key — stable per (distribution, major, os, arch). Each
+ * component is checked against a tight allowlist; the key is joined into a
+ * filesystem path under the user cache, so a `..` or path separator here
+ * would let a hostile project.json escape the cache root.
+ */
 export function cacheKey(parts: CacheKeyParts): string {
+  assertSafeKeyPart("distribution", parts.distribution);
+  assertSafeKeyPart("os", parts.os);
+  assertSafeKeyPart("arch", parts.arch);
+  if (!Number.isInteger(parts.major) || parts.major < 0) {
+    throw new Error(`cacheKey: major must be a non-negative integer (got ${parts.major})`);
+  }
   return `${parts.distribution}-${parts.major}-${parts.os}-${parts.arch}`;
+}
+
+const SAFE_KEY_PART_RE = /^[A-Za-z0-9_]+$/;
+
+function assertSafeKeyPart(field: string, value: string): void {
+  if (typeof value !== "string" || !SAFE_KEY_PART_RE.test(value)) {
+    throw new Error(`cacheKey: invalid ${field} ${JSON.stringify(value)}`);
+  }
 }
 
 /** Root directory under the user cache for everything SDK-related. */

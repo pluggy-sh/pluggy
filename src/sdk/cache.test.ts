@@ -36,6 +36,27 @@ describe("cacheKey", () => {
       "temurin-21-macos-aarch64",
     );
   });
+
+  test("rejects path-traversal in distribution", () => {
+    expect(() =>
+      cacheKey({ distribution: "../../etc", major: 21, os: "linux", arch: "x64" }),
+    ).toThrow(/invalid distribution/);
+  });
+
+  test("rejects path separators in distribution", () => {
+    expect(() =>
+      cacheKey({ distribution: "foo/bar", major: 21, os: "linux", arch: "x64" }),
+    ).toThrow(/invalid distribution/);
+    expect(() =>
+      cacheKey({ distribution: "foo\\bar", major: 21, os: "linux", arch: "x64" }),
+    ).toThrow(/invalid distribution/);
+  });
+
+  test("rejects non-integer major", () => {
+    expect(() =>
+      cacheKey({ distribution: "temurin", major: 21.5, os: "linux", arch: "x64" }),
+    ).toThrow(/major must be a non-negative integer/);
+  });
 });
 
 describe("javaBinaryPath / javaHomePath", () => {

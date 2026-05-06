@@ -32,24 +32,11 @@ import { bold, dim, green, log, red, yellow } from "../logging.ts";
 
 import { ensureJdk, getCachedJdk, gc, listInstalled, removeJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
-
-/**
- * Distributions auto-installable via `pluggy sdk install`. GraalVM CE is
- * included for plugins that use Polyglot/Truffle scripting (Oracle's paid
- * `graalvm` is excluded — auto-installing it would require user license
- * consent we can't model here). Expanding this list is safe; narrowing it
- * isn't, so be conservative when adding.
- */
-const ALLOWED_DISTRIBUTIONS = [
-  "temurin",
-  "zulu",
-  "liberica",
-  "corretto",
-  "microsoft",
-  "graalvm_community",
-] as const;
-
-type AllowedDistribution = (typeof ALLOWED_DISTRIBUTIONS)[number];
+import {
+  ALLOWED_DISTRIBUTIONS,
+  parseDistribution,
+  type AllowedDistribution,
+} from "../sdk/distributions.ts";
 
 interface SdkGlobalOpts {
   json?: boolean;
@@ -307,15 +294,6 @@ function parseMajor(value: string): number {
     throw new InvalidArgumentError(`"${value}" is not a valid Java major release`);
   }
   return n;
-}
-
-function parseDistribution(value: string): AllowedDistribution {
-  if (!ALLOWED_DISTRIBUTIONS.includes(value as AllowedDistribution)) {
-    throw new InvalidArgumentError(
-      `unknown distribution "${value}". Allowed: ${ALLOWED_DISTRIBUTIONS.join(", ")}`,
-    );
-  }
-  return value as AllowedDistribution;
 }
 
 function parseKeep(value: string): number {
