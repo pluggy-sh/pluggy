@@ -17,6 +17,7 @@ export interface Project {
     platforms: string[];
   };
   dependencies?: Record<string, string | Dependency>;
+  testDependencies?: Record<string, string | Dependency>;
   registries?: (string | Registry)[];
   shading?: Record<string, Shading>;
   resources?: Record<string, string>;

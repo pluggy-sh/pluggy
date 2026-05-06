@@ -13,6 +13,7 @@ import { installCommand } from "./commands/install.ts";
 import { listCommand } from "./commands/list.ts";
 import { removeCommand } from "./commands/remove.ts";
 import { searchCommand } from "./commands/search.ts";
+import { testCommand } from "./commands/test.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { bold, red } from "./logging.ts";
 
@@ -38,6 +39,7 @@ program.addCommand(infoCommand());
 program.addCommand(searchCommand());
 program.addCommand(listCommand());
 program.addCommand(buildCommand());
+program.addCommand(testCommand());
 program.addCommand(doctorCommand());
 program.addCommand(devCommand());
 program.addCommand(upgradeCommand({ repository: "ch99q/pluggy" }));

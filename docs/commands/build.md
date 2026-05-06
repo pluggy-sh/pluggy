@@ -113,9 +113,7 @@ On success:
       "outputPath": "/repo/bin/my_plugin-1.0.0.jar",
       "sizeBytes": 145840,
       "durationMs": 3821,
-      "platformChecks": [
-        { "platform": "spigot", "ok": true, "durationMs": 612 }
-      ]
+      "platformChecks": [{ "platform": "spigot", "ok": true, "durationMs": 612 }]
     }
   ]
 }
