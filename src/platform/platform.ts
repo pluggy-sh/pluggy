@@ -83,3 +83,37 @@ export function getPlatform(providerId: string): PlatformProvider {
 export function getRegisteredPlatforms(): string[] {
   return Object.keys(PLATFORMS);
 }
+
+/**
+ * Validate that every id in `platformIds` resolves to a registered platform
+ * and that they all share one `descriptor.family`. Returns that shared family.
+ *
+ * A plugin can only target one family at a time — bukkit-derived APIs and
+ * proxy APIs (velocity, bungee) don't share an entry-point class. Mixing
+ * them in `compatibility.platforms` is always a project-config bug.
+ */
+export function assertSamePlatformFamily(platformIds: string[]): PlatformFamily {
+  if (platformIds.length === 0) {
+    throw new Error("compatibility.platforms is empty — at least one platform is required.");
+  }
+
+  const byFamily = new Map<PlatformFamily, string[]>();
+  for (const id of platformIds) {
+    const family = getPlatform(id).descriptor.family;
+    const list = byFamily.get(family) ?? [];
+    list.push(id);
+    byFamily.set(family, list);
+  }
+
+  if (byFamily.size > 1) {
+    const groups = Array.from(byFamily.entries())
+      .map(([family, ids]) => `${family} (${ids.join(", ")})`)
+      .join(" vs ");
+    throw new Error(
+      `compatibility.platforms must share one family — got ${groups}. ` +
+        "Split platforms from different families into separate workspaces.",
+    );
+  }
+
+  return byFamily.keys().next().value as PlatformFamily;
+}

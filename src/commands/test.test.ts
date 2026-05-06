@@ -108,6 +108,12 @@ describe("runTestCommand", () => {
       ok: true,
       tests: { total: 3, passed: 3, failed: 0, skipped: 0 },
     });
+    expect(res.results[0].cells).toHaveLength(1);
+    expect(res.results[0].cells[0]).toMatchObject({
+      mcVersion: "1.21.8",
+      platformId: "paper",
+      ok: true,
+    });
   });
 
   test("test failure → exitCode 1, failures array populated", async () => {
@@ -145,6 +151,8 @@ describe("runTestCommand", () => {
         durationMs: 2,
         message: "expected true",
         stackTrace: "at A.f(A.java:1)",
+        mcVersion: "1.21.8",
+        platformId: "paper",
       },
     ]);
   });
@@ -266,6 +274,122 @@ describe("runTestCommand", () => {
 
     const call = vi.mocked(runTests).mock.calls[0];
     expect(call[1]).toMatchObject({ filter: "@tag:slow", failFast: true });
+  });
+
+  async function writeMatrixProject(): Promise<void> {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "matrix",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: {
+          versions: ["1.21.4", "1.20.4"],
+          platforms: ["paper", "spigot"],
+        },
+      }),
+    );
+  }
+
+  function okOutcome(
+    mcVersion?: string,
+    platformId?: string,
+  ): {
+    status: "ok";
+    durationMs: number;
+    result: { total: number; passed: number; failed: number; skipped: number; cases: [] };
+    mcVersion?: string;
+    platformId?: string;
+    jdkMajor?: number;
+  } {
+    return {
+      status: "ok",
+      durationMs: 1,
+      result: { total: 1, passed: 1, failed: 0, skipped: 0, cases: [] },
+      mcVersion,
+      platformId,
+      jdkMajor: 21,
+    };
+  }
+
+  test("expands a 2x2 matrix into four runTests calls", async () => {
+    await writeMatrixProject();
+    vi.mocked(runTests).mockImplementation(async (_p, opts) =>
+      okOutcome(opts?.mcVersion, opts?.platformId),
+    );
+
+    const res = await runTestCommand({ cwd: rootDir });
+
+    expect(res.exitCode).toBe(0);
+    expect(runTests).toHaveBeenCalledTimes(4);
+    const cellCoords = res.results[0].cells.map((c) => `${c.mcVersion}:${c.platformId}`);
+    expect(cellCoords).toEqual(["1.21.4:paper", "1.21.4:spigot", "1.20.4:paper", "1.20.4:spigot"]);
+    expect(res.results[0].tests).toEqual({ total: 4, passed: 4, failed: 0, skipped: 0 });
+  });
+
+  test("--mc-version and --platform narrow the matrix", async () => {
+    await writeMatrixProject();
+    vi.mocked(runTests).mockImplementation(async (_p, opts) =>
+      okOutcome(opts?.mcVersion, opts?.platformId),
+    );
+
+    const res = await runTestCommand({
+      cwd: rootDir,
+      mcVersions: ["1.21.4"],
+      platforms: ["paper"],
+    });
+
+    expect(runTests).toHaveBeenCalledTimes(1);
+    expect(res.results[0].cells).toHaveLength(1);
+    expect(res.results[0].cells[0]).toMatchObject({ mcVersion: "1.21.4", platformId: "paper" });
+  });
+
+  test("--mc-version with an undeclared value rejects with a clear error", async () => {
+    await writeMatrixProject();
+
+    await expect(runTestCommand({ cwd: rootDir, mcVersions: ["1.99.0"] })).rejects.toThrow(
+      /--mc-version "1.99.0"/,
+    );
+    expect(runTests).not.toHaveBeenCalled();
+  });
+
+  test("mixed-family platforms fail matrix expansion before running cells", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "mixed",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.4"], platforms: ["paper", "velocity"] },
+      }),
+    );
+
+    await expect(runTestCommand({ cwd: rootDir })).rejects.toThrow(/must share one family/);
+    expect(runTests).not.toHaveBeenCalled();
+  });
+
+  test("--fail-fast stops the matrix at the first failed cell", async () => {
+    await writeMatrixProject();
+    vi.mocked(runTests).mockResolvedValueOnce({
+      status: "ok",
+      durationMs: 1,
+      result: {
+        total: 1,
+        passed: 0,
+        failed: 1,
+        skipped: 0,
+        cases: [{ suite: "A", name: "f", durationMs: 1, status: "failed", message: "x" }],
+      },
+      mcVersion: "1.21.4",
+      platformId: "paper",
+      jdkMajor: 21,
+    });
+
+    const res = await runTestCommand({ cwd: rootDir, failFast: true });
+
+    expect(res.exitCode).toBe(1);
+    expect(runTests).toHaveBeenCalledTimes(1);
+    expect(res.results[0].cells).toHaveLength(1);
   });
 });
 

@@ -42,7 +42,7 @@ import {
 } from "./cache.ts";
 import { resolveJdk, targetForHost, type DiscoArch, type DiscoOs } from "./disco.ts";
 import { installJdk } from "./install.ts";
-import { selectJdkForProject, type ProjectJdkSelection } from "./resolve.ts";
+import { selectJdkForProject, selectJdkForVersion, type ProjectJdkSelection } from "./resolve.ts";
 
 export interface EnsureJdkOptions {
   /** Disco distribution slug. Default `"temurin"`. */
@@ -124,6 +124,23 @@ export async function ensureJdkForProject(
   opts: EnsureJdkOptions = {},
 ): Promise<ResolvedJdk & { selection: ProjectJdkSelection }> {
   const selection = await selectJdkForProject(project);
+  const distribution = opts.distribution ?? selection.distribution;
+  const resolved = await ensureJdk(selection.major, { ...opts, distribution });
+  return { ...resolved, selection };
+}
+
+/**
+ * Resolve the JDK for a specific MC version of a project. Used by matrix
+ * callers (the test command) so each `(version, platform)` cell gets the
+ * JDK its MC version actually requires — 1.20.4 cells stay on Java 17 even
+ * if `versions[0]` is 1.21.
+ */
+export async function ensureJdkForVersion(
+  project: ResolvedProject,
+  mcVersion: string | undefined,
+  opts: EnsureJdkOptions = {},
+): Promise<ResolvedJdk & { selection: ProjectJdkSelection }> {
+  const selection = await selectJdkForVersion(project, mcVersion);
   const distribution = opts.distribution ?? selection.distribution;
   const resolved = await ensureJdk(selection.major, { ...opts, distribution });
   return { ...resolved, selection };
