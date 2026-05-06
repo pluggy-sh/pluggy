@@ -30,6 +30,7 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 | [`search`](./commands/search.md)           | Query Modrinth by keyword.                               |
 | [`list`](./commands/list.md)               | Print declared deps, resolved versions, and registries.  |
 | [`build`](./commands/build.md)             | Compile → resources → descriptor → shade → jar.          |
+| [`test`](./commands/test.md)               | Compile and run JUnit Platform tests under `test/`.      |
 | [`dev`](./commands/dev.md)                 | Boot a live server with the plugin and its runtime deps. |
 | [`doctor`](./commands/doctor.md)           | Validate the environment and every workspace.            |
 | [`upgrade`](./commands/upgrade.md)         | Replace the running binary with the latest release.      |
@@ -57,6 +58,7 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 Task-oriented walkthroughs for situations that come up often.
 
 - [Adding a Paper plugin that uses adventure-api](./recipes/paper-with-adventure.md)
+- [Testing a Paper plugin with MockBukkit](./recipes/testing-with-mockbukkit.md)
 - [Setting up a monorepo with a shared API module](./recipes/monorepo-shared-api.md)
 - [Upgrading across Paper major versions](./recipes/upgrade-paper-major.md)
 - [CI builds without pluggy installed globally](./recipes/ci-without-global-pluggy.md)

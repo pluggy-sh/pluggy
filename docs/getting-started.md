@@ -180,6 +180,7 @@ Each step lives in a dedicated module under `src/build/` — see
 ## Where to go next
 
 - Make the dev loop faster: [`pluggy dev`](./commands/dev.md).
+- Add JUnit tests: [`pluggy test`](./commands/test.md).
 - Split into a monorepo: [Workspaces](./workspaces.md).
 - Ship a jar that bundles a third-party library: [Shading](./project-json.md#shading).
 - Set up IDE integration: [IDE integration](./ide.md).

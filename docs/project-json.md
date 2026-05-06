@@ -213,6 +213,27 @@ The `version` field shape depends on the scheme:
 | `file`      | Arbitrary label. The content-addressed integrity hash is what actually identifies the file.                  |
 | `workspace` | Ignored. The sibling's own `project.json:version` wins.                                                      |
 
+### `testDependencies` (optional)
+
+Same shape and grammar as `dependencies` — short or long form, every
+source kind. These are added to the test classpath only and never end
+up in the built jar.
+
+```json
+"testDependencies": {
+  "assertj": {
+    "source": "maven:org.assertj:assertj-core",
+    "version": "3.26.3"
+  }
+}
+```
+
+Resolved against `registries` plus an implicit Maven Central, so JUnit
+itself can always be fetched. JUnit Platform Console Standalone is
+auto-injected by `pluggy test` — you never declare it.
+
+`testDependencies` is read by `pluggy test`. Other commands ignore it.
+
 ### `shading` (optional)
 
 Object keyed by dependency name — same key you used in `dependencies`. Each
