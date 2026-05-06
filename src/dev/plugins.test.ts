@@ -30,12 +30,14 @@ function writeJar(path: string, entries: Record<string, string>): Promise<void> 
 const bukkitDescriptor: DescriptorSpec = {
   path: "plugin.yml",
   format: "yaml",
+  family: "bukkit",
   generate: () => "name: fake\n",
 };
 
 const velocityDescriptor: DescriptorSpec = {
   path: "velocity-plugin.json",
   format: "json",
+  family: "velocity",
   generate: () => "{}",
 };
 

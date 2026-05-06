@@ -4,6 +4,7 @@ import type { DescriptorSpec } from "../platform.ts";
 export const bukkitDescriptor: DescriptorSpec = {
   path: "plugin.yml",
   format: "yaml",
+  family: "bukkit",
   generate(project) {
     if (!project.main) {
       throw new Error("Bukkit descriptor requires project.main");
