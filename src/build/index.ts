@@ -5,11 +5,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
-import { dirname, join, posix, relative } from "node:path";
-
-import yazl from "yazl";
+import { mkdir, rm, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { log } from "../logging.ts";
 import { getPlatform } from "../platform/index.ts";
@@ -22,6 +19,7 @@ import { resolveMaven } from "../resolver/maven.ts";
 import { compileJava } from "./compile.ts";
 import { pickDescriptor } from "./descriptor.ts";
 import { writeIdeFiles } from "./ide.ts";
+import { zipDirectory } from "./jar.ts";
 import { stageResources } from "./resources.ts";
 import { applyShading } from "./shade.ts";
 
@@ -263,53 +261,4 @@ function uniqueInOrder(values: string[]): string[] {
     out.push(v);
   }
   return out;
-}
-
-async function zipDirectory(sourceDir: string, destPath: string): Promise<void> {
-  const files = await collectFiles(sourceDir);
-  files.sort((a, b) => a.localeCompare(b));
-
-  return await new Promise<void>((resolvePromise, rejectPromise) => {
-    const zip = new yazl.ZipFile();
-
-    // yazl is a streaming writer — pipe before queuing entries.
-    const ws = createWriteStream(destPath);
-    ws.once("error", rejectPromise);
-    ws.once("close", () => resolvePromise());
-    zip.outputStream.pipe(ws);
-
-    for (const abs of files) {
-      const rel = toPosix(relative(sourceDir, abs));
-      zip.addReadStreamLazy(rel, (cb) => {
-        try {
-          cb(null, createReadStream(abs));
-        } catch (e) {
-          cb(e as Error, null as unknown as NodeJS.ReadableStream);
-        }
-      });
-    }
-
-    zip.end();
-  });
-}
-
-async function collectFiles(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  async function walk(current: string): Promise<void> {
-    const entries = await readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) {
-        await walk(full);
-      } else if (entry.isFile()) {
-        out.push(full);
-      }
-    }
-  }
-  await walk(dir);
-  return out;
-}
-
-function toPosix(p: string): string {
-  return p.split(/[/\\]/).filter(Boolean).join(posix.sep);
 }

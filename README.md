@@ -95,6 +95,7 @@ For the full walkthrough, read
 | `pluggy search <query>`      | Query Modrinth.                                    |
 | `pluggy list`                | Show declared deps, resolved versions, registries. |
 | `pluggy build`               | Compile → resources → descriptor → shade → jar.    |
+| `pluggy test`                | Compile and run JUnit tests under `test/`.         |
 | `pluggy dev`                 | Live server with rebuild-on-save.                  |
 | `pluggy doctor`              | Validate environment and every workspace.          |
 | `pluggy upgrade`             | Replace the binary with the latest release.        |

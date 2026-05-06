@@ -1,7 +1,14 @@
 /**
- * Test pipeline — resolve deps → compile src → compile test → run JUnit
- * Platform Console Launcher → parse JUnit XML reports. Orchestration only;
- * pure arg-building and report-parsing live in `./runner.ts`.
+ * Test pipeline — resolve deps → compile src → package main.jar → compile
+ * test → run JUnit Platform Console Launcher → parse JUnit XML reports.
+ * Orchestration only; pure arg-building and report-parsing live in
+ * `./runner.ts`.
+ *
+ * Main classes are zipped into a `main.jar` (with the generated descriptor
+ * and any declared `resources`) and that jar — not the raw classes directory
+ * — is what the test classpath sees. This mirrors how the plugin is loaded
+ * in production and lets any framework that inspects the runtime classloader
+ * (MockBukkit, agent-style harnesses, …) work without per-framework hooks.
  *
  * JUnit Platform Console Standalone is auto-injected from Maven Central; the
  * user never declares it. User-provided test deps go in `project.json`'s
@@ -11,11 +18,15 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 
 import { compileJava } from "../build/compile.ts";
+import { pickDescriptor } from "../build/descriptor.ts";
+import { zipDirectory } from "../build/jar.ts";
+import { stageResources } from "../build/resources.ts";
 import { log } from "../logging.ts";
 import { getPlatform } from "../platform/index.ts";
+import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
@@ -91,13 +102,28 @@ export async function runTests(
     await rm(stagingDir, { recursive: true, force: true });
   }
 
-  const mainClassesDir = join(stagingDir, "main-classes");
+  // Main classes are compiled directly into a stage dir we then zip into a
+  // jar. Putting the *jar* (rather than the raw classes directory) on the test
+  // classpath matches how the plugin is loaded in production: any framework
+  // that does runtime classloader inspection — MockBukkit, agent-based test
+  // tooling, anything that calls `Class.getProtectionDomain().getCodeSource()`
+  // — sees a real jar URL and can find the descriptor on the classpath.
+  const mainStageDir = join(stagingDir, "main-jar-stage");
+  const mainJarPath = join(stagingDir, "main.jar");
+  const mainRuntimeJarPath = join(stagingDir, "main-runtime.jar");
   const testClassesDir = join(stagingDir, "test-classes");
   const reportsDir = join(stagingDir, "reports");
 
-  await mkdir(mainClassesDir, { recursive: true });
+  await mkdir(mainStageDir, { recursive: true });
   await mkdir(testClassesDir, { recursive: true });
-  // Wipe reports per-run so a stale TEST-*.xml from a deleted class can't leak in.
+  // The jars are regenerated from `mainStageDir` every run; the staleness
+  // story matches `mainStageDir` (incremental between runs, full reset
+  // under `--clean`). Drop the previous jars so a rebuild can't append
+  // onto a half-written file.
+  await rm(mainJarPath, { force: true });
+  await rm(mainRuntimeJarPath, { force: true });
+  // Reports are wiped per-run unconditionally so a stale TEST-*.xml from a
+  // deleted class can't leak into this run's results.
   await rm(reportsDir, { recursive: true, force: true });
   await mkdir(reportsDir, { recursive: true });
 
@@ -111,7 +137,7 @@ export async function runTests(
 
   const mainDeps = await resolveDeclared(project, "dependencies", projectRegistries);
   const platformApiJars = await resolvePlatformApiJars(project, projectRegistries);
-  const mainClasspath = dedupe([...flattenJars(mainDeps), ...platformApiJars]);
+  const mainClasspath = dedupe([...flattenJars(mainDeps.map((d) => d.dep)), ...platformApiJars]);
 
   const testDeps = await resolveDeclared(project, "testDependencies", testRegistries);
   const junit = await resolveMaven(
@@ -126,18 +152,44 @@ export async function runTests(
     },
   );
 
+  // We build two jars from the same staged directory:
+  //
+  //   * `main.jar` — the full jar, handed to the test JVM via the
+  //     `pluggy.test.mainJar` system property. Mocking frameworks
+  //     (MockBukkit, anything else that mounts a plugin classloader) load
+  //     the plugin from this path so the entry-point class ends up under
+  //     their own `ConfiguredPluginClassLoader`.
+  //   * `main-runtime.jar` — same content minus the declared entry-point
+  //     class. This jar goes on the system test classpath so plain
+  //     utility classes are reachable for non-mocking unit tests, but the
+  //     entry-point class is *not* — keeping it off the system loader is
+  //     what lets the mocking framework own it cleanly. Without this
+  //     split, Bukkit's `JavaPlugin requires a valid classloader` check
+  //     fires when the framework tries to reload the plugin.
+  //
+  // Test compile classpath uses the full `main.jar` so test code can
+  // import the entry-point class for `Main.class` references and similar.
+  const testDepJars = flattenJars(testDeps.map((d) => d.dep));
   const testCompileClasspath = dedupe([
-    mainClassesDir,
+    mainJarPath,
     ...mainClasspath,
-    ...flattenJars(testDeps),
+    ...testDepJars,
+    junit.jarPath,
+  ]);
+  const testRuntimeClasspath = dedupe([
+    mainRuntimeJarPath,
+    ...mainClasspath,
+    ...testDepJars,
     junit.jarPath,
   ]);
 
   await compileJava(project, {
     sourceDir: join(project.rootDir, "src"),
-    outputDir: mainClassesDir,
+    outputDir: mainStageDir,
     classpath: mainClasspath,
   });
+
+  await packageMainJar(project, mainStageDir, mainJarPath, mainRuntimeJarPath);
 
   await compileJava(project, {
     sourceDir: testSourceDir,
@@ -147,9 +199,10 @@ export async function runTests(
 
   const launcherArgs = buildLauncherArgs({
     consoleJar: junit.jarPath,
-    classpath: [testClassesDir, ...testCompileClasspath],
+    classpath: [testClassesDir, ...testRuntimeClasspath],
     testClassesDir,
     reportsDir,
+    systemProperties: buildTestSystemProperties(mainJarPath, mainDeps, testDeps),
     filter: opts.filter,
     failFast: opts.failFast,
   });
@@ -174,6 +227,98 @@ export async function runTests(
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
+
+/**
+ * Stage the generated descriptor + declared resources alongside the compiled
+ * classes in `mainStageDir`, then zip the directory into two jars:
+ *
+ *   * `mainJarPath` — full content, used by mocking frameworks via the
+ *     `pluggy.test.mainJar` system property.
+ *   * `mainRuntimeJarPath` — same content minus the declared entry-point
+ *     class. Goes on the system test classpath so utility classes are
+ *     reachable; the entry-point stays unreachable so the mocking
+ *     framework's classloader can own it (see Bukkit's `JavaPlugin`
+ *     classloader check).
+ *
+ * Shading is intentionally not applied: the test classpath already has
+ * every dep jar on it explicitly, so re-shading their classes into the
+ * jar would just produce duplicate-class warnings at test time.
+ */
+async function packageMainJar(
+  project: ResolvedProject,
+  mainStageDir: string,
+  mainJarPath: string,
+  mainRuntimeJarPath: string,
+): Promise<void> {
+  await stageResources(project, mainStageDir);
+
+  const descriptor = pickDescriptor(project);
+  const resources = project.resources;
+  const userOwnsDescriptor =
+    resources !== undefined &&
+    resources !== null &&
+    Object.prototype.hasOwnProperty.call(resources, descriptor.path);
+
+  if (!userOwnsDescriptor) {
+    const rendered = descriptor.generate(project);
+    const dest = join(mainStageDir, descriptor.path);
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFileLF(dest, rendered);
+  }
+
+  await zipDirectory(mainStageDir, mainJarPath);
+
+  // `project.main` is required for any workspace that runs tests (it has a
+  // `src/` to compile). If it's missing here, descriptor generation above
+  // already threw with a clearer message — but be defensive.
+  const mainEntry =
+    project.main !== undefined && project.main.length > 0
+      ? `${project.main.replace(/\./g, "/")}.class`
+      : undefined;
+  await zipDirectory(mainStageDir, mainRuntimeJarPath, {
+    include: (rel) => mainEntry === undefined || rel !== mainEntry,
+  });
+}
+
+/**
+ * Build the system-property catalog handed to the test JVM.
+ *
+ * Three properties are exposed:
+ *
+ *   * `pluggy.test.mainJar` — absolute path to the plugin's own jar.
+ *   * `pluggy.test.dependency.<name>` — one entry per declared dep
+ *     (`project.dependencies` and `project.testDependencies`), keyed by
+ *     the name from project.json. Picks of "load worldedit but not
+ *     luckperms" use this.
+ *   * `pluggy.test.dependencies` — `path.delimiter`-joined list of every
+ *     declared dep jar in declaration order (`dependencies` first, then
+ *     `testDependencies`). For "boot the server with everything declared".
+ *
+ * Transitive deps are intentionally not exposed: they're already on the
+ * test classpath, and surfacing them would let callers depend on
+ * indirect dep names that change without notice. Library-style Maven
+ * deps may end up in the catalog — pluggy doesn't try to detect "is
+ * this a plugin?", that's the test's call.
+ *
+ * On a name collision between `dependencies` and `testDependencies`,
+ * the testDependency wins (last-write). Pluggy's resolver already
+ * complains about ambiguous shapes upstream of this; if the same key
+ * survives to here we just pick the test-time entry.
+ */
+function buildTestSystemProperties(
+  mainJarPath: string,
+  mainDeps: NamedDependency[],
+  testDeps: NamedDependency[],
+): Record<string, string> {
+  const props: Record<string, string> = { "pluggy.test.mainJar": mainJarPath };
+  const ordered: string[] = [];
+  for (const { name, dep } of [...mainDeps, ...testDeps]) {
+    props[`pluggy.test.dependency.${name}`] = dep.jarPath;
+    ordered.push(dep.jarPath);
+  }
+  props["pluggy.test.dependencies"] = ordered.join(delimiter);
+  return props;
+}
 
 async function runJavaLauncher(args: string[]): Promise<{ exitCode: number; stderrTail: string }> {
   log.debug(`java ${args.length} args (JUnit Console Launcher)`);
@@ -227,15 +372,21 @@ async function readReports(reportsDir: string): Promise<string[]> {
   return out;
 }
 
+interface NamedDependency {
+  /** The key under `dependencies` / `testDependencies` in project.json. */
+  name: string;
+  dep: ResolvedDependency;
+}
+
 async function resolveDeclared(
   project: ResolvedProject,
   field: "dependencies" | "testDependencies",
   registries: string[],
-): Promise<ResolvedDependency[]> {
+): Promise<NamedDependency[]> {
   const declared = project[field];
   if (declared === undefined || declared === null) return [];
 
-  const out: ResolvedDependency[] = [];
+  const out: NamedDependency[] = [];
   for (const [name, raw] of Object.entries(declared)) {
     const { source, version } =
       typeof raw === "string"
@@ -248,7 +399,7 @@ async function resolveDeclared(
       force: false,
       registries,
     });
-    out.push(resolved);
+    out.push({ name, dep: resolved });
   }
   return out;
 }

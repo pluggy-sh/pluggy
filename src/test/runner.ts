@@ -19,6 +19,11 @@ export interface LauncherArgs {
   filter?: string;
   /** Stop on first failure. */
   failFast?: boolean;
+  /**
+   * JVM system properties to pass before `-jar` (rendered as `-Dkey=value`).
+   * Ordered iteration; values are not escaped — callers must pre-validate.
+   */
+  systemProperties?: Record<string, string>;
 }
 
 export interface TestCase {
@@ -52,7 +57,13 @@ export function buildLauncherArgs(args: LauncherArgs): string[] {
   // the selector does its own discovery against `--class-path`.
   const hasSelector = filterArgs.some((a) => a.startsWith("--select-"));
 
-  const out: string[] = [
+  const out: string[] = [];
+  if (args.systemProperties !== undefined) {
+    for (const [key, value] of Object.entries(args.systemProperties)) {
+      out.push(`-D${key}=${value}`);
+    }
+  }
+  out.push(
     "-jar",
     args.consoleJar,
     // `execute` is the explicit subcommand; newer standalone jars warn without it.
@@ -60,7 +71,7 @@ export function buildLauncherArgs(args: LauncherArgs): string[] {
     "--disable-banner",
     "--details=none",
     `--class-path=${args.classpath.join(delimiter)}`,
-  ];
+  );
   if (!hasSelector) {
     out.push(`--scan-class-path=${args.testClassesDir}`);
   }
