@@ -63,6 +63,10 @@ test("spigot platform is registered", () => {
 
 Tests live next to the code they cover as `*.test.ts`. Network-dependent tests (platform `download`, `getVersions`) hit real upstream APIs intentionally — do not mock them.
 
+### Manual testing & the `playground/` folder
+
+`playground/` at the repo root is gitignored and exists for ad-hoc manual testing of the CLI — building the binary with `bun build --compile --outfile=bin/pluggy ./src/index.ts`, then running `pluggy init`, `pluggy build`, `pluggy dev`, etc. against a scratch project to verify the actual user experience. Use it whenever a change has a UX surface that the test suite can't cover (interactive prompts, error formatting, generated `project.json` shape, BuildTools output, dev server startup). Create subdirectories per scenario (`playground/spigot-1.21/`, `playground/cross-family/`, …) and feel free to leave them around — nothing in `playground/` is committed.
+
 ### CLI conventions
 
 - Every command lives in `src/commands/<name>.ts` and exports a factory `xxxCommand()` that returns a `Command` (from `commander`). `src/index.ts` imports the factories and calls `program.addCommand()` — keep `index.ts` thin.
