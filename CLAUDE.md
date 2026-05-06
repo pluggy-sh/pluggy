@@ -67,6 +67,15 @@ Tests live next to the code they cover as `*.test.ts`. Network-dependent tests (
 
 `playground/` at the repo root is gitignored and exists for ad-hoc manual testing of the CLI — building the binary with `bun build --compile --outfile=bin/pluggy ./src/index.ts`, then running `pluggy init`, `pluggy build`, `pluggy dev`, etc. against a scratch project to verify the actual user experience. Use it whenever a change has a UX surface that the test suite can't cover (interactive prompts, error formatting, generated `project.json` shape, BuildTools output, dev server startup). Create subdirectories per scenario (`playground/spigot-1.21/`, `playground/cross-family/`, …) and feel free to leave them around — nothing in `playground/` is committed.
 
+### Filing issues for bugs you stumble across
+
+When you spot a bug that isn't in scope for the current task — typically while exercising the CLI in `playground/` or while reviewing unrelated code — log it as a GitHub issue so it doesn't get forgotten. The workflow:
+
+1. Search first: `gh issue list --search "<keywords>" --state all`. Try a couple of phrasings (the symptom, the affected command, the affected file) before assuming it's new.
+2. If no match, surface it to the human: describe the bug, the reproduction, and a draft body, then ask whether to file. Don't open issues unprompted.
+3. On approval, file with `gh issue create --title "…" --label bug --body "…"`. Match the bug-report template's sections (Summary / Reproduction / Expected / Actual / pluggy version / `pluggy doctor` output / Additional context) — `gh issue create` doesn't auto-apply YAML form templates, so reproduce the structure in the body. Templates live in `.github/ISSUE_TEMPLATE/`.
+4. For a bug found while finishing a PR, link the issue from the PR description so the connection is visible without searching.
+
 ### CLI conventions
 
 - Every command lives in `src/commands/<name>.ts` and exports a factory `xxxCommand()` that returns a `Command` (from `commander`). `src/index.ts` imports the factories and calls `program.addCommand()` — keep `index.ts` thin.
