@@ -1,7 +1,7 @@
 /** Tests for src/build/shade.ts. Uses tiny `yazl`-built jar fixtures. */
 
 import { createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,103 @@ async function makeJar(path: string, entries: Record<string, Buffer | string>): 
     }
     zip.end();
   });
+}
+
+/**
+ * Build a stored (uncompressed) zip from `entries` without any path-safety
+ * validation — yazl deliberately rejects `..` and absolute paths, so we
+ * can't use it for zip-slip fixtures. Layout: per-entry local headers, then
+ * central directory, then EOCD record.
+ */
+async function makeRawJar(path: string, entries: Record<string, Buffer | string>): Promise<void> {
+  const localChunks: Buffer[] = [];
+  const centralChunks: Buffer[] = [];
+  const offsets: number[] = [];
+  let cursor = 0;
+
+  for (const [name, content] of Object.entries(entries)) {
+    const data = typeof content === "string" ? Buffer.from(content, "utf8") : content;
+    const nameBuf = Buffer.from(name, "utf8");
+    const crc = crc32(data);
+
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); // local file header signature
+    local.writeUInt16LE(20, 4); // version needed
+    local.writeUInt16LE(0, 6); // flags
+    local.writeUInt16LE(0, 8); // method = stored
+    local.writeUInt16LE(0, 10); // mtime
+    local.writeUInt16LE(0, 12); // mdate
+    local.writeUInt32LE(crc, 14); // crc-32
+    local.writeUInt32LE(data.length, 18); // compressed size
+    local.writeUInt32LE(data.length, 22); // uncompressed size
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28); // extra length
+    offsets.push(cursor);
+    localChunks.push(local, nameBuf, data);
+    cursor += local.length + nameBuf.length + data.length;
+  }
+
+  const offsetsCopy = [...offsets];
+  let cdirSize = 0;
+  let i = 0;
+  for (const [name, content] of Object.entries(entries)) {
+    const data = typeof content === "string" ? Buffer.from(content, "utf8") : content;
+    const nameBuf = Buffer.from(name, "utf8");
+    const crc = crc32(data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); // central dir signature
+    central.writeUInt16LE(20, 4); // version made by
+    central.writeUInt16LE(20, 6); // version needed
+    central.writeUInt16LE(0, 8); // flags
+    central.writeUInt16LE(0, 10); // method
+    central.writeUInt16LE(0, 12); // mtime
+    central.writeUInt16LE(0, 14); // mdate
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30); // extra length
+    central.writeUInt16LE(0, 32); // comment length
+    central.writeUInt16LE(0, 34); // disk
+    central.writeUInt16LE(0, 36); // internal attrs
+    central.writeUInt32LE(0, 38); // external attrs
+    central.writeUInt32LE(offsetsCopy[i], 42); // offset of local header
+    centralChunks.push(central, nameBuf);
+    cdirSize += central.length + nameBuf.length;
+    i += 1;
+  }
+
+  const cdirOffset = cursor;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4); // disk
+  eocd.writeUInt16LE(0, 6); // disk with cdir start
+  eocd.writeUInt16LE(offsets.length, 8); // entries on this disk
+  eocd.writeUInt16LE(offsets.length, 10); // total entries
+  eocd.writeUInt32LE(cdirSize, 12);
+  eocd.writeUInt32LE(cdirOffset, 16);
+  eocd.writeUInt16LE(0, 20); // comment length
+
+  await writeFile(path, Buffer.concat([...localChunks, ...centralChunks, eocd]));
+}
+
+const CRC_TABLE: Uint32Array = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) !== 0 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i += 1) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
 }
 
 function fakeDep(
@@ -185,5 +282,33 @@ describe("applyShading", () => {
     await expect(applyShading([dep], { gone: { include: ["**"] } }, stagingDir)).rejects.toThrow(
       /jar not found/,
     );
+  });
+
+  test("rejects entries that traverse outside stagingDir (zip-slip)", async () => {
+    // yauzl's default `validateFileName` rejects `..` filenames before our
+    // entry handler sees them, so the surface message comes from there. Our
+    // safeJoin call inside `extractEntry` is defense-in-depth for the case
+    // someone disables that flag in the future.
+    const jar = join(workDir, "evil.jar");
+    await makeRawJar(jar, {
+      "../../../../../../tmp/pwn.txt": "evil",
+    });
+    const dep = fakeDep("evil", jar);
+
+    await expect(applyShading([dep], { evil: { include: ["**"] } }, stagingDir)).rejects.toThrow(
+      /invalid relative path|refusing entry/,
+    );
+  });
+
+  test("rejects entries with backslash separators", async () => {
+    const jar = join(workDir, "evil-bs.jar");
+    await makeRawJar(jar, {
+      "..\\..\\windows-pwn.txt": "evil",
+    });
+    const dep = fakeDep("evil-bs", jar);
+
+    await expect(
+      applyShading([dep], { "evil-bs": { include: ["**"] } }, stagingDir),
+    ).rejects.toThrow(/invalid relative path|backslash|refusing entry/);
   });
 });

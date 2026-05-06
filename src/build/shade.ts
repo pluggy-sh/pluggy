@@ -6,11 +6,12 @@
 
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, posix } from "node:path";
+import { dirname, posix } from "node:path";
 
 import yauzl, { type Entry, type ZipFile } from "yauzl";
 
 import { log } from "../logging.ts";
+import { safeJoin } from "../portable.ts";
 import type { Shading } from "../project.ts";
 import type { ResolvedDependency } from "../resolver/index.ts";
 import { PENDING_BUILD_INTEGRITY } from "../resolver/workspace.ts";
@@ -156,7 +157,14 @@ function extractEntry(
       stream.once("end", async () => {
         try {
           const data = Buffer.concat(chunks);
-          const dest = join(stagingDir, entry.fileName);
+          let dest: string;
+          try {
+            dest = safeJoin(stagingDir, entry.fileName);
+          } catch (e) {
+            throw new Error(
+              `shade: refusing entry "${entry.fileName}" from "${depName}": ${(e as Error).message}`,
+            );
+          }
           await mkdir(dirname(dest), { recursive: true });
           await writeFile(dest, data);
           log.debug(`shade: ${depName} -> ${entry.fileName} (${data.length}b)`);
