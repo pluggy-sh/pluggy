@@ -21,6 +21,8 @@ export interface DevCommandOptions {
   /** `--no-watch` → `false`; flag absence → `undefined` (treated as on). */
   watch?: boolean;
   reload?: boolean;
+  /** `--no-hotswap` → `false`; flag absence → `undefined` (config decides). */
+  hotswap?: boolean;
   offline?: boolean;
   json?: boolean;
   cwd?: string;
@@ -68,6 +70,7 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
     freshWorld: opts.freshWorld,
     watch: opts.watch,
     reload: opts.reload,
+    hotswap: opts.hotswap,
     offline: opts.offline,
     args: target.dev?.jvmArgs,
   });
@@ -123,7 +126,8 @@ export function devCommand(): Command {
     .option("--clean", "Wipe dev/ before starting.")
     .option("--fresh-world", "Keep dev/ but delete dev/world*.")
     .option("--no-watch", "Run once, don't watch or rebuild.")
-    .option("--reload", "Use /reload instead of full restart on change.")
+    .option("--reload", "Prefer /reload over a full restart when hotswap can't redefine a change.")
+    .option("--no-hotswap", "Disable HotswapAgent + JBR; use /reload or restart only.")
     .option("--offline", "Set online-mode=false in server.properties.")
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
@@ -138,6 +142,8 @@ export function devCommand(): Command {
         // commander's `--no-watch` yields watch:false; absence yields true.
         watch: options.watch,
         reload: options.reload === true,
+        // `--no-hotswap` → false; absence → undefined (let config decide).
+        hotswap: options.hotswap === false ? false : undefined,
         offline: options.offline === true,
         json: globalOpts.json === true,
       });

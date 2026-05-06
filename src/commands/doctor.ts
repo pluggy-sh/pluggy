@@ -7,6 +7,8 @@ import process from "node:process";
 import { Command } from "commander";
 
 import { pickDescriptor } from "../build/descriptor.ts";
+import { HOTSWAP_AGENT_VERSION } from "../dev/hotswap.ts";
+import { JBR_VERSION, jbrCacheKey, jbrJavaPath, jbrTarget } from "../dev/jbr.ts";
 import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
 import { type LockfileEntry, type TransitiveEntry, readLock } from "../lockfile.ts";
 import { bold, green, log, red, yellow } from "../logging.ts";
@@ -80,6 +82,7 @@ export async function runDoctorCommand(
 
   all.push(await (hooks.java ? hooks.java() : checkJava(context, userJava, javaError)));
   all.push(await (hooks.cache ? hooks.cache() : checkCache()));
+  all.push(checkHotswap());
 
   const registryProject = context.current?.project ?? context.root;
   const regResults = await (hooks.registries
@@ -286,6 +289,50 @@ export async function checkCache(): Promise<CheckResult> {
       detail: `could not stat cache at ${path}: ${message}`,
     };
   }
+}
+
+/**
+ * Report whether HotswapAgent + JBR are present in the user cache. Both
+ * download on first `pluggy dev` run, so a missing cache is informational
+ * rather than a failure — we surface it so users know what the first dev
+ * launch will do.
+ */
+export function checkHotswap(): CheckResult {
+  const cacheRoot = getCachePath();
+  const agentPath = join(cacheRoot, "agents", `hotswap-agent-${HOTSWAP_AGENT_VERSION}.jar`);
+  let target;
+  try {
+    target = jbrTarget();
+  } catch (err) {
+    return {
+      id: "hotswap",
+      label: "HotswapAgent + JBR",
+      status: "warn",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const jbrPath = jbrJavaPath(join(cacheRoot, "jbr", jbrCacheKey(target)), target);
+
+  const agentReady = existsSync(agentPath);
+  const jbrReady = existsSync(jbrPath);
+
+  if (agentReady && jbrReady) {
+    return {
+      id: "hotswap",
+      label: "HotswapAgent + JBR",
+      status: "pass",
+      detail: `agent ${HOTSWAP_AGENT_VERSION}, JBR ${JBR_VERSION} cached`,
+    };
+  }
+  const missing: string[] = [];
+  if (!agentReady) missing.push(`HotswapAgent ${HOTSWAP_AGENT_VERSION}`);
+  if (!jbrReady) missing.push(`JBR ${JBR_VERSION} (${target.os}-${target.arch})`);
+  return {
+    id: "hotswap",
+    label: "HotswapAgent + JBR",
+    status: "pass",
+    detail: `${missing.join(" + ")} will download on first \`pluggy dev\``,
+  };
 }
 
 async function dirSize(path: string): Promise<number> {

@@ -80,7 +80,9 @@ describe("spawnServer", () => {
       "nogui",
     ]);
     expect((options as { cwd: string }).cwd).toBe("/tmp/project/dev");
-    expect((options as { stdio: unknown }).stdio).toEqual(["pipe", "inherit", "inherit"]);
+    // pipes (not inherit) so the hotswap watcher can tap stdout/stderr while
+    // the spawn helper still forwards them to the parent terminal.
+    expect((options as { stdio: unknown }).stdio).toEqual(["pipe", "pipe", "pipe"]);
 
     expect(child).toBe(fake);
   });

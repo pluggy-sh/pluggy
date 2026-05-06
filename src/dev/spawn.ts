@@ -1,7 +1,8 @@
 /**
  * Spawn the Minecraft server JVM inside the staged dev directory. stdin is
- * piped so the parent can send `/stop`; stdout/stderr are inherited so the
- * user sees the server's own logs directly.
+ * piped so the parent can send `/stop`; stdout/stderr are piped through to
+ * the parent's terminal so the user still sees logs unchanged, while
+ * remaining tap-able for the hotswap watcher.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -13,21 +14,34 @@ export interface SpawnServerOptions {
   devDir: string;
   serverJarName: string;
   memory: string;
+  /** Caller-supplied JVM flags. `-javaagent:` etc. go here. */
   jvmArgs: string[];
+  /**
+   * Absolute path to the `java` binary to launch. Defaults to "java" on
+   * PATH; the dev loop overrides this with a JBR-resolved path when hotswap
+   * is enabled.
+   */
+  javaPath?: string;
 }
 
 /**
- * Spawn `java -Xmx<memory> <jvmArgs> -jar <serverJar> nogui` inside `devDir`.
- * `nogui` suppresses Bukkit's AWT console window on desktop JVMs.
+ * Spawn `<javaPath> -Xmx<memory> <jvmArgs> -jar <serverJar> nogui` inside
+ * `devDir`. `nogui` suppresses Bukkit's AWT console window on desktop JVMs.
  * Installs a SIGINT handler that is disposed automatically on child exit.
  */
 export function spawnServer(opts: SpawnServerOptions): ChildProcess {
   const argv = [`-Xmx${opts.memory}`, ...opts.jvmArgs, "-jar", opts.serverJarName, "nogui"];
 
-  const child = spawn("java", argv, {
+  const child = spawn(opts.javaPath ?? "java", argv, {
     cwd: opts.devDir,
-    stdio: ["pipe", "inherit", "inherit"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
+
+  // Forward server output to the parent terminal. The hotswap watcher can
+  // attach additional `data` listeners — Node streams broadcast to all
+  // listeners, so taps and the forward coexist.
+  child.stdout?.pipe(process.stdout, { end: false });
+  child.stderr?.pipe(process.stderr, { end: false });
 
   if (child.stdin !== null && !child.stdin.destroyed) {
     // `end: false` keeps the child's stdin open when the parent's closes
