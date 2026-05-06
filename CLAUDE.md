@@ -35,6 +35,7 @@ See `conventions/` for the full conventions with examples in both TypeScript and
 
 - **`conventions/QUALITY.md`** -API design: verb+noun entry points, category objects, single call backbone, no global state, fail-early errors.
 - **`conventions/PERFORMANCE.md`** -Performance: data structure selection, bounded collections, early exits, signal over polling, hot-path allocations, batching, coordination.
+- **`conventions/DOCUMENTATION.md`** -Writing docs: lead with the answer, active voice, "must" vs "we recommend", show the artifact (code, tree, config) instead of describing it, rarely use em-dashes, sentence-case headings with intro paragraphs, descriptive links, no duplicated facts.
 
 ## Runtime & tooling
 

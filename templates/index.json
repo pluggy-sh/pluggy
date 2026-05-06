@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "paper-basic",
+      "name": "Paper plugin (basic)",
+      "description": "Paper plugin with a sample listener — the simplest scaffold beyond the bare embedded stub.",
+      "family": "bukkit"
+    },
+    {
+      "id": "paper-mockbukkit",
+      "name": "Paper plugin with MockBukkit tests",
+      "description": "Paper plugin including listener + command + a JUnit/MockBukkit lifecycle harness driven by `pluggy test`.",
+      "family": "bukkit"
+    },
+    {
+      "id": "paper-adventure",
+      "name": "Paper plugin using Adventure components",
+      "description": "Paper plugin that messages players via Adventure `Component`s. Includes a MockBukkit test for the command handler.",
+      "family": "bukkit"
+    },
+    {
+      "id": "folia-regions",
+      "name": "Folia plugin using region schedulers",
+      "description": "Folia plugin demonstrating `getRegionScheduler()` / `getAsyncScheduler()` — the API that replaces Bukkit's BukkitScheduler on Folia.",
+      "family": "bukkit"
+    },
+    {
+      "id": "velocity-proxy",
+      "name": "Velocity proxy plugin",
+      "description": "Velocity proxy plugin with `@Inject` lifecycle, server-switch listener, and a Brigadier-registered command.",
+      "family": "velocity"
+    },
+    {
+      "id": "bungee-proxy",
+      "name": "BungeeCord proxy plugin",
+      "description": "BungeeCord plugin with a `PostLoginEvent` listener and a registered Command — the Bungee equivalent of the velocity-proxy template.",
+      "family": "bungee"
+    }
+  ]
+}

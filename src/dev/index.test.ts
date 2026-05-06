@@ -100,7 +100,7 @@ function makeProject(rootDir: string, overrides: Partial<ResolvedProject> = {}):
 }
 
 function fakeDescriptor(): DescriptorSpec {
-  return { path: "plugin.yml", format: "yaml", generate: () => "name: x\n" };
+  return { path: "plugin.yml", format: "yaml", family: "bukkit", generate: () => "name: x\n" };
 }
 
 function fakePlatform(id = "paper"): PlatformProvider {

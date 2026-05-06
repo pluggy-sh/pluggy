@@ -1,0 +1,14 @@
+{
+  "id": "paper-mockbukkit",
+  "name": "Paper plugin with MockBukkit tests",
+  "description": "Paper plugin including listener + command + a JUnit/MockBukkit lifecycle harness driven by `pluggy test`.",
+  "family": "bukkit",
+  "projectJsonExtras": {
+    "testDependencies": {
+      "mockbukkit": {
+        "source": "maven:org.mockbukkit.mockbukkit:mockbukkit-v${project.apiVersion}",
+        "version": "4.90.0"
+      }
+    }
+  }
+}

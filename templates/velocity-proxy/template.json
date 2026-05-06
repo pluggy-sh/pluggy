@@ -1,0 +1,6 @@
+{
+  "id": "velocity-proxy",
+  "name": "Velocity proxy plugin",
+  "description": "Velocity proxy plugin with `@Inject` lifecycle, server-switch listener, and a Brigadier-registered command.",
+  "family": "velocity"
+}

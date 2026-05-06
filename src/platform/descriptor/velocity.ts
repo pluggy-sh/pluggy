@@ -4,6 +4,7 @@ import type { DescriptorSpec } from "../platform.ts";
 export const velocityDescriptor: DescriptorSpec = {
   path: "velocity-plugin.json",
   format: "json",
+  family: "velocity",
   generate(project) {
     if (!project.main) {
       throw new Error("Velocity descriptor requires project.main");

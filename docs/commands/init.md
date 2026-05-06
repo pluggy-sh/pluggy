@@ -1,7 +1,10 @@
 # `pluggy init`
 
-Scaffold a new plugin project. Writes `project.json`, a Bukkit `JavaPlugin`
-stub, and a template `config.yml`.
+Scaffold a new plugin project. Writes `project.json`, a stub matching the
+chosen platform family (Bukkit `JavaPlugin`, Velocity `@Plugin`, or Bungee
+`Plugin`), and a template `config.yml`. Pass `--template <id>` to scaffold
+from a richer starter (MockBukkit harness, Adventure components, Folia
+region scheduler, …) — see [Templates](#templates).
 
 ## Usage
 
@@ -22,6 +25,7 @@ against `process.cwd()`.
 | `--main <fqcn>`         | `com.example.Main`                | Must be a Java classpath — at least `package.Class`.                                                                                                                            |
 | `--platform <id>`       | `paper`                           | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `travertine`. Repeatable, but must stay within one descriptor family (see error cases). |
 | `--mc-version <semver>` | highest compatible across targets | Minecraft version written to `compatibility.versions[0]`. Accepts both the legacy `1.21.8` shape and Mojang's new calendar scheme (`26.1.2`). See below.                        |
+| `--template <id>`       | embedded family stub              | Scaffold from a richer template — see [Templates](#templates). Without this flag init uses the embedded family stub and never touches the network.                              |
 | `-y, --yes`             | off                               | Skip confirmations. Always on under `--json`.                                                                                                                                   |
 
 The `--version` here refers to the plugin's own `project.version`. The
@@ -62,6 +66,51 @@ wait on first run.
 The `.java` and `.yml` stubs are rendered through the `${project.x}`
 templater before being written, so they reference the real project name /
 version / class name / package name.
+
+The exact `.java` stub depends on the platform family of the project's
+primary platform:
+
+- `paper`, `folia`, `spigot`, `bukkit` → `extends JavaPlugin`
+- `velocity` → `@Plugin` annotated, `@Inject`-ed `ProxyServer` + `Logger`
+- `waterfall`, `travertine` → `extends net.md_5.bungee.api.plugin.Plugin`
+
+So `pluggy init --yes --platform velocity` produces a Velocity-correct stub
+that compiles immediately — no manual fix-up needed.
+
+## Templates
+
+`--template <id>` scaffolds from a starter project hosted in this repo
+under `templates/<id>/`. Each template ships a tested layout — listener +
+command, MockBukkit harness, Adventure components, Folia region scheduler,
+proxy plugin shapes — so you start from working code rather than a bare
+`onEnable`.
+
+The current lineup:
+
+| ID                 | Family   | Notes                                                                                    |
+| ------------------ | -------- | ---------------------------------------------------------------------------------------- |
+| `paper-basic`      | bukkit   | Paper + a sample `JoinListener`. Smallest non-empty scaffold.                            |
+| `paper-mockbukkit` | bukkit   | Paper + listener + a JUnit/MockBukkit lifecycle harness driven by `pluggy test`.         |
+| `paper-adventure`  | bukkit   | Paper using Adventure `Component`s + a MockBukkit test for the listener.                 |
+| `folia-regions`    | bukkit   | Folia plugin showing `getAsyncScheduler()` / `getRegionScheduler()` patterns.            |
+| `velocity-proxy`   | velocity | Velocity with `@Inject` lifecycle, `ServerPostConnectEvent` listener, Brigadier command. |
+| `bungee-proxy`     | bungee   | BungeeCord with a `PostLoginEvent` listener and a registered `Command`.                  |
+
+Picking interactively without `--template` shows the same list filtered to
+your platform's family. Selecting "Default" falls through to the embedded
+stub (no network).
+
+Templates are fetched from this repo's `main` branch by default. Override
+with:
+
+- `PLUGGY_TEMPLATE_REPO=<owner>/<repo>[#<ref>]` — fetch from a fork / pin
+  to a specific ref.
+- `PLUGGY_TEMPLATE_DIR=<path>` — read templates straight off disk (used by
+  pluggy's own tests and by anyone iterating on a template locally).
+
+A template's `template.json` may declare `projectJsonExtras`, which is
+deep-merged into the generated `project.json`. That's how
+`paper-mockbukkit` injects `testDependencies.mockbukkit` for you.
 
 ## Prompts
 
