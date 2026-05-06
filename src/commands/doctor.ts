@@ -14,6 +14,7 @@ import { type LockfileEntry, type TransitiveEntry, readLock } from "../lockfile.
 import { bold, green, log, red, yellow } from "../logging.ts";
 import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
+import { registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { getCachedJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
@@ -424,8 +425,7 @@ export async function checkRegistries(project: ResolvedProject): Promise<CheckRe
     ];
   }
   for (const entry of registries) {
-    const url = typeof entry === "string" ? entry : entry.url;
-    out.push(await checkOneRegistry(url));
+    out.push(await checkOneRegistry(registryUrl(entry)));
   }
   return out;
 }

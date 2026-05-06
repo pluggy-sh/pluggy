@@ -12,6 +12,7 @@ import { log } from "../logging.ts";
 import { getPlatform } from "../platform/index.ts";
 import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
+import { effectiveRegistries } from "../registry.ts";
 import { parseSource } from "../source.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
@@ -202,11 +203,7 @@ function hasUserDescriptor(project: ResolvedProject, descriptorPath: string): bo
 }
 
 function collectRegistries(project: ResolvedProject): string[] {
-  const out: string[] = [];
-  for (const entry of project.registries ?? []) {
-    out.push(typeof entry === "string" ? entry : entry.url);
-  }
-  return out;
+  return effectiveRegistries(project.registries);
 }
 
 async function resolveDeclaredDependencies(
