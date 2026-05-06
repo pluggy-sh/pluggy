@@ -30,6 +30,7 @@ import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
+import { ensureJdkForProject } from "../sdk/index.ts";
 import { parseSource } from "../source.ts";
 
 import {
@@ -183,10 +184,15 @@ export async function runTests(
     junit.jarPath,
   ]);
 
+  // Resolve the JDK once and thread it through compile + launcher. Done up
+  // front so a cache miss only blocks once per `pluggy test` run.
+  const jdk = await ensureJdkForProject(project);
+
   await compileJava(project, {
     sourceDir: join(project.rootDir, "src"),
     outputDir: mainStageDir,
     classpath: mainClasspath,
+    javacPath: jdk.javacPath,
   });
 
   await packageMainJar(project, mainStageDir, mainJarPath, mainRuntimeJarPath);
@@ -195,6 +201,7 @@ export async function runTests(
     sourceDir: testSourceDir,
     outputDir: testClassesDir,
     classpath: testCompileClasspath,
+    javacPath: jdk.javacPath,
   });
 
   const launcherArgs = buildLauncherArgs({
@@ -207,7 +214,7 @@ export async function runTests(
     failFast: opts.failFast,
   });
 
-  const { exitCode, stderrTail } = await runJavaLauncher(launcherArgs);
+  const { exitCode, stderrTail } = await runJavaLauncher(jdk.javaPath, launcherArgs);
 
   const xmlDocs = await readReports(reportsDir);
   const result = parseJUnitReports(xmlDocs);
@@ -320,13 +327,16 @@ function buildTestSystemProperties(
   return props;
 }
 
-async function runJavaLauncher(args: string[]): Promise<{ exitCode: number; stderrTail: string }> {
+async function runJavaLauncher(
+  javaPath: string,
+  args: string[],
+): Promise<{ exitCode: number; stderrTail: string }> {
   log.debug(`java ${args.length} args (JUnit Console Launcher)`);
   // We render our own output from the XML reports afterwards, so the launcher's
   // own stdout/stderr are suppressed. stderr is still buffered so we can attach
   // the tail to an error message on an unexpected launcher failure.
   return await new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn("java", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(javaPath, args, { stdio: ["ignore", "pipe", "pipe"] });
     const stderrBuf: string[] = [];
 
     child.stdout?.setEncoding("utf8");

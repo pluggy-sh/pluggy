@@ -15,6 +15,8 @@ import { bold, green, log, red, yellow } from "../logging.ts";
 import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
+import { getCachedJdk } from "../sdk/index.ts";
+import { selectJdkForProject } from "../sdk/resolve.ts";
 import { compareVersions, getCachedLatestVersion } from "../update-check.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";
 
@@ -37,6 +39,7 @@ export interface DoctorCommandOptions {
   /** Per-check overrides used by tests to avoid spawning a JVM or hitting the network. */
   checks?: {
     java?: () => Promise<CheckResult>;
+    sdk?: (project: ResolvedProject) => Promise<CheckResult>;
     cache?: () => Promise<CheckResult>;
     registries?: (project: ResolvedProject) => Promise<CheckResult[]>;
     project?: (project: ResolvedProject) => CheckResult;
@@ -81,6 +84,8 @@ export async function runDoctorCommand(
   }
 
   all.push(await (hooks.java ? hooks.java() : checkJava(context, userJava, javaError)));
+  const sdkProject = context.current?.project ?? context.root;
+  all.push(await (hooks.sdk ? hooks.sdk(sdkProject) : checkSdk(sdkProject)));
   all.push(await (hooks.cache ? hooks.cache() : checkCache()));
   all.push(checkHotswap());
 
@@ -234,6 +239,48 @@ async function runJavaVersion(): Promise<{ stdout: string; stderr: string }> {
       else rejectPromise(new Error(`java -version exited with code ${code}: ${stderr.trim()}`));
     });
   });
+}
+
+/**
+ * Verify the JDK pluggy needs for this project is provisioned (or auto-installable).
+ *
+ * Three states:
+ *   pass — the slot is cached or JAVA_HOME points at the right major.
+ *   warn — the slot is missing but auto-install is enabled, so the next
+ *          build will fetch it. Still actionable for users on slow networks.
+ *   fail — the slot is missing and `PLUGGY_NO_AUTO_INSTALL=1` is set, so
+ *          the next build would fail. Includes the remediation command.
+ */
+export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
+  const selection = await selectJdkForProject(project);
+  const cached = getCachedJdk(selection.major, selection.distribution);
+  const noAutoInstall = process.env.PLUGGY_NO_AUTO_INSTALL === "1";
+  const remedy = `pluggy sdk install ${selection.major}${selection.distribution === "temurin" ? "" : ` --distribution ${selection.distribution}`}`;
+
+  if (cached !== undefined) {
+    return {
+      id: "sdk",
+      label: "Project JDK",
+      status: "pass",
+      detail: `${selection.distribution} ${selection.major} cached (${cached.javaHome})`,
+    };
+  }
+
+  if (noAutoInstall) {
+    return {
+      id: "sdk",
+      label: "Project JDK",
+      status: "fail",
+      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1 — run: ${remedy}`,
+    };
+  }
+
+  return {
+    id: "sdk",
+    label: "Project JDK",
+    status: "warn",
+    detail: `${selection.distribution} ${selection.major} not yet installed — pluggy will fetch on first build. Pre-install: ${remedy}`,
+  };
 }
 
 /**

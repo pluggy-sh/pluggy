@@ -13,6 +13,7 @@ import { installCommand } from "./commands/install.ts";
 import { listCommand } from "./commands/list.ts";
 import { removeCommand } from "./commands/remove.ts";
 import { searchCommand } from "./commands/search.ts";
+import { sdkCommand } from "./commands/sdk.ts";
 import { testCommand } from "./commands/test.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { bold, red } from "./logging.ts";
@@ -44,6 +45,7 @@ program.addCommand(buildCommand());
 program.addCommand(testCommand());
 program.addCommand(doctorCommand({ pluggyVersion: CLI_VERSION, repository: REPOSITORY }));
 program.addCommand(devCommand());
+program.addCommand(sdkCommand());
 program.addCommand(upgradeCommand({ repository: REPOSITORY }));
 program.addCommand(completionsCommand(program));
 

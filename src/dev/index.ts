@@ -18,6 +18,7 @@ import type { DescriptorSpec } from "../platform/platform.ts";
 import { linkOrCopy } from "../portable.ts";
 import { getCachePath, type HotswapConfig, type ResolvedProject } from "../project.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
+import { ensureJdkForProject } from "../sdk/index.ts";
 import { parseSource } from "../source.ts";
 
 import {
@@ -141,6 +142,12 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     javaPath = provisioning.javaPath;
     jvmArgs = [...agentJvmArgs({ agentJarPath: provisioning.agentJarPath }), ...userJvmArgs];
     log.info("dev: hotswap on (HotswapAgent + JBR)");
+  } else {
+    // No hotswap → spawn the server with the project's pinned JDK. Without
+    // this, dev would fall back to whatever `java` is on PATH and silently
+    // mismatch the project's compatibility target.
+    const jdk = await ensureJdkForProject(project);
+    javaPath = jdk.javaPath;
   }
 
   let child = spawnServer({

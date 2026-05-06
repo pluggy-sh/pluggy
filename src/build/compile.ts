@@ -15,6 +15,14 @@ export interface CompileOptions {
   sourceDir: string;
   outputDir: string;
   classpath: string[];
+  /**
+   * Absolute `javac` path. Defaults to `"javac"` (PATH lookup) — orchestrators
+   * (`buildProject`, `runTests`, …) override with the SDK-resolved JDK so a
+   * single JDK lookup serves the whole pipeline. Keeping `compileJava`
+   * itself decoupled from the SDK module also avoids network-dependent unit
+   * tests.
+   */
+  javacPath?: string;
 }
 
 const MAX_STDERR_LINES = 40;
@@ -43,7 +51,9 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
   log.debug(`javac ${args.length} args (${sources.length} sources, ${opts.classpath.length} cp)`);
 
   return await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn("javac", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(opts.javacPath ?? "javac", args, {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     const stderrBuf: string[] = [];
 

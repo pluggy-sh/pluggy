@@ -20,6 +20,20 @@ vi.mock("../resolver/index.ts", () => ({
 vi.mock("../resolver/maven.ts", () => ({
   resolveMaven: vi.fn(),
 }));
+vi.mock("../sdk/index.ts", () => ({
+  // Pipeline tests don't need a real JDK — they mock spawn entirely. Return
+  // PATH-style placeholders so `compileJava` falls through to its `"javac"`
+  // default and assertions like `expect(cmd).toBe("javac")` keep working.
+  ensureJdkForProject: vi.fn(async () => ({
+    javaPath: "java",
+    javacPath: "javac",
+    javaHome: "/fake",
+    major: 21,
+    source: "system" as const,
+    distribution: "system",
+    selection: { major: 21, distribution: "temurin", source: "fallback-default" as const },
+  })),
+}));
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
   return { ...actual, spawn: vi.fn() };
