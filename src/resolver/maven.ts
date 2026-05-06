@@ -49,7 +49,15 @@ export async function resolveMaven(
   }
 
   const visited = new Set<string>();
-  return resolveOne(groupId, artifactId, version, ctx.registries, visited, 0);
+  return resolveOne(
+    groupId,
+    artifactId,
+    version,
+    ctx.registries,
+    visited,
+    0,
+    ctx.expectedIntegrity,
+  );
 }
 
 async function resolveOne(
@@ -59,6 +67,7 @@ async function resolveOne(
   registries: string[],
   visited: Set<string>,
   depth: number,
+  expectedIntegrity?: string,
 ): Promise<ResolvedDependency> {
   const coord = `${groupId}:${artifactId}:${version}`;
   const key = `${groupId}:${artifactId}`;
@@ -90,8 +99,18 @@ async function resolveOne(
     );
   }
 
-  await writeFile(jarPath, bytes);
   const integrity = `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
+  // Only enforce expected-integrity on the top-level resolve (depth 0); a
+  // mismatch deeper in the tree means upstream advanced a transitive, which
+  // is normal flux and out of scope for the lockfile-pin we're enforcing.
+  if (depth === 0 && expectedIntegrity !== undefined && integrity !== expectedIntegrity) {
+    throw new Error(
+      `maven: integrity check failed for "${coord}" — ` +
+        `lockfile expects ${expectedIntegrity} but resolved bytes are ${integrity}. ` +
+        `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
+    );
+  }
+  await writeFile(jarPath, bytes);
   const source: ResolvedSource = { kind: "maven", groupId, artifactId, version };
 
   const transitiveDeps =

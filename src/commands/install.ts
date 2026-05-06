@@ -1,10 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import process from "node:process";
 
 import { Command } from "commander";
 
+import { log } from "../logging.ts";
 import { writeFileLF } from "../portable.ts";
-import type { Project } from "../project.ts";
+import { getCachePath, type Project } from "../project.ts";
 import { resolveDependency } from "../resolver/index.ts";
 import type { ResolvedDependency } from "../resolver/index.ts";
 import {
@@ -108,9 +111,18 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   const drift = verifyLock(existingLock, declaredMap);
 
   if (drift.length === 0 && opts.force !== true) {
-    const result: InstallResult = { installed: [], skipped: [...byName.keys()] };
-    emitInstallResult(opts, result, { message: "lockfile is fresh; nothing to install." });
-    return result;
+    // The lockfile is fresh against project.json — but the bytes on disk
+    // might have drifted (cache poisoning, manual jar replacement, partial
+    // download). Re-hash every cached jar against the recorded integrity
+    // and re-resolve any that don't match. A fresh-lockfile install
+    // shouldn't return success while a tampered jar lives in the cache.
+    const cacheDrift = await verifyCachedIntegrity(byName, existingLock.entries);
+    if (cacheDrift.length === 0) {
+      const result: InstallResult = { installed: [], skipped: [...byName.keys()] };
+      emitInstallResult(opts, result, { message: "lockfile is fresh; nothing to install." });
+      return result;
+    }
+    drift.push(...cacheDrift);
   }
 
   const toResolve = opts.force === true ? [...byName.keys()] : drift;
@@ -122,7 +134,18 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   for (const name of toResolve) {
     const info = byName.get(name);
     if (info === undefined) continue;
-    const resolved = await resolveDependency(info.source, resolveCtx);
+    // Pinned-version sanity: if the lockfile already records an integrity
+    // for this exact (source, version) pair and the user didn't pass
+    // --force, refuse to silently roll forward to different bytes.
+    const prior = existingLock.entries[name];
+    const expectedIntegrity =
+      opts.force !== true &&
+      prior !== undefined &&
+      stringifySource(prior.source) === stringifySource(info.source) &&
+      prior.source.version === info.source.version
+        ? prior.integrity
+        : undefined;
+    const resolved = await resolveDependency(info.source, { ...resolveCtx, expectedIntegrity });
     nextEntries[name] = toLockEntry(resolved, info.declaredBy);
   }
 
@@ -186,6 +209,98 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
   };
   emitInstallResult(opts, result);
   return result;
+}
+
+/**
+ * Re-hash every cached jar against its recorded `entry.integrity` and return
+ * the names whose bytes diverged from the lockfile. A divergence means the
+ * cache was poisoned, manually replaced, or partially written — install
+ * should re-resolve those rather than serve tampered bytes.
+ *
+ * Entries whose jar isn't in the cache yet are silently skipped (build/dev
+ * will populate the cache via the resolver later); a present-but-corrupt
+ * jar is the only signal worth treating as drift.
+ */
+async function verifyCachedIntegrity(
+  byName: Map<string, { source: ReturnType<typeof parseSource>; declaredBy: string[] }>,
+  lockEntries: Record<string, LockfileEntry>,
+): Promise<string[]> {
+  const drift: string[] = [];
+  for (const [name] of byName) {
+    const entry = lockEntries[name];
+    if (entry === undefined) continue;
+    const jarPath = cachedJarPathForEntry(entry);
+    if (jarPath === undefined) continue;
+    if (!(await fileExists(jarPath))) continue;
+
+    const bytes = await readFile(jarPath);
+    const actual = `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
+    if (actual !== entry.integrity) {
+      log.warn(
+        `install: cached "${name}" at ${jarPath} has unexpected integrity ${actual} (lockfile expects ${entry.integrity}); will re-resolve`,
+      );
+      drift.push(name);
+    }
+  }
+  return drift;
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Locate the cached jar for a lockfile entry — mirrors each resolver's cache
+ * layout. Returns `undefined` for `workspace:` (built locally) and refuses
+ * to construct paths whose components contain traversal characters, so a
+ * lockfile crafted by a hostile clone can't escape the cache root.
+ */
+function cachedJarPathForEntry(entry: LockfileEntry): string | undefined {
+  const base = join(getCachePath(), "dependencies");
+  const src = entry.source;
+  switch (src.kind) {
+    case "modrinth":
+      assertSafeName(src.slug, "source.slug");
+      assertSafeName(entry.resolvedVersion, "resolvedVersion");
+      return join(base, "modrinth", src.slug, `${entry.resolvedVersion}.jar`);
+    case "maven":
+      assertSafeName(src.groupId, "source.groupId");
+      assertSafeName(src.artifactId, "source.artifactId");
+      assertSafeName(entry.resolvedVersion, "resolvedVersion");
+      return join(base, "maven", src.groupId, src.artifactId, `${entry.resolvedVersion}.jar`);
+    case "file": {
+      const hex = entry.integrity.startsWith("sha256-")
+        ? entry.integrity.slice("sha256-".length)
+        : entry.integrity;
+      assertSafeName(hex, "integrity");
+      return join(base, "file", `${hex}.jar`);
+    }
+    case "workspace":
+      return undefined;
+  }
+}
+
+const SAFE_NAME_RE = /^[A-Za-z0-9._-]+$/;
+
+function assertSafeName(value: string, field: string): void {
+  if (typeof value !== "string" || value.length === 0 || !SAFE_NAME_RE.test(value)) {
+    throw new Error(
+      `install: refusing unsafe lockfile ${field} ${JSON.stringify(value)} — won't construct a cache path that could escape the cache root`,
+    );
+  }
+  // SAFE_NAME_RE permits dots, so `..` and `.` slip through the regex but
+  // are filesystem-special. Reject explicitly so a lockfile-crafted entry
+  // can't traverse the cache root via a single-component name.
+  if (value === "." || value === "..") {
+    throw new Error(
+      `install: refusing reserved lockfile ${field} ${JSON.stringify(value)} — would traverse the cache root`,
+    );
+  }
 }
 
 function toLockEntry(resolved: ResolvedDependency, declaredBy: string[]): LockfileEntry {

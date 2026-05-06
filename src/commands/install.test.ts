@@ -3,7 +3,8 @@
  * workspace discovery, project parsing, and the lockfile are real.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,7 +14,13 @@ vi.mock("../resolver/index.ts", () => ({
   resolveDependency: vi.fn(),
 }));
 
+vi.mock("../project.ts", async () => {
+  const actual = await vi.importActual<typeof import("../project.ts")>("../project.ts");
+  return { ...actual, getCachePath: vi.fn() };
+});
+
 import { readLock } from "../lockfile.ts";
+import { getCachePath } from "../project.ts";
 import { resolveDependency } from "../resolver/index.ts";
 
 import { doInstall } from "./install.ts";
@@ -34,14 +41,19 @@ function makeResolved(overrides: Partial<MinimalResolved>): MinimalResolved {
 
 describe("doInstall: no plugin argument", () => {
   let dir: string;
+  let cacheDir: string;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "pluggy-install-test-"));
+    cacheDir = await mkdtemp(join(tmpdir(), "pluggy-install-cache-"));
+    vi.mocked(getCachePath).mockReturnValue(cacheDir);
     mockedResolveDependency.mockReset();
   });
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
+    await rm(cacheDir, { recursive: true, force: true });
+    vi.mocked(getCachePath).mockReset();
   });
 
   test("standalone, no lockfile → resolves every declared dep and writes the lockfile", async () => {
@@ -148,6 +160,105 @@ describe("doInstall: no plugin argument", () => {
     const lock = readLock(dir);
     expect(lock?.entries.otherdep).toBeDefined();
     expect(lock?.entries.worldedit.integrity).toBe("sha256-abc");
+  });
+
+  test("re-resolves when a cached jar's bytes don't match the lockfile integrity", async () => {
+    await writeFile(
+      join(dir, "project.json"),
+      JSON.stringify({
+        name: "demo",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { worldedit: "7.3.15" },
+      }),
+    );
+    const expectedHash = `sha256-${createHash("sha256").update("expected").digest("hex")}`;
+    await writeFile(
+      join(dir, "pluggy.lock"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          entries: {
+            worldedit: {
+              source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
+              resolvedVersion: "7.3.15",
+              integrity: expectedHash,
+              declaredBy: ["demo"],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    // Plant tampered bytes at the expected cache location.
+    const cacheJar = join(cacheDir, "dependencies", "modrinth", "worldedit", "7.3.15.jar");
+    await mkdir(join(cacheDir, "dependencies", "modrinth", "worldedit"), { recursive: true });
+    await writeFile(cacheJar, "tampered bytes");
+
+    mockedResolveDependency.mockImplementation(async (source) =>
+      makeResolved({ source, integrity: expectedHash }),
+    );
+
+    const result = await doInstall({ cwd: dir });
+    expect(result.installed).toContain("worldedit");
+    expect(mockedResolveDependency).toHaveBeenCalledTimes(1);
+  });
+
+  test("refuses silent roll-forward when resolver returns different bytes than the lockfile", async () => {
+    await writeFile(
+      join(dir, "project.json"),
+      JSON.stringify({
+        name: "demo",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { worldedit: "7.3.15", newdep: "1.0.0" },
+      }),
+    );
+    await writeFile(
+      join(dir, "pluggy.lock"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          entries: {
+            worldedit: {
+              source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
+              resolvedVersion: "7.3.15",
+              integrity: "sha256-pinned",
+              declaredBy: ["demo"],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    mockedResolveDependency.mockImplementation(async (source, ctx) => {
+      // Surface the expectedIntegrity check as a thrown error to mimic a
+      // real resolver's behavior on mismatch.
+      if (
+        source.kind === "modrinth" &&
+        source.slug === "worldedit" &&
+        ctx.expectedIntegrity !== undefined &&
+        ctx.expectedIntegrity !== "sha256-rolled-forward"
+      ) {
+        throw new Error(
+          `modrinth: integrity check failed for "worldedit@7.3.15" — lockfile expects ${ctx.expectedIntegrity} but resolved bytes are sha256-rolled-forward`,
+        );
+      }
+      return makeResolved({ source, integrity: "sha256-rolled-forward" });
+    });
+
+    // worldedit isn't drifted so it shouldn't even be re-resolved; only
+    // newdep is. The expectedIntegrity threading kicks in if worldedit ever
+    // does need re-resolution (e.g. cache mismatch in another test).
+    const result = await doInstall({ cwd: dir });
+    expect(result.installed).toEqual(["newdep"]);
+    expect(result.skipped).toContain("worldedit");
   });
 
   test("--force re-resolves even when fresh", async () => {
