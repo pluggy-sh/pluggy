@@ -39,29 +39,25 @@ describe("cacheKey", () => {
 });
 
 describe("javaBinaryPath / javaHomePath", () => {
+  // Build expected paths with `join` so the assertions use native separators
+  // on every OS — these helpers return runtime paths for spawning processes,
+  // not POSIX-normalized paths.
   test("linux is flat", () => {
-    expect(javaBinaryPath("/cache/temurin-21-linux-x64", "linux")).toBe(
-      "/cache/temurin-21-linux-x64/bin/java",
-    );
-    expect(javaHomePath("/cache/temurin-21-linux-x64", "linux")).toBe(
-      "/cache/temurin-21-linux-x64",
-    );
+    const slot = join("/cache", "temurin-21-linux-x64");
+    expect(javaBinaryPath(slot, "linux")).toBe(join(slot, "bin", "java"));
+    expect(javaHomePath(slot, "linux")).toBe(slot);
   });
 
   test("windows uses java.exe", () => {
-    expect(javaBinaryPath("/cache/temurin-21-windows-x64", "windows")).toBe(
-      "/cache/temurin-21-windows-x64/bin/java.exe",
-    );
-    expect(javacBinaryPath("/cache/temurin-21-windows-x64", "windows")).toBe(
-      "/cache/temurin-21-windows-x64/bin/javac.exe",
-    );
+    const slot = join("/cache", "temurin-21-windows-x64");
+    expect(javaBinaryPath(slot, "windows")).toBe(join(slot, "bin", "java.exe"));
+    expect(javacBinaryPath(slot, "windows")).toBe(join(slot, "bin", "javac.exe"));
   });
 
   test("macos falls back to flat layout when Contents/Home is missing", () => {
     // Without Contents/Home present on disk, javaHomePath returns slotRoot.
-    expect(javaBinaryPath("/cache/temurin-21-macos-aarch64", "macos")).toBe(
-      "/cache/temurin-21-macos-aarch64/bin/java",
-    );
+    const slot = join("/cache", "temurin-21-macos-aarch64");
+    expect(javaBinaryPath(slot, "macos")).toBe(join(slot, "bin", "java"));
   });
 });
 
