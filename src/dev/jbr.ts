@@ -10,6 +10,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,9 +26,27 @@ import { getCachePath } from "../project.ts";
  *
  * Update by browsing https://github.com/JetBrains/JetBrainsRuntime/releases
  * and copying the `jbrsdk-<version>-<os>-<arch>-<build>.tar.gz` filename.
+ * After bumping the version/build, also recompute the per-target SHA-256s
+ * in `JBR_SHA256` — without that, the integrity check fails fast and dev
+ * mode refuses to run, which is the safe default.
  */
 export const JBR_VERSION = "25.0.2";
 export const JBR_BUILD = "b432.48";
+
+/**
+ * Expected SHA-256 of each JBR tarball, keyed by `${os}-${arch}`. Verified
+ * after download and before extraction. A mismatch aborts with a clear error
+ * — corrupt cache or hostile substitution both surface here. Bake new values
+ * by running `shasum -a 256 jbrsdk-<version>-<os>-<arch>-<build>.tar.gz`
+ * against the official archive.
+ */
+const JBR_SHA256: Record<string, string> = {
+  "osx-aarch64": "1501ed8f15c1176abc895d6e3cf2b52562152f9731ec024b552e4bef24f02bf9",
+  "osx-x64": "aeb433aef8bedcd8ba32963857923096a03bd87ca6ebb7a65a79d8b41b97dec3",
+  "linux-aarch64": "b2a7e10c80b9560bee42e2f6f69d4491dc74362a7ca378249ec545a83155eb57",
+  "linux-x64": "a76e8c1ef916f84d3b28e6794d1527d5189f9b0299a323e21ea737bdd93eaddd",
+  "windows-x64": "48bf62ff4d61969066d71012e98ed6ef1292c4709badb099e22ed07195b00527",
+};
 
 interface JbrTarget {
   /** "osx" | "linux" | "windows" — JBR's own naming. */
@@ -96,10 +115,22 @@ export async function ensureJbr(): Promise<string> {
 
   await mkdir(cacheRoot, { recursive: true });
 
+  const expectedSha = expectedShaFor(target);
   const archiveName = jbrArchiveName(target);
   const archivePath = join(cacheRoot, archiveName);
+  if (existsSync(archivePath)) {
+    // A cached archive that doesn't match the pinned hash is rejected — it's
+    // either corrupt or substituted out of band. Drop and redownload.
+    const cachedSha = await sha256OfFile(archivePath);
+    if (cachedSha !== expectedSha) {
+      log.warn(
+        `hotswap: cached JBR archive at ${archivePath} has unexpected sha256 ${cachedSha} (expected ${expectedSha}); re-downloading`,
+      );
+      await rm(archivePath, { force: true });
+    }
+  }
   if (!existsSync(archivePath)) {
-    await downloadArchive(archiveName, archivePath);
+    await downloadArchive(archiveName, archivePath, expectedSha);
   }
 
   await extractInto(archivePath, cacheRoot, extractedRoot);
@@ -112,17 +143,46 @@ export async function ensureJbr(): Promise<string> {
   return javaPath;
 }
 
+function expectedShaFor(target: JbrTarget): string {
+  const key = `${target.os}-${target.arch}`;
+  const sha = JBR_SHA256[key];
+  if (sha === undefined) {
+    throw new Error(
+      `jbr: no pinned SHA-256 for ${key} — refusing to download an unverified runtime. ` +
+        `Add the expected hash to JBR_SHA256 in src/dev/jbr.ts.`,
+    );
+  }
+  return sha;
+}
+
+async function sha256OfFile(path: string): Promise<string> {
+  const { readFile } = await import("node:fs/promises");
+  const bytes = await readFile(path);
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
 const JBR_CDN = "https://cache-redirector.jetbrains.com/intellij-jbr";
 
-async function downloadArchive(archiveName: string, destPath: string): Promise<void> {
+async function downloadArchive(
+  archiveName: string,
+  destPath: string,
+  expectedSha: string,
+): Promise<void> {
   const url = `${JBR_CDN}/${archiveName}`;
   log.info(`hotswap: downloading JetBrains Runtime (${archiveName})…`);
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`jbr: download failed (${res.status} ${res.statusText}) — ${url}`);
   }
-  const tmpPath = `${destPath}.partial`;
   const buf = new Uint8Array(await res.arrayBuffer());
+  const actualSha = createHash("sha256").update(buf).digest("hex");
+  if (actualSha !== expectedSha) {
+    throw new Error(
+      `jbr: integrity check failed for ${archiveName} — expected sha256 ${expectedSha}, got ${actualSha}. ` +
+        `Refusing to extract an unverified runtime; please report at https://github.com/ch99q/pluggy/issues.`,
+    );
+  }
+  const tmpPath = `${destPath}.partial`;
   const { writeFile } = await import("node:fs/promises");
   await writeFile(tmpPath, buf);
   await rename(tmpPath, destPath);
