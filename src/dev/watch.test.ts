@@ -199,6 +199,30 @@ describe("watchProject", () => {
     }
   });
 
+  test("ignores non-project.json events from the project root", async () => {
+    const onChange = vi.fn(async () => {});
+    const project = makeProject(workDir);
+    const dispose = watchProject(project, { debounceMs: 10, onChange });
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    const rootWatcher = controllers.find((c) => c.target === workDir);
+    expect(rootWatcher).toBeDefined();
+
+    rootWatcher?.push({ eventType: "change", filename: "bin/repro-1.0.0.jar" });
+    rootWatcher?.push({ eventType: "rename", filename: ".pluggy-build" });
+    rootWatcher?.push({ eventType: "change", filename: "dev" });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onChange).not.toHaveBeenCalled();
+
+    rootWatcher?.push({ eventType: "change", filename: "project.json" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    dispose();
+  });
+
   test("includes resource paths in the watch set", async () => {
     const { mkdir } = await import("node:fs/promises");
     await mkdir(join(workDir, "i18n"), { recursive: true });
