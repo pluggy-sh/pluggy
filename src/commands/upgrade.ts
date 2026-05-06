@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { access, chmod, constants, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { Buffer } from "node:buffer";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
@@ -105,11 +106,11 @@ function isSystemPath(path: string): boolean {
  * workflow, so a missing manifest means we're being asked to upgrade to an
  * unsigned release and `pluggy upgrade` refuses by design.
  *
- * `actions/attest-build-provenance` ships the manifest itself with a
- * Sigstore attestation, so a `gh attestation verify SHA256SUMS.txt --repo
- * <repo>` round-trip catches a tampered manifest at the OIDC-identity
- * level. We don't carry that verifier in-binary yet (it's a follow-up);
- * the manifest hash check below catches simple asset-only substitution.
+ * The manifest itself isn't trust-rooted — an attacker substituting both
+ * the binary and the manifest URL still wins this layer. The downstream
+ * attestation check (`assertAttestedByWorkflow`) closes that gap by
+ * binding the binary's sha256 to a Sigstore certificate issued for this
+ * repo's release workflow.
  */
 async function fetchExpectedSha256(
   repository: string,
@@ -183,6 +184,8 @@ async function replaceInPlace(
     );
   }
 
+  await assertAttestedByWorkflow(repository, actualSha, assetName);
+
   const tempDir = await mkdtemp(join(tmpdir(), "pluggy-upgrade-"));
   const stagedPath = join(tempDir, "pluggy-new");
   await writeFile(stagedPath, bytes);
@@ -206,6 +209,128 @@ async function replaceInPlace(
 
   await rm(tempDir, { recursive: true, force: true });
   return { backupPath };
+}
+
+/**
+ * Cross-check the downloaded asset's sha256 against GitHub's attestation
+ * store. `actions/attest-build-provenance` records a Sigstore attestation
+ * for every release artifact; the GitHub API exposes those at
+ * `/repos/{owner}/{repo}/attestations/sha256:{hex}`. We require:
+ *
+ *   1. At least one attestation exists for the binary's sha256 in this
+ *      repo's attestation store.
+ *   2. The attestation's leaf certificate's SAN identifies the issuing
+ *      OIDC identity as this repo's `.github/workflows/*.yml` workflow.
+ *
+ * (1) means an attacker who substitutes only the asset URL fails — they
+ * can't generate an attestation for arbitrary bytes without GitHub's
+ * Fulcio-issued cert. (2) hardens against an attacker substituting both
+ * the asset and an attestation from an unrelated repo: the cert's
+ * subject-alternative-name is bound to the OIDC identity that requested
+ * it, so a different workflow's attestation has a different SAN.
+ *
+ * We deliberately don't verify the Sigstore signature in-binary — that
+ * would mean shipping a Fulcio trust root and a full bundle verifier, a
+ * substantial amount of crypto code. The check above trusts GitHub's
+ * attestation API as a transport (same channel as the asset download),
+ * which is a meaningful improvement over no attestation at all without
+ * the implementation cost of a complete client-side Sigstore verifier.
+ */
+async function assertAttestedByWorkflow(
+  repository: string,
+  sha256Hex: string,
+  assetName: string,
+): Promise<void> {
+  const url = `https://api.github.com/repos/${repository}/attestations/sha256:${sha256Hex}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(
+      `failed to verify attestation for ${assetName}: GitHub API returned ${res.status} ${res.statusText} for ${url}. ` +
+        `Refusing to install a binary with no recorded build provenance.`,
+    );
+  }
+  const data = (await res.json()) as { attestations?: { bundle?: unknown }[] };
+  const attestations = Array.isArray(data.attestations) ? data.attestations : [];
+  if (attestations.length === 0) {
+    throw new Error(
+      `no build-provenance attestation found for ${assetName} in ${repository}. ` +
+        `Refusing to install — every release after this version must be attested by the release workflow. ` +
+        `If this is unexpected, report at https://github.com/${repository}/issues.`,
+    );
+  }
+
+  const expectedIdentityPrefix = `https://github.com/${repository}/.github/workflows/`;
+  const errors: string[] = [];
+  for (const att of attestations) {
+    const bundle = att.bundle;
+    if (bundle === null || typeof bundle !== "object") continue;
+    const certPem = extractLeafCertificatePem(bundle as Record<string, unknown>);
+    if (certPem === undefined) {
+      errors.push("attestation bundle had no leaf certificate");
+      continue;
+    }
+    let cert: X509Certificate;
+    try {
+      cert = new X509Certificate(certPem);
+    } catch (err) {
+      errors.push(`certificate parse failed: ${(err as Error).message}`);
+      continue;
+    }
+    const san = cert.subjectAltName ?? "";
+    if (san.includes(expectedIdentityPrefix)) {
+      log.debug(`upgrade: attestation OK for ${assetName} (SAN matches ${expectedIdentityPrefix})`);
+      return;
+    }
+    errors.push(
+      `attestation SAN ${JSON.stringify(san.slice(0, 200))} does not include ${expectedIdentityPrefix}`,
+    );
+  }
+  throw new Error(
+    `attestation identity mismatch for ${assetName} — none of the ${attestations.length} attestation(s) were issued for ${expectedIdentityPrefix}*. ` +
+      `Refusing to install. Details: ${errors.join("; ")}`,
+  );
+}
+
+/**
+ * Pull the leaf certificate (PEM-encoded) out of a Sigstore bundle. Handles
+ * both the legacy `x509CertificateChain.certificates[0]` and modern
+ * `certificate` shapes that GitHub's attestation API returns. The cert's
+ * raw bytes are base64-encoded DER; we re-wrap as PEM for X509Certificate.
+ */
+function extractLeafCertificatePem(bundle: Record<string, unknown>): string | undefined {
+  const vm = bundle.verificationMaterial;
+  if (vm === null || typeof vm !== "object") return undefined;
+  const material = vm as Record<string, unknown>;
+
+  let rawBytesB64: string | undefined;
+
+  const direct = material.certificate as { rawBytes?: unknown } | undefined;
+  if (direct !== undefined && typeof direct.rawBytes === "string") {
+    rawBytesB64 = direct.rawBytes;
+  }
+
+  if (rawBytesB64 === undefined) {
+    const chain = material.x509CertificateChain as
+      | { certificates?: { rawBytes?: unknown }[] }
+      | undefined;
+    const first = chain?.certificates?.[0];
+    if (first !== undefined && typeof first.rawBytes === "string") {
+      rawBytesB64 = first.rawBytes;
+    }
+  }
+
+  if (rawBytesB64 === undefined) return undefined;
+
+  // base64 → DER → PEM-wrapped, which is what X509Certificate accepts.
+  const der = Buffer.from(rawBytesB64, "base64");
+  const b64 = der.toString("base64");
+  const wrapped = b64.replace(/(.{64})/g, "$1\n");
+  return `-----BEGIN CERTIFICATE-----\n${wrapped}\n-----END CERTIFICATE-----\n`;
 }
 
 function printPermissionGuidance(repository: string, currentBinaryPath: string): void {
