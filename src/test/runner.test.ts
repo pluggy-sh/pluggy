@@ -70,6 +70,20 @@ describe("buildLauncherArgs", () => {
     expect(args).toContain("--scan-class-path=/t");
   });
 
+  test("system properties are emitted as -D flags before -jar", () => {
+    const args = buildLauncherArgs({
+      consoleJar: "/j",
+      classpath: [],
+      testClassesDir: "/t",
+      reportsDir: "/r",
+      systemProperties: { "pluggy.test.mainJar": "/stage/main.jar", debug: "true" },
+    });
+    expect(args[0]).toBe("-Dpluggy.test.mainJar=/stage/main.jar");
+    expect(args[1]).toBe("-Ddebug=true");
+    expect(args[2]).toBe("-jar");
+    expect(args[3]).toBe("/j");
+  });
+
   test("method selector drops --scan-class-path (JUnit rejects scan + select)", () => {
     const args = buildLauncherArgs({
       consoleJar: "/j",
