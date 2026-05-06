@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to Pluggy! This document provides guidelines for contributing to this project.
 
+By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md). To report a security vulnerability, follow the [Security Policy](SECURITY.md) instead of opening a public issue.
+
 ## Development Setup
 
 ### Prerequisites
