@@ -1,19 +1,33 @@
 /**
  * Dev-server runtime — stage `dev/`, build, spawn the server, watch sources,
- * and on every debounced change rebuild + (reload | restart).
+ * and on every debounced change try `hotswap → /reload → restart` in order.
+ *
+ * Hotswap is on by default: pluggy provisions JetBrains Runtime + HotswapAgent
+ * into the user cache and points HA's `extraClasspath` at the build's
+ * exploded `.class` directory, so subsequent javac runs reload classes
+ * in-place. Falls back to `/reload confirm` (or full restart) when HA
+ * reports it can't redefine, or when no marker arrives within the timeout.
  */
 
 import { basename, join, resolve } from "node:path";
 
-import { buildProject } from "../build/index.ts";
+import { buildProject, projectStagingDir } from "../build/index.ts";
 import { log } from "../logging.ts";
 import { getPlatform } from "../platform/index.ts";
 import type { DescriptorSpec } from "../platform/platform.ts";
 import { linkOrCopy } from "../portable.ts";
-import { getCachePath, type ResolvedProject } from "../project.ts";
+import { getCachePath, type HotswapConfig, type ResolvedProject } from "../project.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { parseSource } from "../source.ts";
 
+import {
+  agentJvmArgs,
+  ensureAgent,
+  renderPropertiesFile,
+  start as startHotswap,
+  type HotswapWatcher,
+} from "./hotswap.ts";
+import { ensureJbr } from "./jbr.ts";
 import { isRuntimePlugin, stagePlugins } from "./plugins.ts";
 import { spawnServer } from "./spawn.ts";
 import { stageDev } from "./stage.ts";
@@ -30,6 +44,17 @@ export interface DevOptions {
   reload?: boolean;
   offline?: boolean;
   args?: string[];
+  /**
+   * `false` disables hotswap entirely. `undefined` (the default) honours
+   * `project.dev.hotswap` — which itself defaults to `true`.
+   */
+  hotswap?: boolean;
+}
+
+interface ResolvedHotswap {
+  enabled: boolean;
+  jdk: "jbr" | "system";
+  fallback: "reload" | "restart";
 }
 
 /**
@@ -51,6 +76,12 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     );
   }
 
+  const hotswap = resolveHotswap(project, opts);
+  // `--reload` is the legacy explicit fallback knob. With hotswap on it tunes
+  // the fallback; with hotswap off it forces /reload-instead-of-restart like
+  // the old behaviour.
+  const reloadOnly = opts.reload === true;
+
   const platform = getPlatform(platformId);
 
   // `platform.download` writes to `<cachePath>/versions/<id>-<ver>-<build>.jar`;
@@ -63,7 +94,27 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     `${platform.id}-${downloaded.version}-${downloaded.build}.jar`,
   );
 
-  let buildResult = await buildProject(project, { clean: opts.clean });
+  // Kick off hotswap provisioning early — JBR is ~200MB on first run, so we
+  // overlap it with the platform-jar download and the build.
+  const provisioningPromise = hotswap.enabled
+    ? provisionHotswap(hotswap)
+    : Promise.resolve(undefined);
+
+  // The properties file has to be inside the plugin JAR itself so HA scopes
+  // `extraClasspath` to the plugin's classloader (parent classloaders stay
+  // clean). The staging dir is deterministic, so we can pre-compute it and
+  // ask the build to drop the file in before zipping.
+  const buildExtras: Record<string, string> = {};
+  if (hotswap.enabled) {
+    buildExtras["hotswap-agent.properties"] = renderPropertiesFile({
+      classesDir: projectStagingDir(project),
+    });
+  }
+
+  let buildResult = await buildProject(project, {
+    clean: opts.clean,
+    extraStagingFiles: buildExtras,
+  });
 
   const runtimePluginDeps = await resolveRuntimePluginDeps(project, platform.descriptor);
 
@@ -80,15 +131,30 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
   await stagePlugins(devDir, buildResult.outputPath, runtimePluginDeps, extraPluginsAbsolute);
 
   const memory = opts.memory ?? project.dev?.memory ?? "2G";
-  const jvmArgs = opts.args ?? project.dev?.jvmArgs ?? [];
+  const userJvmArgs = opts.args ?? project.dev?.jvmArgs ?? [];
+
+  const provisioning = await provisioningPromise;
+
+  let javaPath: string | undefined;
+  let jvmArgs: string[] = [...userJvmArgs];
+  if (provisioning !== undefined) {
+    javaPath = provisioning.javaPath;
+    jvmArgs = [...agentJvmArgs({ agentJarPath: provisioning.agentJarPath }), ...userJvmArgs];
+    log.info("dev: hotswap on (HotswapAgent + JBR)");
+  }
+
   let child = spawnServer({
     devDir,
     serverJarName: "server.jar",
     memory,
     jvmArgs,
+    javaPath,
   });
 
   log.debug(`dev: server spawned (pid=${child.pid ?? "?"})`);
+
+  let watcher: HotswapWatcher | undefined =
+    hotswap.enabled === true ? startHotswap({ child }) : undefined;
 
   const pluginJarName = basename(buildResult.outputPath);
   const pluginDest = join(devDir, "plugins", pluginJarName);
@@ -101,50 +167,79 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     });
 
   if (opts.watch !== false) {
-    const rebuildAndReload = async (): Promise<void> => {
-      log.info("dev: change detected — rebuilding…");
-      try {
-        buildResult = await buildProject(project, {});
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.error(`dev: rebuild failed — keeping previous jar running: ${msg}`);
-        return;
-      }
-
-      if (opts.reload === true) {
-        // /reload has known correctness problems for stateful plugins; the
-        // spec warns users. Best-effort swap + reload.
-        try {
-          await linkOrCopy(buildResult.outputPath, pluginDest);
-          if (child.stdin !== null && !child.stdin.destroyed && child.stdin.writable) {
-            child.stdin.write("reload confirm\n");
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          log.error(`dev: reload failed: ${msg}`);
-        }
-        return;
-      }
-
+    const restart = async (): Promise<void> => {
+      watcher?.stop();
+      watcher = undefined;
       if (child.stdin !== null && !child.stdin.destroyed && child.stdin.writable) {
         child.stdin.write("stop\n");
       }
       await waitForExit(child);
-
       try {
         await linkOrCopy(buildResult.outputPath, pluginDest);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`dev: could not replace plugin jar: ${msg}`);
       }
-
       child = spawnServer({
         devDir,
         serverJarName: "server.jar",
         memory,
         jvmArgs,
+        javaPath,
       });
       log.debug(`dev: server respawned (pid=${child.pid ?? "?"})`);
+      if (hotswap.enabled === true) watcher = startHotswap({ child });
+    };
+
+    const reloadInPlace = async (): Promise<boolean> => {
+      try {
+        await linkOrCopy(buildResult.outputPath, pluginDest);
+        if (child.stdin !== null && !child.stdin.destroyed && child.stdin.writable) {
+          child.stdin.write("reload confirm\n");
+          return true;
+        }
+        return false;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`dev: reload failed: ${msg}`);
+        return false;
+      }
+    };
+
+    const rebuildAndReload = async (): Promise<void> => {
+      log.info("dev: change detected — rebuilding…");
+      // Arm the watcher *before* the rebuild starts. javac writes can land
+      // before this function returns, and HA's filesystem watcher sometimes
+      // emits `RELOAD` while we're still inside `buildProject` — without
+      // arm(), those markers would be dropped before `wait()` subscribes.
+      watcher?.arm();
+      try {
+        buildResult = await buildProject(project, { extraStagingFiles: buildExtras });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`dev: rebuild failed — keeping previous jar running: ${msg}`);
+        return;
+      }
+
+      // Hotswap path: fastest, in-process class redefinition. Falls through
+      // on `failed` (HA refused) or `timeout` (no marker — usually a non-class
+      // change like plugin.yml).
+      if (hotswap.enabled === true && watcher !== undefined) {
+        const outcome = await watcher.wait();
+        if (outcome === "reloaded") {
+          log.success("dev: hotswap reloaded");
+          return;
+        }
+        log.info(`dev: hotswap ${outcome} — falling back to ${hotswap.fallback}`);
+      }
+
+      if (reloadOnly || hotswap.fallback === "reload") {
+        const ok = await reloadInPlace();
+        if (ok) return;
+        log.info("dev: /reload failed — restarting");
+      }
+
+      await restart();
     };
 
     stopWatching = watchProject(project, {
@@ -161,8 +256,47 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
       if (child === snapshot) break;
     }
   } finally {
+    watcher?.stop();
     stopWatching?.();
   }
+}
+
+interface Provisioning {
+  javaPath: string;
+  agentJarPath: string;
+}
+
+async function provisionHotswap(cfg: ResolvedHotswap): Promise<Provisioning> {
+  const [javaPath, agentJarPath] = await Promise.all([
+    cfg.jdk === "jbr" ? ensureJbr() : Promise.resolve("java"),
+    ensureAgent(),
+  ]);
+  return { javaPath, agentJarPath };
+}
+
+function resolveHotswap(project: ResolvedProject, opts: DevOptions): ResolvedHotswap {
+  const raw = project.dev?.hotswap;
+  let cfg: HotswapConfig;
+  let enabledFromProject: boolean;
+  if (raw === false) {
+    enabledFromProject = false;
+    cfg = {};
+  } else if (raw === true || raw === undefined) {
+    enabledFromProject = true;
+    cfg = {};
+  } else {
+    enabledFromProject = true;
+    cfg = raw;
+  }
+
+  // CLI flag wins. `--no-hotswap` sets opts.hotswap === false.
+  const enabled = opts.hotswap === false ? false : enabledFromProject;
+
+  return {
+    enabled,
+    jdk: cfg.jdk ?? "jbr",
+    fallback: cfg.fallback ?? "reload",
+  };
 }
 
 async function resolveRuntimePluginDeps(

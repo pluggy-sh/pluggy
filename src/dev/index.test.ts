@@ -15,6 +15,7 @@ import type { ResolvedProject } from "../project.ts";
 
 vi.mock("../build/index.ts", () => ({
   buildProject: vi.fn(),
+  projectStagingDir: vi.fn((p: { rootDir: string }) => `${p.rootDir}/.pluggy-build/abc`),
 }));
 
 vi.mock("../resolver/index.ts", () => ({
@@ -40,6 +41,21 @@ vi.mock("./spawn.ts", () => ({
 
 vi.mock("./watch.ts", () => ({
   watchProject: vi.fn(),
+}));
+
+vi.mock("./hotswap.ts", () => ({
+  ensureAgent: vi.fn(async () => "/cache/agents/hotswap-agent.jar"),
+  agentJvmArgs: vi.fn(() => []),
+  renderPropertiesFile: vi.fn(() => "extraClasspath=/test\n"),
+  start: vi.fn(() => ({
+    arm: vi.fn(),
+    wait: vi.fn(async () => "reloaded"),
+    stop: vi.fn(),
+  })),
+}));
+
+vi.mock("./jbr.ts", () => ({
+  ensureJbr: vi.fn(async () => "java"),
 }));
 
 vi.mock("../portable.ts", async () => {
@@ -130,6 +146,7 @@ describe("runDev", () => {
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "bin", "testplugin-1.0.0.jar"),
       sizeBytes: 42,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
       durationMs: 1,
     });
 
@@ -187,6 +204,7 @@ describe("runDev", () => {
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -215,6 +233,7 @@ describe("runDev", () => {
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -261,6 +280,7 @@ describe("runDev", () => {
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -289,6 +309,7 @@ describe("runDev", () => {
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -326,6 +347,7 @@ describe("runDev", () => {
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));

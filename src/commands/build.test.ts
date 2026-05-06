@@ -88,6 +88,7 @@ describe("runBuildCommand", () => {
       outputPath: "/tmp/out.jar",
       sizeBytes: 1024,
       durationMs: 42,
+      stagingDir: "/tmp/staging",
     });
 
     const res = await runBuildCommand({ cwd: rootDir });
@@ -106,6 +107,7 @@ describe("runBuildCommand", () => {
       outputPath: "/tmp/out.jar",
       sizeBytes: 100,
       durationMs: 1,
+      stagingDir: "/tmp/staging",
     });
 
     const res = await runBuildCommand({ cwd: rootDir });
@@ -121,9 +123,12 @@ describe("runBuildCommand", () => {
 
   test("one workspace fails: continues through the rest but exits 1", async () => {
     await writeMultiWorkspace();
-    vi.mocked(buildProject)
-      .mockRejectedValueOnce(new Error("boom on api"))
-      .mockResolvedValueOnce({ outputPath: "/tmp/impl.jar", sizeBytes: 10, durationMs: 5 });
+    vi.mocked(buildProject).mockRejectedValueOnce(new Error("boom on api")).mockResolvedValueOnce({
+      outputPath: "/tmp/impl.jar",
+      sizeBytes: 10,
+      durationMs: 5,
+      stagingDir: "/tmp/staging",
+    });
 
     const res = await runBuildCommand({ cwd: rootDir });
 
@@ -142,6 +147,7 @@ describe("runBuildCommand", () => {
       outputPath: "/tmp/out.jar",
       sizeBytes: 10,
       durationMs: 1,
+      stagingDir: "/tmp/staging",
     });
 
     const res = await runBuildCommand({ cwd: rootDir, workspace: "suite_impl" });
@@ -158,6 +164,7 @@ describe("runBuildCommand", () => {
       outputPath: "/tmp/out.jar",
       sizeBytes: 512,
       durationMs: 3,
+      stagingDir: "/tmp/staging",
     });
 
     await runBuildCommand({ cwd: rootDir, json: true });
@@ -174,9 +181,12 @@ describe("runBuildCommand", () => {
 
   test("--json with partial failure → JSON on stderr, exit 1", async () => {
     await writeMultiWorkspace();
-    vi.mocked(buildProject)
-      .mockRejectedValueOnce(new Error("nope"))
-      .mockResolvedValueOnce({ outputPath: "/tmp/impl.jar", sizeBytes: 1, durationMs: 1 });
+    vi.mocked(buildProject).mockRejectedValueOnce(new Error("nope")).mockResolvedValueOnce({
+      outputPath: "/tmp/impl.jar",
+      sizeBytes: 1,
+      durationMs: 1,
+      stagingDir: "/tmp/staging",
+    });
 
     const res = await runBuildCommand({ cwd: rootDir, json: true });
 

@@ -56,6 +56,19 @@ export interface DevConfig {
   jvmArgs?: string[];
   serverProperties?: Record<string, string | number | boolean>;
   extraPlugins?: string[];
+  /**
+   * Hotswapping is on by default — pluggy provisions JetBrains Runtime and
+   * HotswapAgent into the user cache and reloads classes in-place on every
+   * rebuild. Set to `false` to fall back to plain restart-on-change.
+   */
+  hotswap?: boolean | HotswapConfig;
+}
+
+export interface HotswapConfig {
+  /** `"jbr"` (default) downloads JetBrains Runtime; `"system"` uses `java` from PATH. */
+  jdk?: "jbr" | "system";
+  /** Action when a class change can't be hotswapped. Defaults to `"reload"`. */
+  fallback?: "reload" | "restart";
 }
 
 /**

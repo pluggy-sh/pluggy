@@ -30,15 +30,45 @@ export interface BuildOptions {
   clean?: boolean;
   /** Skip `.classpath` regeneration. */
   skipClasspath?: boolean;
+  /**
+   * Extra files to drop into the staging directory before zipping. Map keys
+   * are relative paths inside the JAR; values are file contents (LF-only).
+   *
+   * The dev runtime uses this to inject `hotswap-agent.properties` so the
+   * file is visible only to the plugin's own classloader — putting it on the
+   * boot classpath instead would let HotswapAgent splice the staging dir
+   * into the system classloader and break Bukkit's plugin classloader guard.
+   */
+  extraStagingFiles?: Record<string, string>;
 }
 
 export interface BuildResult {
   outputPath: string;
   sizeBytes: number;
   durationMs: number;
+  /**
+   * Absolute path to the exploded class/resource staging directory. The dev
+   * runtime points HotswapAgent's `extraClasspath` at this so subsequent
+   * rebuilds (which rewrite `.class` files in place) can be picked up
+   * without restarting the JVM.
+   */
+  stagingDir: string;
 }
 
 const STAGING_ROOT = ".pluggy-build";
+
+/**
+ * Compute the staging directory `buildProject` will use for `project`,
+ * without running the build. Lets the dev runtime point HotswapAgent's
+ * `extraClasspath` at the staging dir on the very first launch.
+ */
+export function projectStagingDir(project: ResolvedProject): string {
+  const stagingId = createHash("sha256")
+    .update(`${project.name}\0${project.version}\0${project.rootDir}`)
+    .digest("hex")
+    .slice(0, 12);
+  return join(project.rootDir, STAGING_ROOT, stagingId);
+}
 
 /**
  * Drive the full build pipeline for one project. Returns the output jar
@@ -59,11 +89,7 @@ export async function buildProject(
   const outputPath =
     opts.output ?? join(project.rootDir, "bin", `${project.name}-${project.version}.jar`);
 
-  const stagingId = createHash("sha256")
-    .update(`${project.name}\0${project.version}\0${project.rootDir}`)
-    .digest("hex")
-    .slice(0, 12);
-  const stagingDir = join(project.rootDir, STAGING_ROOT, stagingId);
+  const stagingDir = projectStagingDir(project);
 
   if (opts.clean) {
     await rm(stagingDir, { recursive: true, force: true });
@@ -104,6 +130,12 @@ export async function buildProject(
 
   await applyShading(resolvedDeps, project.shading ?? {}, stagingDir);
 
+  for (const [relPath, contents] of Object.entries(opts.extraStagingFiles ?? {})) {
+    const dest = join(stagingDir, relPath);
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFileLF(dest, contents);
+  }
+
   await mkdir(dirname(outputPath), { recursive: true });
   await zipDirectory(stagingDir, outputPath);
 
@@ -115,6 +147,7 @@ export async function buildProject(
     outputPath,
     sizeBytes: info.size,
     durationMs: Date.now() - started,
+    stagingDir,
   };
 }
 
