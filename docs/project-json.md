@@ -131,9 +131,13 @@ the array by hand to add or remove editors later.
 }
 ```
 
-- `versions` — non-empty array. The first entry is the primary version; it
-  drives the platform API download, `api-version` in the Bukkit descriptor,
-  and the JDK picker for IntelliJ.
+- `versions` — non-empty array of Minecraft versions. Both the legacy
+  `1.21.8` shape and Mojang's 2026 calendar scheme (`26.1.2`) are accepted.
+  The first entry is the primary version; it drives the platform API
+  download, `api-version` in the Bukkit descriptor, and the JDK picker for
+  IntelliJ. For `velocity`, this still reads as an MC version — pluggy
+  resolves the actual `velocity-api` Maven coordinate internally to the
+  latest stable Velocity release.
 - `platforms` — non-empty array. The first entry is the primary platform.
   Every platform in the array must share the same descriptor family (same
   `plugin.yml` vs `bungee.yml` vs `velocity-plugin.json` target) — mixing
@@ -153,9 +157,16 @@ The full platform roster ships with the binary:
 | `travertine` | `bungee.yml`           | (no Maven API — compile against waterfall) |
 
 Paper handles version strings in two formats. For 1.17 – 1.21.x the artifact
-is `<version>-R0.1-SNAPSHOT`; for 26.x and later it's `<version>.build.<N>-alpha`.
-pluggy fetches PaperMC's `maven-metadata.xml` and picks the highest matching
-entry, so you write the plain MC version and pluggy works out the rest.
+is `<version>-R0.1-SNAPSHOT`; for 26.x and later (Mojang's calendar scheme —
+26.1, 26.1.1, 26.1.2) it's `<version>.build.<N>-alpha`. pluggy fetches
+PaperMC's `maven-metadata.xml` and picks the highest matching entry, so you
+write the plain MC version and pluggy works out the rest.
+
+Spigot and Bukkit go through BuildTools, which decompiles the Mojang
+server jar using the JDK on `PATH`. Different Minecraft releases require
+different Java versions (MC 1.21.x allows Java 21 – 26; MC 26.1.x requires
+Java 25 – 26). `pluggy init` reads each candidate's manifest and won't pin
+your project to a version your Java can't actually compile.
 
 ### `registries` (optional)
 

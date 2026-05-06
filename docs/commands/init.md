@@ -14,15 +14,15 @@ against `process.cwd()`.
 
 ## Flags
 
-| Flag                    | Default                       | Notes                                                                                                             |
-| ----------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `--name <name>`         | basename of target dir        | Must match `^[a-zA-Z0-9_-]+$`.                                                                                    |
-| `--version <semver>`    | `1.0.0`                       | Validated as `\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?`.                                                                     |
-| `--description <text>`  | `"A simple Minecraft plugin"` | Free-form.                                                                                                        |
-| `--main <fqcn>`         | `com.example.Main`            | Must be a Java classpath — at least `package.Class`.                                                              |
-| `--platform <id>`       | `paper`                       | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `travertine`. Repeatable. |
-| `--mc-version <semver>` | highest common across targets | Minecraft version written to `compatibility.versions[0]`. See below.                                              |
-| `-y, --yes`             | off                           | Skip confirmations. Always on under `--json`.                                                                     |
+| Flag                    | Default                           | Notes                                                                                                                                                                           |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`         | basename of target dir            | Must match `^[a-zA-Z0-9_-]+$`.                                                                                                                                                  |
+| `--version <semver>`    | `1.0.0`                           | Validated as `\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?`.                                                                                                                                   |
+| `--description <text>`  | `"A simple Minecraft plugin"`     | Free-form.                                                                                                                                                                      |
+| `--main <fqcn>`         | `com.example.Main`                | Must be a Java classpath — at least `package.Class`.                                                                                                                            |
+| `--platform <id>`       | `paper`                           | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `travertine`. Repeatable, but must stay within one descriptor family (see error cases). |
+| `--mc-version <semver>` | highest compatible across targets | Minecraft version written to `compatibility.versions[0]`. Accepts both the legacy `1.21.8` shape and Mojang's new calendar scheme (`26.1.2`). See below.                        |
+| `-y, --yes`             | off                               | Skip confirmations. Always on under `--json`.                                                                                                                                   |
 
 The `--version` here refers to the plugin's own `project.version`. The
 Minecraft version lives at `compatibility.versions[0]` and is set by
@@ -31,11 +31,23 @@ Minecraft version lives at `compatibility.versions[0]` and is set by
 When `--mc-version` is omitted, pluggy calls `getVersions()` on every
 selected platform in parallel, intersects the results, and picks the
 highest version that every target publishes. That way a multi-platform
-init (e.g. `paper + spigot`) can never pick a Paper-only release. If the
-intersection is empty, init errors with "No compatible Minecraft version
-found across platforms: …" and suggests either dropping platforms or
-passing `--mc-version` explicitly. Expect a short network wait on first
-run.
+init (e.g. `paper + spigot`) can never pick a Paper-only release.
+
+When `spigot` or `bukkit` is in the target set, init additionally skips
+any candidate whose declared `javaVersions` range excludes the JDK on
+`PATH` — otherwise BuildTools would pick up a Minecraft release it can't
+actually decompile (e.g. `26.1.2` requires Java 25+). The newest version
+your Java can compile wins.
+
+All platforms, including `velocity`, surface Minecraft versions here —
+the `velocity-api` Maven coordinate is resolved internally to the latest
+stable Velocity release, so `compatibility.versions` stays a single
+MC-version vocabulary across the whole project.
+
+If the intersection is empty, init errors with "No compatible Minecraft
+version found across platforms: …" and suggests either dropping
+platforms or passing `--mc-version` explicitly. Expect a short network
+wait on first run.
 
 ## Files produced
 
@@ -104,14 +116,15 @@ Project "example" initialized successfully at /tmp/example
 
 ## Error cases
 
-| Trigger                           | Message                                                                                                                                             |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Invalid `--name`                  | `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`                                               |
-| Invalid `--main`                  | `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`                                                         |
-| Unknown `--platform`              | `Invalid platform: "<p>". Available platforms: paper, folia, spigot, bukkit, velocity, waterfall, travertine`                                       |
-| No MC version common to platforms | `No compatible Minecraft version found across platforms: <list>. Try selecting fewer platforms or specifying a version manually with --mc-version.` |
-| Non-empty target dir (no `-y`)    | Interactive confirm; "no" aborts with `Aborted.`                                                                                                    |
-| Existing project dir (no `-y`)    | As above.                                                                                                                                           |
+| Trigger                           | Message                                                                                                                                                                                                                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Invalid `--name`                  | `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`                                                                                                                            |
+| Invalid `--main`                  | `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`                                                                                                                                      |
+| Unknown `--platform`              | `Invalid platform: "<p>". Available platforms: paper, folia, spigot, bukkit, velocity, waterfall, travertine`                                                                                                                    |
+| Cross-family platforms            | `Platform "<b>" cannot be combined with "<a>" — they target different plugin families ("<a>" writes "<path-a>", "<b>" writes "<path-b>"). Proxy platforms like velocity, waterfall, and travertine each need their own project.` |
+| No MC version common to platforms | `No compatible Minecraft version found across platforms: <list>. Try selecting fewer platforms or specifying a version manually with --mc-version.`                                                                              |
+| Non-empty target dir (no `-y`)    | Interactive confirm; "no" aborts with `Aborted.`                                                                                                                                                                                 |
+| Existing project dir (no `-y`)    | As above.                                                                                                                                                                                                                        |
 
 Network failures during `getVersions()` propagate from the platform
 provider — see [Troubleshooting](../troubleshooting.md#network-errors-during-init-or-dev).

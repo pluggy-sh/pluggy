@@ -28,11 +28,28 @@ is offline or the upstream is down:
 ### `No compatible Minecraft version found across platforms: <list>.`
 
 pluggy couldn't find a Minecraft version that every selected platform
-publishes. Common causes: mixing a Spigot-only codebase with Paper 26.x
-(Spigot hasn't cut that version yet), or selecting Velocity alongside
-Paper (different release cadences). Either drop the platform that's
-lagging, split the project into per-family workspaces, or pin the
-version yourself with `--mc-version`.
+publishes. Most often this is a short-lived gap where one provider
+publishes a new release before another (e.g. Paper ships `26.1.2` hours
+or days before Spigot's BuildTools catches up). Either drop the platform
+that's lagging, or pin the version yourself with `--mc-version`.
+
+### `Platform "<b>" cannot be combined with "<a>" — they target different plugin families …`
+
+`--platform` was given values from two different descriptor families
+(e.g. `paper` + `velocity`). A single plugin jar can only target one
+family — server plugins (`paper`, `folia`, `spigot`, `bukkit`), BungeeCord
+proxy plugins (`waterfall`, `travertine`), or Velocity plugins. Re-run
+init for the second family in a sibling directory, or split an existing
+monorepo using [workspaces](./workspaces.md#multi-family-monorepos).
+
+### BuildTools fails mid-init / `pluggy dev` on a freshly scaffolded spigot project
+
+`pluggy init` reads each MC version's declared Java range from Spigot's
+manifest and skips releases your JDK can't decompile. If you still see a
+BuildTools decompile error (typically `FileNotFoundException … DataComponentPatch.java`),
+either upgrade your JDK (Mojang's 26.x line needs Java 25+) or pin a
+version that fits your current Java with `--mc-version 1.21.11` (or
+similar).
 
 `pluggy dev` also hits the platform registry for the server jar. The
 first run per `(platform, version)` needs network; subsequent runs

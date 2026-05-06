@@ -235,7 +235,9 @@ my-network/
 
 Each workspace keeps its own descriptor family. The root's inherited
 `compatibility` is overridden by `proxy` with its own
-`{ "versions": ["3.4.0"], "platforms": ["velocity"] }`. `pluggy build`
+`{ "versions": ["1.21.11"], "platforms": ["velocity"] }` — `versions`
+is always a Minecraft version, even for proxy platforms; the
+`velocity-api` Maven coordinate is resolved internally. `pluggy build`
 produces one jar per workspace.
 
 If you'd tried to put paper + velocity in a single workspace's

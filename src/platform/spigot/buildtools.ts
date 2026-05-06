@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { classMajorToJava } from "../../jar.ts";
 import type { PlatformContext } from "../platform.ts";
 
 const BUILDTOOLS_URL =
@@ -134,6 +135,40 @@ export async function compile(
     },
     stream,
   };
+}
+
+/**
+ * Fetch a version's manifest from Spigot's hub and return the Java major
+ * release range it declares (`javaVersions` is a class-file major range,
+ * e.g. `[65, 70]` meaning Java 21 — 26). Returns `undefined` when the
+ * manifest is missing, malformed, omits `javaVersions`, or the request
+ * fails for any reason — `init` treats this as "unknown, fall through"
+ * rather than a hard error, so this function never throws.
+ *
+ * A 5s abort guards against the OS-level TCP timeout (~75s) when Spigot's
+ * hub is unreachable; without it init would hang per probed candidate.
+ */
+export async function getJavaRange(version: string): Promise<[number, number] | undefined> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  let data: unknown;
+  try {
+    const res = await fetch(`${VERSIONS_URL}${version}.json`, { signal: ctrl.signal });
+    if (!res.ok) return undefined;
+    data = await res.json();
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (data === null || typeof data !== "object") return undefined;
+  const range = (data as { javaVersions?: unknown }).javaVersions;
+  if (!Array.isArray(range)) return undefined;
+  const min = range[0];
+  const max = range[range.length - 1];
+  if (typeof min !== "number" || typeof max !== "number") return undefined;
+  return [classMajorToJava(min), classMajorToJava(max)];
 }
 
 /**

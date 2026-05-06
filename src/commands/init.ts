@@ -10,10 +10,12 @@ import defaultConfig from "../defaults/config.yml" with { type: "text" };
 import defaultPackage from "../defaults/package.java" with { type: "text" };
 
 import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
+import { getJavaRange } from "../platform/spigot/buildtools.ts";
 import { bold, dim, log } from "../logging.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
 import { replace } from "../template.ts";
 
+import { getJavaMajor } from "./doctor.ts";
 import { parseMcVersion, parsePlatform, parseSemver } from "./parsers.ts";
 
 /**
@@ -64,6 +66,30 @@ export async function generateProject(distDir: string, project: Project): Promis
   } catch (e) {
     throw new Error(`Failed to write main class file: ${(e as Error).message}`);
   }
+}
+
+/**
+ * Pick the newest version from `candidates` that the user's installed Java
+ * can compile. Spigot/Bukkit run BuildTools locally, which silently fails
+ * (e.g. decompile output missing) when the Minecraft version's `javaVersions`
+ * window excludes the user's JDK — so we probe the first few candidates and
+ * skip any whose declared range doesn't include `javaMajor`. Falls through
+ * to `candidates[0]` when Java can't be detected or no metadata is usable.
+ */
+async function pickCompatibleVersion(candidates: string[], platforms: string[]): Promise<string> {
+  const fallback = candidates[0];
+  if (!platforms.includes("spigot") && !platforms.includes("bukkit")) return fallback;
+
+  const javaMajor = await getJavaMajor().catch(() => undefined);
+  if (javaMajor === undefined) return fallback;
+
+  for (const candidate of candidates.slice(0, 10)) {
+    const range = await getJavaRange(candidate);
+    if (range === undefined) continue;
+    const [minJava, maxJava] = range;
+    if (javaMajor >= minJava && javaMajor <= maxJava) return candidate;
+  }
+  return fallback;
 }
 
 function deriveClassName(name: string): string {
@@ -172,6 +198,16 @@ export function initCommand(): Command {
               })
             : ["paper"];
 
+      const primaryPath = getPlatform(platforms[0]).descriptor.path;
+      const alien = platforms.find((p) => getPlatform(p).descriptor.path !== primaryPath);
+      if (alien) {
+        throw new InvalidArgumentError(
+          `Platform "${alien}" cannot be combined with "${platforms[0]}" — they target different plugin families ` +
+            `("${platforms[0]}" writes "${primaryPath}", "${alien}" writes "${getPlatform(alien).descriptor.path}"). ` +
+            `Proxy platforms like velocity, waterfall, and travertine each need their own project.`,
+        );
+      }
+
       // Main class
       const className = deriveClassName(projectName) || "Main";
       const derivedMain = `com.example.${className}`;
@@ -222,7 +258,7 @@ export function initCommand(): Command {
               `Try selecting fewer platforms or specifying a version manually with --mc-version.`,
           );
         }
-        versions = [common[0]];
+        versions = [await pickCompatibleVersion(common, platforms)];
       }
 
       const INITIAL_PROJECT: Project = {
