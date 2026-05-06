@@ -23,13 +23,20 @@ pluggy itself from source.
 curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
 ```
 
-The script downloads the binary for your OS and architecture and installs it
-to `/usr/local/bin/pluggy`. It calls `sudo mv` to place the binary, so expect
-a password prompt on Linux and macOS boxes where `/usr/local/bin` is root-owned.
+The script downloads the binary for your OS and architecture into
+`~/.pluggy/bin/pluggy` and adds that directory to your `PATH` via your
+shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`,
+`~/.profile`, `~/.config/fish/config.fish` — whichever exist). No
+`sudo` required.
 
-If `sudo` isn't available (containers, CI), fetch the binary directly from
-the [release page](https://github.com/ch99q/pluggy/releases/latest) and drop
-it anywhere on your `PATH`.
+Override the install location with `PLUGGY_HOME`:
+
+```bash
+PLUGGY_HOME=/opt/pluggy curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
+```
+
+Open a new shell or `source` the updated profile to pick up the new
+`PATH` in your current session.
 
 ### Windows
 
@@ -38,8 +45,8 @@ irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
 ```
 
 The script installs `pluggy.exe` to `%LOCALAPPDATA%\Programs\pluggy` and
-prepends that directory to your user `PATH`. Restart your terminal before
-using the command.
+appends that directory to your user `PATH`. No administrator privileges
+required. Restart your terminal before using the command.
 
 ### Verify
 

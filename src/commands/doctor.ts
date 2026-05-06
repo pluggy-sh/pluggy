@@ -13,6 +13,7 @@ import { bold, green, log, red, yellow } from "../logging.ts";
 import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
+import { compareVersions, getCachedLatestVersion } from "../update-check.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail";
@@ -27,6 +28,10 @@ export interface CheckResult {
 export interface DoctorCommandOptions {
   json?: boolean;
   cwd?: string;
+  /** Current pluggy CLI version (without leading `v`). Used by the `pluggy-version` check. */
+  pluggyVersion?: string;
+  /** GitHub `owner/repo` slug used by the `pluggy-version` check. */
+  repository?: string;
   /** Per-check overrides used by tests to avoid spawning a JVM or hitting the network. */
   checks?: {
     java?: () => Promise<CheckResult>;
@@ -38,6 +43,7 @@ export interface DoctorCommandOptions {
     versions?: (project: ResolvedProject) => Promise<CheckResult[]>;
     outdated?: () => Promise<CheckResult>;
     dependencyJars?: () => Promise<CheckResult>;
+    pluggyVersion?: () => Promise<CheckResult>;
   };
 }
 
@@ -103,6 +109,12 @@ export async function runDoctorCommand(
   all.push(
     await (hooks.dependencyJars ? hooks.dependencyJars() : checkDependencyJars(context, userJava)),
   );
+
+  if (hooks.pluggyVersion) {
+    all.push(await hooks.pluggyVersion());
+  } else if (opts.pluggyVersion !== undefined && opts.repository !== undefined) {
+    all.push(await checkPluggyVersion(opts.pluggyVersion, opts.repository));
+  }
 
   const hardFailures = all.filter((c) => c.status === "fail");
   const ok = hardFailures.length === 0;
@@ -682,6 +694,80 @@ export async function checkDependencyJars(
   };
 }
 
+/**
+ * Compare the running pluggy version against the latest GitHub release.
+ * Uses the cached value when fresh; otherwise fetches with a short
+ * timeout so doctor stays responsive even when offline.
+ */
+export async function checkPluggyVersion(
+  currentVersion: string,
+  repository: string,
+): Promise<CheckResult> {
+  if (currentVersion === "0.0.0" || currentVersion === "") {
+    return {
+      id: "pluggy-version",
+      label: "Pluggy version",
+      status: "pass",
+      detail: "development build",
+    };
+  }
+
+  let latest = await getCachedLatestVersion();
+  if (latest === undefined) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      try {
+        const res = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
+          headers: { Accept: "application/vnd.github+json" },
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { tag_name?: string };
+          if (typeof data.tag_name === "string") {
+            latest = data.tag_name.replace(/^v/, "");
+          }
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      // Network failure — surface as a soft warn so the user knows we couldn't check.
+      return {
+        id: "pluggy-version",
+        label: "Pluggy version",
+        status: "warn",
+        detail: `running ${currentVersion}; could not reach GitHub to check for updates`,
+      };
+    }
+  }
+
+  if (latest === undefined) {
+    return {
+      id: "pluggy-version",
+      label: "Pluggy version",
+      status: "warn",
+      detail: `running ${currentVersion}; could not determine latest release`,
+    };
+  }
+
+  if (compareVersions(currentVersion, latest) < 0) {
+    return {
+      id: "pluggy-version",
+      label: "Pluggy version",
+      status: "warn",
+      detail: `running ${currentVersion}; ${latest} is available — run 'pluggy upgrade'`,
+    };
+  }
+
+  return {
+    id: "pluggy-version",
+    label: "Pluggy version",
+    status: "pass",
+    detail: `${currentVersion} (latest)`,
+  };
+}
+
 function projectsForValidation(context: WorkspaceContext): ResolvedProject[] {
   const out: ResolvedProject[] = [context.root];
   for (const ws of context.workspaces) {
@@ -704,12 +790,16 @@ function printCheck(c: CheckResult): void {
 }
 
 /** Factory for the `pluggy doctor` commander command. */
-export function doctorCommand(): Command {
+export function doctorCommand(options: { pluggyVersion: string; repository: string }): Command {
   return new Command("doctor")
     .description("Check your environment and project for common issues.")
     .action(async function action(this: Command) {
       const globalOpts = this.optsWithGlobals();
-      const result = await runDoctorCommand({ json: globalOpts.json === true });
+      const result = await runDoctorCommand({
+        json: globalOpts.json === true,
+        pluggyVersion: options.pluggyVersion,
+        repository: options.repository,
+      });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);
       }

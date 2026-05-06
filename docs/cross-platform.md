@@ -25,19 +25,27 @@ printing install instructions.
 
 ## Install paths
 
-| OS      | Path                                        | Writable by user?   |
-| ------- | ------------------------------------------- | ------------------- |
-| macOS   | `/usr/local/bin/pluggy`                     | No (sudo required). |
-| Linux   | `/usr/local/bin/pluggy`                     | No (sudo required). |
-| Windows | `%LOCALAPPDATA%\Programs\pluggy\pluggy.exe` | Yes.                |
+| OS      | Path                                        | Writable by user? |
+| ------- | ------------------------------------------- | ----------------- |
+| macOS   | `~/.pluggy/bin/pluggy`                      | Yes.              |
+| Linux   | `~/.pluggy/bin/pluggy`                      | Yes.              |
+| Windows | `%LOCALAPPDATA%\Programs\pluggy\pluggy.exe` | Yes.              |
 
-The install scripts (`install.sh`, `install.ps1`) use these defaults.
-For systems where `sudo` isn't available (containers, restricted CI
-runners), download the binary directly from the release page and drop
-it anywhere on `PATH`.
+The install scripts (`install.sh`, `install.ps1`) use these defaults
+and never need `sudo`. Override the Unix install root with
+`PLUGGY_HOME` (the binary is always placed at `$PLUGGY_HOME/bin/pluggy`).
 
-On Windows, the install script also prepends the install directory to
-your user `PATH`. Restart your terminal to pick up the change.
+`install.sh` adds `$PLUGGY_HOME/bin` to your `PATH` by appending an
+`export` line to whichever of `~/.zshrc`, `~/.bashrc`, `~/.bash_profile`,
+`~/.profile`, and `~/.config/fish/config.fish` exist. The line is
+idempotent — re-running the installer doesn't duplicate it.
+
+If a previous install left `pluggy` at `/usr/local/bin/pluggy`, the
+new install script warns you so the legacy copy doesn't shadow the
+fresh one on `PATH`. Remove it with `sudo rm /usr/local/bin/pluggy`.
+
+On Windows, the install script appends the install directory to your
+user `PATH`. Restart your terminal to pick up the change.
 
 ## Cache paths
 
@@ -141,6 +149,13 @@ child exits.
 
 Note that SIGKILL on Windows is actually `TerminateProcess` — there's no
 graceful grace period and world data may not flush.
+
+## `$PATH` on macOS/Linux
+
+`install.sh` writes the line `export PATH="$HOME/.pluggy/bin:$PATH"`
+into every shell profile it finds. New shells pick this up
+automatically. To use pluggy in the same shell that ran the installer,
+run that export by hand or `source` the relevant profile.
 
 ## `%PATH%` on Windows
 

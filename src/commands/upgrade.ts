@@ -1,6 +1,6 @@
-import { chmod, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, constants, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { Command } from "commander";
@@ -72,6 +72,32 @@ function printManualInstructions(repository: string, release: GithubRelease): vo
 }
 
 /**
+ * Returns true if the current process can replace the file at `path`
+ * (i.e., it can write to the containing directory). We probe the
+ * directory rather than the file itself because the in-place upgrade
+ * works by renaming around the existing binary.
+ */
+async function canReplaceBinary(path: string): Promise<boolean> {
+  try {
+    await access(dirname(path), constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Heuristic: paths a regular user shouldn't be writing to without sudo. */
+function isSystemPath(path: string): boolean {
+  if (process.platform === "win32") return false;
+  return (
+    path.startsWith("/usr/") ||
+    path.startsWith("/opt/") ||
+    path.startsWith("/bin/") ||
+    path.startsWith("/sbin/")
+  );
+}
+
+/**
  * Download the release asset for the current platform into a temp file,
  * rename the running binary out of the way (Windows tolerates this; Unix
  * is routine), and move the new binary into its place. On failure, the
@@ -118,6 +144,26 @@ async function replaceInPlace(
   return { backupPath };
 }
 
+function printPermissionGuidance(repository: string, currentBinaryPath: string): void {
+  log.error(
+    `cannot write to ${currentBinaryPath} — pluggy was installed to a system path and upgrades from there require root.`,
+  );
+  log.info("");
+  log.info(`${bold("Recommended:")} reinstall pluggy to your home directory (no sudo):`);
+  log.info("");
+  log.info(
+    `  ${dim("$")} curl -fsSL https://github.com/${repository}/releases/latest/download/install.sh | bash`,
+  );
+  log.info("");
+  log.info(`Then remove the old system binary so it doesn't shadow the new one:`);
+  log.info("");
+  log.info(`  ${dim("$")} sudo rm ${currentBinaryPath}`);
+  log.info("");
+  log.info(`${bold("Or:")} re-run the upgrade with elevated privileges:`);
+  log.info("");
+  log.info(`  ${dim("$")} sudo pluggy upgrade`);
+}
+
 /**
  * Factory for the `pluggy upgrade` commander command.
  *
@@ -150,8 +196,24 @@ export function upgradeCommand(options: UpgradeOptions): Command {
         return;
       }
 
-      const downloadUrl = `https://github.com/${options.repository}/releases/download/${release.tag_name}/${assetName}`;
       const currentBinaryPath = process.execPath;
+
+      if (!(await canReplaceBinary(currentBinaryPath))) {
+        if (isSystemPath(currentBinaryPath)) {
+          printPermissionGuidance(options.repository, currentBinaryPath);
+        } else {
+          log.error(
+            `cannot write to ${dirname(currentBinaryPath)}. Check the directory's permissions and retry.`,
+          );
+        }
+        const err = new Error("upgrade aborted: install location is not writable") as Error & {
+          exitCode?: number;
+        };
+        err.exitCode = 1;
+        throw err;
+      }
+
+      const downloadUrl = `https://github.com/${options.repository}/releases/download/${release.tag_name}/${assetName}`;
 
       log.info(`${bold("Upgrading to:")} ${brightBlue(release.tag_name)}`);
       log.info(`${dim(`downloading ${downloadUrl}`)}`);
