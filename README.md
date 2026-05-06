@@ -91,6 +91,7 @@ $ pluggy build
 
 pluggy collapses every step of plugin development into one binary: scaffold, dependency resolution, build, dev loop, and IDE setup. The list below covers what that buys you, with the command that demonstrates each.
 
+- **JDK provisioning, no setup.** `pluggy build` derives the required Java major from your MC version and downloads a matching Temurin JDK from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions). Set `JAVA_HOME` to keep your existing toolchain instead, or `PLUGGY_NO_AUTO_INSTALL=1` for CI.
 - **Modrinth in one line.** `pluggy install worldedit` resolves the latest stable, downloads it, and locks the SHA-256. No registry config, no version pinning required up front.
 - **Maven without XML.** `pluggy install maven:net.kyori:adventure-api@4.17.0` parses the POM, folds in `<dependencyManagement>` BOM imports, and lands the full transitive closure on the classpath. SNAPSHOT versions resolve through per-version metadata.
 - **Live server in one command.** `pluggy dev` downloads the matching Paper, Spigot, or Velocity jar, accepts the EULA, hardlinks your plugin and runtime deps into `plugins/`, and boots the server. File saves trigger a debounced rebuild and restart.
@@ -115,6 +116,7 @@ pluggy exposes a small set of commands. Every command supports `--json` for stru
 | `pluggy build`               | Compile, package resources, and produce a jar.     |
 | `pluggy test`                | Compile and run JUnit tests under `test/`.         |
 | `pluggy dev`                 | Run a live server that rebuilds on save.           |
+| `pluggy sdk`                 | Manage the JDKs pluggy provisions for builds.      |
 | `pluggy doctor`              | Validate the environment and every workspace.      |
 | `pluggy upgrade`             | Replace the binary with the latest release.        |
 | `pluggy completions <shell>` | Print a shell completion script.                   |

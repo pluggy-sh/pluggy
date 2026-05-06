@@ -1,16 +1,20 @@
 # Getting started
 
 Install pluggy, scaffold a Paper plugin, add a dependency, and run it on a
-live server. Eight minutes start to finish, assuming you already have a JDK.
+live server. Eight minutes start to finish.
 
 ## Prerequisites
 
-- A Java Development Kit, major version 21 for modern Paper (1.20.5 or
-  newer). Older MC versions need older JDKs — see
-  [the JDK matrix in the IDE docs](./ide.md#jdk-picker) for specifics.
-- An internet connection for the first run. pluggy caches downloads under
-  `~/Library/Caches/pluggy` on macOS, `$XDG_CACHE_HOME/pluggy` on Linux, and
-  `%LOCALAPPDATA%\pluggy\cache` on Windows.
+- An internet connection for the first run. pluggy provisions the right
+  JDK for your project from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions)
+  on first build, and caches it under `~/Library/Caches/pluggy` on macOS,
+  `$XDG_CACHE_HOME/pluggy` on Linux, and `%LOCALAPPDATA%\pluggy\cache` on
+  Windows.
+
+You don't need a pre-installed JDK. Set `JAVA_HOME` if you want pluggy to
+reuse an existing toolchain (asdf, mise, hand-installed Temurin) when its
+major matches the project. See [`pluggy sdk`](./commands/sdk.md) for cache
+management and CI patterns.
 
 pluggy ships as a native binary. Bun is only required if you want to build
 pluggy itself from source.
@@ -94,10 +98,16 @@ $ cat project.json
 ```
 
 The `compatibility.versions[0]` entry is picked up from the Paper upstream
-at init time — it's the highest release available on every selected
+at init time. It's the highest release available on every selected
 platform. Pin this by passing `--mc-version 1.21.8` to `init` if you
 need a specific version. (`--version` sets the plugin's own
-`project.version` — they're separate knobs.)
+`project.version`. They're separate knobs.)
+
+The first `pluggy build` derives the required Java major from this version
+(Java 21 for 1.20.5+, Java 17 for 1.18-1.20.4, and so on) and downloads a
+matching Temurin JDK if one isn't already on `JAVA_HOME` or in the cache.
+Override the choice with [`pluggy sdk use`](./commands/sdk.md#use) or by
+adding a [`jdk` block](./project-json.md#jdk-optional) to `project.json`.
 
 ## Add a dependency
 
@@ -168,13 +178,17 @@ Override with `--output path/to/out.jar`.
 ## What pluggy did under the hood
 
 - Resolved `compatibility.platforms[0]` (`paper`) against the platform
-  registry. Each platform exposes a Maven API spec — for Paper, that's
+  registry. Each platform exposes a Maven API spec. For Paper, that's
   `io.papermc.paper:paper-api` from the PaperMC maven repo.
 - Downloaded the `paper-api` jar and put it on the compile classpath.
 - Resolved every `dependencies[]` entry, downloading jars into
   `~/Library/Caches/pluggy/dependencies/<kind>/...`. Maven deps also had
   their POM parsed for transitives.
-- Ran `javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`.
+- Provisioned a JDK matching `compatibility.versions[0]`'s Java
+  requirement (Java 21 for 1.21.8) into
+  `~/Library/Caches/pluggy/jdk/temurin-21-...`. Subsequent builds skip the
+  download.
+- Ran `<cached-jdk>/bin/javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`.
 - Copied `src/config.yml` through the `${project.x}` templater and wrote
   it to `config.yml` inside the staging dir.
 - Generated `plugin.yml` from `project.name`, `version`, `main`,
