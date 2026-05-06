@@ -91,23 +91,34 @@ Maven, basename-without-`.jar` for files, workspace name for workspaces.
 
 ## Registries
 
-Maven dependencies need at least one entry in `project.json:registries`.
-Modrinth is implicit — no registry declaration is required.
+Maven Central (`https://repo1.maven.org/maven2/`) is appended automatically,
+so a Maven dependency that lives there needs no `registries` entry at all.
+Declare extra registries when you depend on artifacts that Central doesn't
+host (PaperMC, Spigot snapshots, GitHub Packages, …). Modrinth is implicit
+too — no registry declaration is required.
 
 ```json
 "registries": [
-  "https://repo1.maven.org/maven2/",
   "https://repo.papermc.io/repository/maven-public/"
 ]
 ```
 
-For authenticated registries use the object form. `list` shows which
-registries have credentials attached, but never prints the values:
+### Aliases
+
+A short scheme expands to a full URL so common registries are easy to
+declare:
+
+| Alias               | Expands to                                |
+| ------------------- | ----------------------------------------- |
+| `github:owner/repo` | `https://maven.pkg.github.com/owner/repo` |
+
+Aliases work in both string and object form; credentials stay attached:
 
 ```json
 "registries": [
+  "github:my-org/public-libs",
   {
-    "url": "https://maven.pkg.github.com/org/repo",
+    "url": "github:my-org/private",
     "credentials": {
       "username": "ci-bot",
       "password": "${GITHUB_TOKEN}"
@@ -116,9 +127,10 @@ registries have credentials attached, but never prints the values:
 ]
 ```
 
-Registry URLs are tried in declaration order. The platform's own Maven
-repository (e.g. PaperMC for Paper's `paper-api`) is prepended automatically
-during a build — you don't need to list it in `registries`.
+Registry URLs are tried in declaration order, then `DEFAULT_MAVEN_REGISTRIES`
+(Maven Central). The platform's own Maven repository (e.g. PaperMC for
+Paper's `paper-api`) is prepended automatically during a build — you don't
+need to list it in `registries`.
 
 ## Lockfile
 

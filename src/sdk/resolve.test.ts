@@ -14,7 +14,7 @@ vi.mock("../platform/spigot/buildtools.ts", () => ({
 
 import { getJavaRange } from "../platform/spigot/buildtools.ts";
 
-import { selectJdkForProject } from "./resolve.ts";
+import { selectJdkForProject, selectJdkForVersion } from "./resolve.ts";
 
 function project(overrides: Partial<ResolvedProject> = {}): ResolvedProject {
   return {
@@ -71,5 +71,35 @@ describe("selectJdkForProject", () => {
     );
     expect(sel.major).toBe(21);
     expect(sel.source).toBe("fallback-default");
+  });
+});
+
+describe("selectJdkForVersion", () => {
+  afterEach(() => {
+    vi.mocked(getJavaRange).mockReset();
+  });
+
+  test("uses the explicit MC version, not versions[0]", async () => {
+    vi.mocked(getJavaRange).mockImplementation(async (v: string) =>
+      v === "1.20.4" ? [17, 25] : v === "1.21.4" ? [21, 25] : undefined,
+    );
+    const p = project({ compatibility: { versions: ["1.21.4", "1.20.4"], platforms: ["paper"] } });
+
+    const sel20 = await selectJdkForVersion(p, "1.20.4");
+    expect(sel20.major).toBe(17);
+    expect(sel20.source).toBe("spigot-manifest");
+
+    const sel21 = await selectJdkForVersion(p, "1.21.4");
+    expect(sel21.major).toBe(21);
+    expect(sel21.source).toBe("spigot-manifest");
+  });
+
+  test("project pin still wins regardless of MC version", async () => {
+    vi.mocked(getJavaRange).mockResolvedValue([17, 25]);
+    const sel = await selectJdkForVersion(
+      project({ jdk: { major: 25, distribution: "graalvm_community" } }),
+      "1.20.4",
+    );
+    expect(sel).toEqual({ major: 25, distribution: "graalvm_community", source: "project-pin" });
   });
 });

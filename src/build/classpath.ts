@@ -7,6 +7,7 @@
 
 import { getPlatform } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
+import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
 import { parseSource } from "../source.ts";
@@ -33,17 +34,19 @@ export interface ProjectClasspath {
 }
 
 /**
- * Resolve the full classpath for `project`. Pulls registry list off the
- * project, resolves declared `dependencies` through the same source-aware
- * resolver `install` uses, and prepends platform API repositories to the
- * registry list when fetching the platform jars (so user overrides still
- * work but the platform's canonical repos are tried first).
+ * Resolve the full classpath for `project`. Pulls the effective registry
+ * list off the project (declared entries with aliases expanded, plus the
+ * default Maven registries), resolves declared `dependencies` through the
+ * same source-aware resolver `install` uses, and prepends platform API
+ * repositories to the registry list when fetching the platform jars (so
+ * user overrides still work but the platform's canonical repos are tried
+ * first).
  */
 export async function resolveProjectClasspath(
   project: ResolvedProject,
   opts: ResolveClasspathOptions = {},
 ): Promise<ProjectClasspath> {
-  const registries = collectRegistries(project);
+  const registries = effectiveRegistries(project.registries);
 
   const [deps, platformApiJars] = await Promise.all([
     resolveDeclaredDependencies(project, registries),
@@ -61,14 +64,6 @@ export function flattenJarPaths(dep: ResolvedDependency): string[] {
   const out: string[] = [dep.jarPath];
   for (const t of dep.transitiveDeps) {
     out.push(...flattenJarPaths(t));
-  }
-  return out;
-}
-
-function collectRegistries(project: ResolvedProject): string[] {
-  const out: string[] = [];
-  for (const entry of project.registries ?? []) {
-    out.push(typeof entry === "string" ? entry : entry.url);
   }
   return out;
 }

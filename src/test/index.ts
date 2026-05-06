@@ -28,9 +28,10 @@ import { log } from "../logging.ts";
 import { getPlatform } from "../platform/index.ts";
 import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
+import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
-import { ensureJdkForProject } from "../sdk/index.ts";
+import { ensureJdkForVersion } from "../sdk/index.ts";
 import { parseSource } from "../source.ts";
 
 import {
@@ -38,9 +39,6 @@ import {
   parseJUnitReports,
   type TestRunResult as ParsedRunResult,
 } from "./runner.ts";
-
-/** Maven Central — always appended to the test-time registry list. */
-const MAVEN_CENTRAL = "https://repo1.maven.org/maven2";
 
 /** Pinned JUnit Platform Console Standalone — single jar, includes Jupiter + Vintage. */
 const JUNIT_CONSOLE = {
@@ -59,6 +57,16 @@ export interface TestRunOptions {
   filter?: string;
   /** Stop on first test failure. */
   failFast?: boolean;
+  /**
+   * MC version this run targets. Selects the JDK and the platform API jars.
+   * Defaults to `compatibility.versions[0]`.
+   */
+  mcVersion?: string;
+  /**
+   * Platform id this run targets. Selects which family's API jars are on
+   * the classpath. Defaults to `compatibility.platforms[0]`.
+   */
+  platformId?: string;
 }
 
 export type TestRunOutcome =
@@ -66,12 +74,17 @@ export type TestRunOutcome =
       status: "ok";
       durationMs: number;
       result: ParsedRunResult;
+      mcVersion?: string;
+      platformId?: string;
+      jdkMajor?: number;
     }
   | {
       status: "no-tests";
       durationMs: number;
       /** Why no tests ran — surfaced to the user. */
       reason: "no-test-dir" | "no-sources";
+      mcVersion?: string;
+      platformId?: string;
     };
 
 /**
@@ -87,16 +100,29 @@ export async function runTests(
 
   const testSourceDir = join(project.rootDir, "test");
   if (!(await isDirectory(testSourceDir))) {
-    return { status: "no-tests", durationMs: Date.now() - started, reason: "no-test-dir" };
+    return {
+      status: "no-tests",
+      durationMs: Date.now() - started,
+      reason: "no-test-dir",
+      mcVersion: opts.mcVersion,
+      platformId: opts.platformId,
+    };
   }
   if (!(await hasJavaSources(testSourceDir))) {
-    return { status: "no-tests", durationMs: Date.now() - started, reason: "no-sources" };
+    return {
+      status: "no-tests",
+      durationMs: Date.now() - started,
+      reason: "no-sources",
+      mcVersion: opts.mcVersion,
+      platformId: opts.platformId,
+    };
   }
 
-  const stagingId = createHash("sha256")
-    .update(`${project.name}\0${project.version}\0${project.rootDir}`)
-    .digest("hex")
-    .slice(0, 12);
+  const mcVersion = opts.mcVersion ?? project.compatibility?.versions?.[0];
+  const platformId = opts.platformId ?? project.compatibility?.platforms?.[0];
+
+  const stagingKey = `${project.name}\0${project.version}\0${project.rootDir}\0${mcVersion ?? ""}\0${platformId ?? ""}`;
+  const stagingId = createHash("sha256").update(stagingKey).digest("hex").slice(0, 12);
   const stagingDir = join(project.rootDir, STAGING_ROOT, `${stagingId}-test`);
 
   if (opts.clean === true) {
@@ -128,19 +154,21 @@ export async function runTests(
   await rm(reportsDir, { recursive: true, force: true });
   await mkdir(reportsDir, { recursive: true });
 
-  // Project-declared registries (strings or {url, ...}).
-  const projectRegistries: string[] = [];
-  for (const entry of project.registries ?? []) {
-    projectRegistries.push(typeof entry === "string" ? entry : entry.url);
-  }
-  // Test-time registries always include Maven Central so JUnit can be fetched.
-  const testRegistries = dedupe([...projectRegistries, MAVEN_CENTRAL]);
+  // Effective registries already include Maven Central (from
+  // DEFAULT_MAVEN_REGISTRIES) so JUnit can be fetched without forcing the
+  // user to declare it.
+  const projectRegistries = effectiveRegistries(project.registries);
 
   const mainDeps = await resolveDeclared(project, "dependencies", projectRegistries);
-  const platformApiJars = await resolvePlatformApiJars(project, projectRegistries);
+  const platformApiJars = await resolvePlatformApiJars(
+    project,
+    projectRegistries,
+    platformId,
+    mcVersion,
+  );
   const mainClasspath = dedupe([...flattenJars(mainDeps.map((d) => d.dep)), ...platformApiJars]);
 
-  const testDeps = await resolveDeclared(project, "testDependencies", testRegistries);
+  const testDeps = await resolveDeclared(project, "testDependencies", projectRegistries);
   const junit = await resolveMaven(
     JUNIT_CONSOLE.groupId,
     JUNIT_CONSOLE.artifactId,
@@ -149,7 +177,7 @@ export async function runTests(
       rootDir: project.rootDir,
       includePrerelease: false,
       force: false,
-      registries: testRegistries,
+      registries: projectRegistries,
     },
   );
 
@@ -184,9 +212,10 @@ export async function runTests(
     junit.jarPath,
   ]);
 
-  // Resolve the JDK once and thread it through compile + launcher. Done up
-  // front so a cache miss only blocks once per `pluggy test` run.
-  const jdk = await ensureJdkForProject(project);
+  // Resolve the JDK once and thread it through compile + launcher. Keyed off
+  // the cell's MC version so matrix runs across `1.20.4` + `1.21` get Java 17
+  // and Java 21 respectively rather than always using `versions[0]`.
+  const jdk = await ensureJdkForVersion(project, mcVersion);
 
   await compileJava(project, {
     sourceDir: join(project.rootDir, "src"),
@@ -228,7 +257,14 @@ export async function runTests(
     );
   }
 
-  return { status: "ok", durationMs: Date.now() - started, result };
+  return {
+    status: "ok",
+    durationMs: Date.now() - started,
+    result,
+    mcVersion,
+    platformId,
+    jdkMajor: jdk.major,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -417,19 +453,19 @@ async function resolveDeclared(
 async function resolvePlatformApiJars(
   project: ResolvedProject,
   projectRegistries: string[],
+  platformId: string | undefined,
+  mcVersion: string | undefined,
 ): Promise<string[]> {
-  const platforms = project.compatibility?.platforms ?? [];
-  const versions = project.compatibility?.versions ?? [];
-  if (platforms.length === 0 || versions.length === 0) return [];
+  if (platformId === undefined || mcVersion === undefined) return [];
 
-  let primary;
+  let provider;
   try {
-    primary = getPlatform(platforms[0]);
+    provider = getPlatform(platformId);
   } catch {
     return [];
   }
 
-  const apiSpec = await primary.api(versions[0]);
+  const apiSpec = await provider.api(mcVersion);
   if (apiSpec.dependencies.length === 0) return [];
 
   const registries = dedupe([...apiSpec.repositories, ...projectRegistries]);
