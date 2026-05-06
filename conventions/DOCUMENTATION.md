@@ -47,7 +47,7 @@ Bad: "Click `Save` on the Settings page."
 Good: "On the Settings page, click `Save`."
 
 Format identifiers consistently. Use code font for filenames, commands, code, environment variables, and API names. Use bold for UI elements such as button labels and menu names. Use plain text for prose.
-Bad: "Run **vp check** in the *src/* directory."
+Bad: "Run **vp check** in the _src/_ directory."
 Good: "Run `vp check` in the `src/` directory."
 
 Write descriptive link text that makes sense out of context. Screen readers and link lists strip the surrounding prose; "click here" tells the user nothing.
