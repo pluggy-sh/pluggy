@@ -5,7 +5,7 @@
 
 import type { ChildProcess } from "node:child_process";
 import { copyFile, link, unlink, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 /**
  * Make `destination` reference the bytes at `source` — hardlink first,
@@ -159,4 +159,33 @@ export function installShutdownHandler(child: ChildProcess, opts: ShutdownOption
 export async function writeFileLF(path: string, contents: string): Promise<void> {
   const normalized = contents.includes("\r\n") ? contents.replace(/\r\n/g, "\n") : contents;
   await writeFile(path, normalized, "utf8");
+}
+
+/**
+ * Join `root` with `relativePath` and assert the result stays under `root`.
+ * Use whenever an archive entry name, downloaded path component, or other
+ * untrusted input is being written under a directory — a malicious `..` or
+ * absolute path otherwise escapes the root (zip-slip). Behaviour is the same
+ * on every host: backslashes in the input are rejected up front so a
+ * Windows-targeted entry doesn't traverse on Windows but write a literal
+ * `\\`-named file on POSIX.
+ */
+export function safeJoin(root: string, relativePath: string): string {
+  if (typeof relativePath !== "string") {
+    throw new Error(`safeJoin: relativePath must be a string`);
+  }
+  if (relativePath.includes("\\")) {
+    throw new Error(
+      `safeJoin: refusing entry containing backslash: ${JSON.stringify(relativePath)}`,
+    );
+  }
+  if (isAbsolute(relativePath)) {
+    throw new Error(`safeJoin: refusing absolute path: ${JSON.stringify(relativePath)}`);
+  }
+  const resolvedRoot = resolve(root);
+  const candidate = resolve(resolvedRoot, relativePath);
+  if (candidate !== resolvedRoot && !candidate.startsWith(resolvedRoot + sep)) {
+    throw new Error(`safeJoin: ${JSON.stringify(relativePath)} escapes ${JSON.stringify(root)}`);
+  }
+  return candidate;
 }
