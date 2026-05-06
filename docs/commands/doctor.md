@@ -17,15 +17,15 @@ No flags beyond the global `--json`.
 Every check returns one of `pass`, `warn`, `fail`. Only `fail` affects
 the exit code.
 
-| id                    | label                   | fail trigger                                                       | warn trigger                                                                                                         |
-| --------------------- | ----------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| id                    | label                   | fail trigger                                                       | warn trigger                                                                                                                            |
+| --------------------- | ----------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `java`                | Java toolchain          | `java -version` fails (not on PATH, or non-zero exit).             | Primary platform is `spigot` or `bukkit` **and** the detected JDK is older than the Java floor declared by the cached `BuildTools.jar`. |
-| `cache`               | Cache reachability      | Path exists but isn't a directory; probe write fails.              | Directory doesn't exist yet (will be created on first use).                                                          |
-| `registry <url>`      | Registry                | —                                                                  | `HEAD` returns a 5xx or the request errors. 2xx / 3xx / 4xx count as reachable.                                      |
-| `project (<name>)`    | Validate `project.json` | `name`, `version`, or `compatibility` malformed; platform unknown. | —                                                                                                                    |
-| `workspace`           | Workspace graph         | Cycle detected in `workspace:` deps.                               | —                                                                                                                    |
-| `descriptor (<name>)` | Descriptor family       | `pickDescriptor` throws (unknown platform, mixed families).        | —                                                                                                                    |
-| `outdated`            | Outdated dependencies   | —                                                                  | Any Modrinth dep has a newer stable version, or any Modrinth query failed.                                           |
+| `cache`               | Cache reachability      | Path exists but isn't a directory; probe write fails.              | Directory doesn't exist yet (will be created on first use).                                                                             |
+| `registry <url>`      | Registry                | —                                                                  | `HEAD` returns a 5xx or the request errors. 2xx / 3xx / 4xx count as reachable.                                                         |
+| `project (<name>)`    | Validate `project.json` | `name`, `version`, or `compatibility` malformed; platform unknown. | —                                                                                                                                       |
+| `workspace`           | Workspace graph         | Cycle detected in `workspace:` deps.                               | —                                                                                                                                       |
+| `descriptor (<name>)` | Descriptor family       | `pickDescriptor` throws (unknown platform, mixed families).        | —                                                                                                                                       |
+| `outdated`            | Outdated dependencies   | —                                                                  | Any Modrinth dep has a newer stable version, or any Modrinth query failed.                                                              |
 
 ### Environment checks
 
