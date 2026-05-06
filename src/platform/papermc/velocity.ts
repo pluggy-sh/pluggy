@@ -56,7 +56,11 @@ export default createPlatform((ctx) => ({
   async download(version: Version, ignoreCache = false) {
     const CACHE_PATH = ctx.getCachePath();
     const release = await latestVelocityRelease();
-    const JAR_PATH = join(CACHE_PATH, "versions", `velocity-${release.id}-${release.build}.jar`);
+    const JAR_PATH = join(
+      CACHE_PATH,
+      "versions",
+      `velocity-${version.version}-${release.build}.jar`,
+    );
 
     if (existsSync(JAR_PATH) && !ignoreCache) {
       return {
