@@ -5,12 +5,13 @@
  * platform API jars for the primary (or explicitly requested) platform.
  */
 
+import { readLock, type LockfileEntry } from "../lockfile.ts";
 import { getPlatform } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
-import { parseSource } from "../source.ts";
+import { parseSource, stringifySource } from "../source.ts";
 
 export interface ResolveClasspathOptions {
   /**
@@ -75,6 +76,13 @@ async function resolveDeclaredDependencies(
   const deps = project.dependencies;
   if (deps === undefined || deps === null) return [];
 
+  // Pull the lockfile entries up front so we can pass each top-level dep's
+  // recorded `integrity` as `expectedIntegrity`. Catches the silent
+  // upstream substitution scenario (registry rolls forward bytes for a
+  // pinned version between `install` and `build`) — without this thread,
+  // build re-resolved fresh and accepted whatever bytes came back.
+  const lockEntries = readLock(project.rootDir)?.entries ?? {};
+
   const results: ResolvedDependency[] = [];
   for (const [name, raw] of Object.entries(deps)) {
     const { source, version } =
@@ -82,15 +90,36 @@ async function resolveDeclaredDependencies(
         ? { source: `modrinth:${name}`, version: raw }
         : { source: raw.source, version: raw.version };
     const parsed = parseSource(source, version);
+    const expectedIntegrity = expectedIntegrityFor(name, parsed, lockEntries);
     const resolved = await resolveDependency(parsed, {
       rootDir: project.rootDir,
       includePrerelease: false,
       force: false,
       registries,
+      expectedIntegrity,
     });
     results.push(resolved);
   }
   return results;
+}
+
+/**
+ * Look up the lockfile entry for `name` and return its `integrity` if the
+ * recorded source/version still matches the declared one. Drift means the
+ * pin is stale (user edited project.json since `install`) and the recorded
+ * hash is no longer the right thing to enforce — surface the issue via
+ * `pluggy install` rather than blocking the build.
+ */
+function expectedIntegrityFor(
+  name: string,
+  declaredSource: ReturnType<typeof parseSource>,
+  lockEntries: Record<string, LockfileEntry>,
+): string | undefined {
+  const entry = lockEntries[name];
+  if (entry === undefined) return undefined;
+  if (stringifySource(entry.source) !== stringifySource(declaredSource)) return undefined;
+  if (entry.source.version !== declaredSource.version) return undefined;
+  return entry.integrity;
 }
 
 async function resolvePlatformApiJars(
