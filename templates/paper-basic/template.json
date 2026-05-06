@@ -1,0 +1,6 @@
+{
+  "id": "paper-basic",
+  "name": "Paper plugin (basic)",
+  "description": "Paper plugin with a sample listener — the simplest scaffold beyond the bare embedded stub.",
+  "family": "bukkit"
+}

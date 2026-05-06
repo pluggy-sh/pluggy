@@ -1,0 +1,6 @@
+{
+  "id": "bungee-proxy",
+  "name": "BungeeCord proxy plugin",
+  "description": "BungeeCord plugin with a `PostLoginEvent` listener and a registered Command — the Bungee equivalent of the velocity-proxy template.",
+  "family": "bungee"
+}

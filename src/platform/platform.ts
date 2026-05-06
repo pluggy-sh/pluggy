@@ -19,11 +19,21 @@ export interface MavenAPI {
   dependencies: Array<{ groupId: string; artifactId: string; version: string }>;
 }
 
+/**
+ * Family of plugin platforms that share a runtime API: bukkit-derivatives
+ * (paper/folia/spigot/bukkit), velocity proxies, or bungee proxies. Used by
+ * the scaffolder + template selector to pick a stub class that actually
+ * compiles against the chosen platform.
+ */
+export type PlatformFamily = "bukkit" | "velocity" | "bungee";
+
 /** How a plugin descriptor is serialized into the final jar. */
 export interface DescriptorSpec {
   /** Path inside the final plugin jar where the descriptor is written. */
   path: string;
   format: "yaml" | "json" | "toml";
+  /** Family this descriptor belongs to — drives stub-class selection. */
+  family: PlatformFamily;
   generate(project: ResolvedProject): string;
 }
 

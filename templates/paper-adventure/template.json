@@ -1,0 +1,14 @@
+{
+  "id": "paper-adventure",
+  "name": "Paper plugin using Adventure components",
+  "description": "Paper plugin that messages players via Adventure `Component`s. Includes a MockBukkit test for the listener.",
+  "family": "bukkit",
+  "projectJsonExtras": {
+    "testDependencies": {
+      "mockbukkit": {
+        "source": "maven:org.mockbukkit.mockbukkit:mockbukkit-v${project.apiVersion}",
+        "version": "4.90.0"
+      }
+    }
+  }
+}

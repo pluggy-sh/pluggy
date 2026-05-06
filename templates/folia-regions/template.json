@@ -1,0 +1,6 @@
+{
+  "id": "folia-regions",
+  "name": "Folia plugin using region schedulers",
+  "description": "Folia plugin demonstrating `getRegionScheduler()` / `getAsyncScheduler()` — the API that replaces Bukkit's BukkitScheduler on Folia.",
+  "family": "bukkit"
+}

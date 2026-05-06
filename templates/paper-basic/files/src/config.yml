@@ -1,0 +1,8 @@
+# Configuration file for ${project.name}
+
+plugin:
+  enabled: true
+  debug: false
+
+messages:
+  prefix: "&7[&6${project.name}&7]&r "

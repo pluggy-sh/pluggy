@@ -7,6 +7,7 @@ import type { DescriptorSpec } from "../platform.ts";
 export const bungeeDescriptor: DescriptorSpec = {
   path: "bungee.yml",
   format: "yaml",
+  family: "bungee",
   generate(project) {
     if (!project.main) {
       throw new Error("BungeeCord descriptor requires project.main");

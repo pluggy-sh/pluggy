@@ -14,6 +14,7 @@ createPlatform(() => ({
   descriptor: {
     path: "plugin.yml",
     format: "yaml" as const,
+    family: "bukkit" as const,
     generate: () => "name: test\n",
   },
   getVersions: () => Promise.resolve([]),
@@ -28,6 +29,7 @@ createPlatform(() => ({
   descriptor: {
     path: "plugin.yml",
     format: "yaml" as const,
+    family: "bukkit" as const,
     generate: () => "name: test\n",
   },
   getVersions: () => Promise.resolve([]),
@@ -42,6 +44,7 @@ createPlatform(() => ({
   descriptor: {
     path: "velocity-plugin.json",
     format: "json" as const,
+    family: "velocity" as const,
     generate: () => "{}\n",
   },
   getVersions: () => Promise.resolve([]),
