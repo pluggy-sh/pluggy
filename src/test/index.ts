@@ -28,6 +28,7 @@ import { log } from "../logging.ts";
 import { getPlatform } from "../platform/index.ts";
 import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
+import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
 import { ensureJdkForVersion } from "../sdk/index.ts";
@@ -38,9 +39,6 @@ import {
   parseJUnitReports,
   type TestRunResult as ParsedRunResult,
 } from "./runner.ts";
-
-/** Maven Central — always appended to the test-time registry list. */
-const MAVEN_CENTRAL = "https://repo1.maven.org/maven2";
 
 /** Pinned JUnit Platform Console Standalone — single jar, includes Jupiter + Vintage. */
 const JUNIT_CONSOLE = {
@@ -156,13 +154,10 @@ export async function runTests(
   await rm(reportsDir, { recursive: true, force: true });
   await mkdir(reportsDir, { recursive: true });
 
-  // Project-declared registries (strings or {url, ...}).
-  const projectRegistries: string[] = [];
-  for (const entry of project.registries ?? []) {
-    projectRegistries.push(typeof entry === "string" ? entry : entry.url);
-  }
-  // Test-time registries always include Maven Central so JUnit can be fetched.
-  const testRegistries = dedupe([...projectRegistries, MAVEN_CENTRAL]);
+  // Effective registries already include Maven Central (from
+  // DEFAULT_MAVEN_REGISTRIES) so JUnit can be fetched without forcing the
+  // user to declare it.
+  const projectRegistries = effectiveRegistries(project.registries);
 
   const mainDeps = await resolveDeclared(project, "dependencies", projectRegistries);
   const platformApiJars = await resolvePlatformApiJars(
@@ -173,7 +168,7 @@ export async function runTests(
   );
   const mainClasspath = dedupe([...flattenJars(mainDeps.map((d) => d.dep)), ...platformApiJars]);
 
-  const testDeps = await resolveDeclared(project, "testDependencies", testRegistries);
+  const testDeps = await resolveDeclared(project, "testDependencies", projectRegistries);
   const junit = await resolveMaven(
     JUNIT_CONSOLE.groupId,
     JUNIT_CONSOLE.artifactId,
@@ -182,7 +177,7 @@ export async function runTests(
       rootDir: project.rootDir,
       includePrerelease: false,
       force: false,
-      registries: testRegistries,
+      registries: projectRegistries,
     },
   );
 

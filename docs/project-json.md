@@ -20,9 +20,8 @@ which workspace you're sitting in.
     "platforms": ["paper"]
   },
   "registries": [
-    "https://repo1.maven.org/maven2/",
     {
-      "url": "https://maven.pkg.github.com/my-org/private",
+      "url": "github:my-org/private",
       "credentials": {
         "username": "${GITHUB_ACTOR}",
         "password": "${GITHUB_TOKEN}"
@@ -179,13 +178,19 @@ Array of entries. Each entry is either:
 - a bare URL string, or
 - an object `{ "url": "...", "credentials": { "username": "...", "password": "..." } }`.
 
-Registries apply to Maven dependencies. The Modrinth API is implicit and
-doesn't need declaring. When credentials are set, `list` prints
-`[authenticated]` next to the URL but never surfaces the values themselves —
-they're read when the Maven resolver needs them.
+The URL field accepts an alias as a shorthand: `github:owner/repo`
+expands to `https://maven.pkg.github.com/owner/repo`.
 
-The list is deduplicated by URL. In a monorepo, the root's registries are
-unioned with each workspace's registries; duplicates drop.
+Registries apply to Maven dependencies. Maven Central
+(`https://repo1.maven.org/maven2/`) is appended automatically, so artifacts
+hosted there resolve without any explicit `registries` entry. The Modrinth
+API is implicit and doesn't need declaring either. When credentials are set,
+`list` prints `[authenticated]` next to the URL but never surfaces the
+values themselves — they're read when the Maven resolver needs them.
+
+The list is deduplicated by URL (trailing-slash variants count as the
+same). In a monorepo, the root's registries are unioned with each
+workspace's registries; duplicates drop.
 
 ### `dependencies` (optional)
 

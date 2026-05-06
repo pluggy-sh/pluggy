@@ -17,6 +17,7 @@ import { getPlatform } from "../platform/index.ts";
 import type { DescriptorSpec } from "../platform/platform.ts";
 import { linkOrCopy } from "../portable.ts";
 import { getCachePath, type HotswapConfig, type ResolvedProject } from "../project.ts";
+import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { ensureJdkForProject } from "../sdk/index.ts";
 import { parseSource } from "../source.ts";
@@ -313,7 +314,7 @@ async function resolveRuntimePluginDeps(
   const deps = project.dependencies;
   if (deps === undefined || deps === null) return [];
 
-  const registries = (project.registries ?? []).map((r) => (typeof r === "string" ? r : r.url));
+  const registries = effectiveRegistries(project.registries);
 
   const results: ResolvedDependency[] = [];
   for (const [name, raw] of Object.entries(deps)) {

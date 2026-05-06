@@ -7,6 +7,7 @@ import process from "node:process";
 import { InvalidArgumentError } from "commander";
 
 import type { ResolvedProject } from "../project.ts";
+import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
 import type { ResolveContext } from "../resolver/index.ts";
 import type { WorkspaceContext } from "../workspace.ts";
 import { findWorkspace, resolveWorkspaceContext } from "../workspace.ts";
@@ -128,17 +129,17 @@ export function buildResolveContext(
 ): ResolveContext {
   const registries: string[] = [];
   const seen = new Set<string>();
-  const push = (entry: string | { url: string } | undefined): void => {
-    if (entry === undefined) return;
-    const url = typeof entry === "string" ? entry : entry.url;
-    if (seen.has(url)) return;
-    seen.add(url);
+  const push = (url: string): void => {
+    const key = url.endsWith("/") ? url.slice(0, -1) : url;
+    if (seen.has(key)) return;
+    seen.add(key);
     registries.push(url);
   };
-  for (const r of context.root.registries ?? []) push(r);
+  for (const r of context.root.registries ?? []) push(registryUrl(r));
   for (const ws of context.workspaces) {
-    for (const r of ws.project.registries ?? []) push(r);
+    for (const r of ws.project.registries ?? []) push(registryUrl(r));
   }
+  for (const url of DEFAULT_MAVEN_REGISTRIES) push(url);
 
   return {
     rootDir: context.root.rootDir,

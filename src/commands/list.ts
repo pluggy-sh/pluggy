@@ -4,7 +4,8 @@ import { Command } from "commander";
 
 import { bold, dim, log, yellow } from "../logging.ts";
 import { readLock, type TransitiveEntry } from "../lockfile.ts";
-import type { Dependency, Registry, ResolvedProject } from "../project.ts";
+import type { Dependency, ResolvedProject } from "../project.ts";
+import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { parseSource, type ResolvedSource } from "../source.ts";
 import {
@@ -261,18 +262,19 @@ function collectRegistries(ctx: WorkspaceContext): RegistryEntry[] {
   const raw = project.registries ?? [];
   const out: RegistryEntry[] = [];
   const seen = new Set<string>();
-  for (const entry of raw) {
-    const { url, authenticated } = normalizeRegistry(entry);
-    if (seen.has(url)) continue;
-    seen.add(url);
+  const push = (url: string, authenticated: boolean): void => {
+    const key = url.endsWith("/") ? url.slice(0, -1) : url;
+    if (seen.has(key)) return;
+    seen.add(key);
     out.push({ url, authenticated });
+  };
+  for (const entry of raw) {
+    const url = registryUrl(entry);
+    const authenticated = typeof entry !== "string" && entry.credentials !== undefined;
+    push(url, authenticated);
   }
+  for (const url of DEFAULT_MAVEN_REGISTRIES) push(url, false);
   return out;
-}
-
-function normalizeRegistry(entry: string | Registry): RegistryEntry {
-  if (typeof entry === "string") return { url: entry, authenticated: false };
-  return { url: entry.url, authenticated: entry.credentials !== undefined };
 }
 
 function printHumanList(result: ListResult, outdatedMode: boolean): void {
