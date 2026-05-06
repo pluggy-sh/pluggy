@@ -7,7 +7,8 @@
  *     `ensureJdk`. The one call build/test/dev care about.
  *   * `getCachedJdk(major, distribution?)` — look up a cached JDK without
  *     installing. Returns `undefined` on miss.
- *   * `listInstalled()` / `gc(opts)` — used by `pluggy sdk list`/`gc`.
+ *   * `listInstalled()` — used by `pluggy sdk list`. Eviction lives in
+ *     `pluggy cache prune` (see `src/cache/index.ts`).
  *
  * Auto-install is on by default. Set `PLUGGY_NO_AUTO_INSTALL=1` to make a
  * cache miss raise instead — CI escape hatch. The error points at the
@@ -38,7 +39,6 @@ import {
   slotPath,
   touchEntry,
   type CacheKeyParts,
-  type ManifestEntry,
 } from "./cache.ts";
 import { resolveJdk, targetForHost, type DiscoArch, type DiscoOs } from "./disco.ts";
 import { installJdk } from "./install.ts";
@@ -200,66 +200,6 @@ export async function listInstalled(): Promise<InstalledJdkInfo[]> {
   }
   out.sort((a, b) => a.key.localeCompare(b.key));
   return out;
-}
-
-export interface GcOptions {
-  /**
-   * Keep the N most-recently-used JDKs per major version. Default 2 — gives
-   * users a current and a previous slot per major to roll back between.
-   */
-  keepLatest?: number;
-  /** When true, also remove slots that exist on disk but aren't in the manifest. */
-  pruneOrphans?: boolean;
-}
-
-export interface GcResult {
-  removed: { key: string; reason: "lru" | "orphan" | "dangling" }[];
-  kept: string[];
-}
-
-/**
- * Evict cached JDKs by LRU per major. Also reconciles manifest vs filesystem:
- *   - `dangling`: manifest entry whose on-disk slot is gone → drop from manifest.
- *   - `orphan`: on-disk slot with no manifest entry → optionally `rm -r`.
- */
-export async function gc(opts: GcOptions = {}): Promise<GcResult> {
-  const keepLatest = Math.max(1, opts.keepLatest ?? 2);
-  const result: GcResult = { removed: [], kept: [] };
-  const manifest = await readManifest();
-
-  // Group by major; sort each group by lastUsed desc; keep first N.
-  const byMajor = new Map<number, [string, ManifestEntry][]>();
-  for (const [key, entry] of Object.entries(manifest.entries)) {
-    const slot = slotPath(key);
-    if (!existsSync(slot)) {
-      await forgetEntry(key);
-      result.removed.push({ key, reason: "dangling" });
-      continue;
-    }
-    const list = byMajor.get(entry.major) ?? [];
-    list.push([key, entry]);
-    byMajor.set(entry.major, list);
-  }
-
-  for (const list of byMajor.values()) {
-    list.sort((a, b) => b[1].lastUsed - a[1].lastUsed);
-    for (let i = 0; i < list.length; i++) {
-      const [key] = list[i];
-      if (i < keepLatest) {
-        result.kept.push(key);
-      } else {
-        await rm(slotPath(key), { recursive: true, force: true });
-        await forgetEntry(key);
-        result.removed.push({ key, reason: "lru" });
-      }
-    }
-  }
-
-  if (opts.pruneOrphans === true) {
-    // Optional second pass — left for a future PR to keep this one bounded.
-  }
-
-  return result;
 }
 
 /**

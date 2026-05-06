@@ -1,5 +1,7 @@
 /**
- * `pluggy sdk` — manage cached JDKs.
+ * `pluggy sdk` — the JDK *toolchain* surface. For cross-cutting cache
+ * housekeeping (LRU eviction, total size, cleaning everything) see
+ * `pluggy cache prune` / `cache info` / `cache clean --category jdk`.
  *
  * Subcommands:
  *   install [<major>]         Download + cache a JDK. With no arg, derives
@@ -9,7 +11,6 @@
  *   path <major>              Print the absolute javaHome for a cached JDK.
  *   use <major>               Pin a JDK in the current project.json.
  *   remove <major>            Delete a cached JDK.
- *   gc [--keep-latest <N>]    LRU-evict cached JDKs.
  *
  * `--distribution` is an opt-in override; defaults to Temurin. Only the
  * curated allowlist is accepted — see `ALLOWED_DISTRIBUTIONS`. Adding
@@ -28,9 +29,9 @@ import {
   type Project,
   type ResolvedProject,
 } from "../project.ts";
-import { bold, dim, green, log, red, yellow } from "../logging.ts";
+import { bold, dim, green, log, red } from "../logging.ts";
 
-import { ensureJdk, getCachedJdk, gc, listInstalled, removeJdk } from "../sdk/index.ts";
+import { ensureJdk, getCachedJdk, listInstalled, removeJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
 
 /**
@@ -58,14 +59,13 @@ interface SdkGlobalOpts {
 
 /** Top-level `sdk` command. Subcommands attached below. */
 export function sdkCommand(): Command {
-  const cmd = new Command("sdk").description("Manage cached JDKs (install, list, pin, gc).");
+  const cmd = new Command("sdk").description("Manage JDK toolchains (install, list, pin, remove).");
 
   cmd.addCommand(installSubcommand());
   cmd.addCommand(listSubcommand());
   cmd.addCommand(pathSubcommand());
   cmd.addCommand(useSubcommand());
   cmd.addCommand(removeSubcommand());
-  cmd.addCommand(gcSubcommand());
 
   return cmd;
 }
@@ -271,33 +271,6 @@ function removeSubcommand(): Command {
 }
 
 // ---------------------------------------------------------------------------
-// gc
-// ---------------------------------------------------------------------------
-
-function gcSubcommand(): Command {
-  return new Command("gc")
-    .description("Evict cached JDKs by LRU per major.")
-    .option("--keep-latest <n>", "Keep the N most-recently-used JDKs per major.", parseKeep, 2)
-    .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
-      const result = await gc({ keepLatest: options.keepLatest as number });
-
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", action: "gc", ...result });
-        return;
-      }
-      if (result.removed.length === 0) {
-        log.info(`Nothing to evict (${result.kept.length} kept).`);
-        return;
-      }
-      for (const r of result.removed) {
-        log.info(`  ${yellow("-")} ${r.key} ${dim(`(${r.reason})`)}`);
-      }
-      log.success(`Evicted ${result.removed.length}; kept ${result.kept.length}.`);
-    });
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -316,14 +289,6 @@ function parseDistribution(value: string): AllowedDistribution {
     );
   }
   return value as AllowedDistribution;
-}
-
-function parseKeep(value: string): number {
-  const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n) || n < 1) {
-    throw new InvalidArgumentError(`--keep-latest must be a positive integer (got "${value}")`);
-  }
-  return n;
 }
 
 function loadProject(globalOpts: SdkGlobalOpts): ResolvedProject {

@@ -90,6 +90,10 @@ export interface HotswapConfig {
  * macOS: `~/Library/Caches/pluggy`.
  * Windows: `%LOCALAPPDATA%/pluggy/cache`.
  * Linux/other: `$XDG_CACHE_HOME/pluggy` (defaulting to `~/.cache/pluggy`).
+ *
+ * Cache contents are *reproducible* — wiping this directory only forces
+ * re-downloads. State that must survive `pluggy cache clean` (e.g. the
+ * update-check timestamp) belongs under `getStatePath` instead.
  */
 export function getCachePath(): string {
   const home = homedir();
@@ -100,6 +104,27 @@ export function getCachePath(): string {
     return join(process.env.LOCALAPPDATA || join(home, "AppData", "Local"), "pluggy", "cache");
   }
   return join(process.env.XDG_CACHE_HOME || join(home, ".cache"), "pluggy");
+}
+
+/**
+ * OS-appropriate user *state* directory for pluggy. Distinct from the
+ * cache: state is small, non-regenerable metadata (e.g. the cached
+ * latest-release tag from the update checker) that must survive
+ * `pluggy cache clean`.
+ *
+ * macOS: `~/Library/Application Support/pluggy`.
+ * Windows: `%APPDATA%/pluggy`.
+ * Linux/other: `$XDG_STATE_HOME/pluggy` (defaulting to `~/.local/state/pluggy`).
+ */
+export function getStatePath(): string {
+  const home = homedir();
+  if (process.platform === "darwin") {
+    return join(home, "Library", "Application Support", "pluggy");
+  }
+  if (process.platform === "win32") {
+    return join(process.env.APPDATA || join(home, "AppData", "Roaming"), "pluggy");
+  }
+  return join(process.env.XDG_STATE_HOME || join(home, ".local", "state"), "pluggy");
 }
 
 const PROJECT_FILE_NAME = "project.json";
