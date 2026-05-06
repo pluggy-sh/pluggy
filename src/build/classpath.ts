@@ -1,0 +1,150 @@
+/**
+ * Shared classpath resolution. `build`, `checkPlatformCompile`, and `docs`
+ * all need the same answer to "what jars should be on the classpath for this
+ * project?" — declared dependencies (with their transitive trees) plus the
+ * platform API jars for the primary (or explicitly requested) platform.
+ */
+
+import { getPlatform } from "../platform/index.ts";
+import type { ResolvedProject } from "../project.ts";
+import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
+import { resolveMaven } from "../resolver/maven.ts";
+import { parseSource } from "../source.ts";
+
+export interface ResolveClasspathOptions {
+  /**
+   * Platform id whose API jars to resolve. Defaults to the first entry of
+   * `project.compatibility.platforms`. `checkPlatformCompile` overrides this
+   * to validate non-primary platforms.
+   */
+  platformId?: string;
+}
+
+export interface ProjectClasspath {
+  /** Resolved declared dependencies, each with its transitive tree intact. */
+  deps: ResolvedDependency[];
+  /** Flattened, deduplicated platform API jars (already in classpath order). */
+  platformApiJars: string[];
+  /**
+   * Final classpath: every declared dep jar (flattened from the transitive
+   * trees) followed by `platformApiJars`, with order-preserving dedupe.
+   */
+  classpath: string[];
+}
+
+/**
+ * Resolve the full classpath for `project`. Pulls registry list off the
+ * project, resolves declared `dependencies` through the same source-aware
+ * resolver `install` uses, and prepends platform API repositories to the
+ * registry list when fetching the platform jars (so user overrides still
+ * work but the platform's canonical repos are tried first).
+ */
+export async function resolveProjectClasspath(
+  project: ResolvedProject,
+  opts: ResolveClasspathOptions = {},
+): Promise<ProjectClasspath> {
+  const registries = collectRegistries(project);
+
+  const [deps, platformApiJars] = await Promise.all([
+    resolveDeclaredDependencies(project, registries),
+    resolvePlatformApiJars(project, registries, opts.platformId),
+  ]);
+
+  const depJars = deps.flatMap(flattenJarPaths);
+  const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
+
+  return { deps, platformApiJars, classpath };
+}
+
+/** Flatten `dep.jarPath` plus every transitive's jarPath into a single list. */
+export function flattenJarPaths(dep: ResolvedDependency): string[] {
+  const out: string[] = [dep.jarPath];
+  for (const t of dep.transitiveDeps) {
+    out.push(...flattenJarPaths(t));
+  }
+  return out;
+}
+
+function collectRegistries(project: ResolvedProject): string[] {
+  const out: string[] = [];
+  for (const entry of project.registries ?? []) {
+    out.push(typeof entry === "string" ? entry : entry.url);
+  }
+  return out;
+}
+
+async function resolveDeclaredDependencies(
+  project: ResolvedProject,
+  registries: string[],
+): Promise<ResolvedDependency[]> {
+  const deps = project.dependencies;
+  if (deps === undefined || deps === null) return [];
+
+  const results: ResolvedDependency[] = [];
+  for (const [name, raw] of Object.entries(deps)) {
+    const { source, version } =
+      typeof raw === "string"
+        ? { source: `modrinth:${name}`, version: raw }
+        : { source: raw.source, version: raw.version };
+    const parsed = parseSource(source, version);
+    const resolved = await resolveDependency(parsed, {
+      rootDir: project.rootDir,
+      includePrerelease: false,
+      force: false,
+      registries,
+    });
+    results.push(resolved);
+  }
+  return results;
+}
+
+async function resolvePlatformApiJars(
+  project: ResolvedProject,
+  projectRegistries: string[],
+  platformId: string | undefined,
+): Promise<string[]> {
+  const platforms = project.compatibility?.platforms ?? [];
+  const versions = project.compatibility?.versions ?? [];
+  if (platforms.length === 0 || versions.length === 0) return [];
+
+  const primaryId = platformId ?? platforms[0];
+  const primaryVersion = versions[0];
+
+  let primary;
+  try {
+    primary = getPlatform(primaryId);
+  } catch {
+    // pickDescriptor / build callers already surfaced this; stay quiet.
+    return [];
+  }
+
+  const apiSpec = await primary.api(primaryVersion);
+  if (apiSpec.dependencies.length === 0) return [];
+
+  // Prefer the platform's own repos; project registries come after so user
+  // overrides still work.
+  const registries = dedupePreservingOrder([...apiSpec.repositories, ...projectRegistries]);
+
+  const jars: string[] = [];
+  for (const coord of apiSpec.dependencies) {
+    const resolved = await resolveMaven(coord.groupId, coord.artifactId, coord.version, {
+      rootDir: project.rootDir,
+      includePrerelease: false,
+      force: false,
+      registries,
+    });
+    jars.push(...flattenJarPaths(resolved));
+  }
+  return dedupePreservingOrder(jars);
+}
+
+function dedupePreservingOrder(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of paths) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
+}

@@ -31,6 +31,7 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 | [`list`](./commands/list.md)               | Print declared deps, resolved versions, and registries.  |
 | [`build`](./commands/build.md)             | Compile → resources → descriptor → shade → jar.          |
 | [`test`](./commands/test.md)               | Compile and run JUnit Platform tests under `test/`.      |
+| [`docs`](./commands/docs.md)               | Generate Javadoc HTML against the resolved classpath.    |
 | [`dev`](./commands/dev.md)                 | Boot a live server with the plugin and its runtime deps. |
 | [`doctor`](./commands/doctor.md)           | Validate the environment and every workspace.            |
 | [`upgrade`](./commands/upgrade.md)         | Replace the running binary with the latest release.      |

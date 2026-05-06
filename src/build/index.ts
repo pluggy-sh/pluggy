@@ -9,14 +9,11 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { log } from "../logging.ts";
-import { getPlatform } from "../platform/index.ts";
 import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
-import { parseSource } from "../source.ts";
-import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
-import { resolveMaven } from "../resolver/maven.ts";
 import { ensureJdkForProject } from "../sdk/index.ts";
 
+import { resolveProjectClasspath } from "./classpath.ts";
 import { compileJava } from "./compile.ts";
 import { pickDescriptor } from "./descriptor.ts";
 import { writeIdeFiles } from "./ide.ts";
@@ -97,15 +94,10 @@ export async function buildProject(
   }
   await mkdir(stagingDir, { recursive: true });
 
-  const registries = collectRegistries(project);
-  const [resolvedDeps, platformApiJars, jdk] = await Promise.all([
-    resolveDeclaredDependencies(project, registries),
-    resolvePlatformApiJars(project, registries),
+  const [{ deps: resolvedDeps, classpath }, jdk] = await Promise.all([
+    resolveProjectClasspath(project),
     ensureJdkForProject(project),
   ]);
-
-  const depJars = resolvedDeps.flatMap(flattenJarPaths);
-  const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
 
   if (!opts.skipClasspath) {
     try {
@@ -177,15 +169,10 @@ export async function checkPlatformCompile(
   if (opts.clean) await rm(stagingDir, { recursive: true, force: true });
   await mkdir(stagingDir, { recursive: true });
 
-  const registries = collectRegistries(project);
-  const [resolvedDeps, platformApiJars, jdk] = await Promise.all([
-    resolveDeclaredDependencies(project, registries),
-    resolvePlatformApiJars(project, registries, platformId),
+  const [{ classpath }, jdk] = await Promise.all([
+    resolveProjectClasspath(project, { platformId }),
     ensureJdkForProject(project),
   ]);
-
-  const depJars = resolvedDeps.flatMap(flattenJarPaths);
-  const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
 
   await compileJava(project, {
     sourceDir: join(project.rootDir, "src"),
@@ -199,108 +186,4 @@ function hasUserDescriptor(project: ResolvedProject, descriptorPath: string): bo
   const resources = project.resources;
   if (resources === undefined || resources === null) return false;
   return Object.prototype.hasOwnProperty.call(resources, descriptorPath);
-}
-
-function collectRegistries(project: ResolvedProject): string[] {
-  const out: string[] = [];
-  for (const entry of project.registries ?? []) {
-    out.push(typeof entry === "string" ? entry : entry.url);
-  }
-  return out;
-}
-
-async function resolveDeclaredDependencies(
-  project: ResolvedProject,
-  registries: string[],
-): Promise<ResolvedDependency[]> {
-  const deps = project.dependencies;
-  if (deps === undefined || deps === null) return [];
-
-  const results: ResolvedDependency[] = [];
-  for (const [name, raw] of Object.entries(deps)) {
-    const { source, version } =
-      typeof raw === "string"
-        ? { source: `modrinth:${name}`, version: raw }
-        : { source: raw.source, version: raw.version };
-    const parsed = parseSource(source, version);
-    const resolved = await resolveDependency(parsed, {
-      rootDir: project.rootDir,
-      includePrerelease: false,
-      force: false,
-      registries,
-    });
-    results.push(resolved);
-  }
-  return results;
-}
-
-async function resolvePlatformApiJars(
-  project: ResolvedProject,
-  projectRegistries: string[],
-  platformId?: string,
-): Promise<string[]> {
-  const platforms = project.compatibility?.platforms ?? [];
-  const versions = project.compatibility?.versions ?? [];
-  if (platforms.length === 0 || versions.length === 0) return [];
-
-  const primaryId = platformId ?? platforms[0];
-  const primaryVersion = versions[0];
-
-  let primary;
-  try {
-    primary = getPlatform(primaryId);
-  } catch {
-    // pickDescriptor already surfaced this; stay quiet.
-    return [];
-  }
-
-  const apiSpec = await primary.api(primaryVersion);
-  if (apiSpec.dependencies.length === 0) return [];
-
-  // Prefer the platform's own repos; project registries come after so user
-  // overrides still work. Order-preserving dedup.
-  const registries = uniqueInOrder([...apiSpec.repositories, ...projectRegistries]);
-
-  const jars: string[] = [];
-  for (const coord of apiSpec.dependencies) {
-    const resolved = await resolveMaven(coord.groupId, coord.artifactId, coord.version, {
-      rootDir: project.rootDir,
-      includePrerelease: false,
-      force: false,
-      registries,
-    });
-    jars.push(...flattenJarPaths(resolved));
-  }
-  return dedupePreservingOrder(jars);
-}
-
-/** Flatten `dep.jarPath` plus every transitive's jarPath into a single list. */
-function flattenJarPaths(dep: ResolvedDependency): string[] {
-  const out: string[] = [dep.jarPath];
-  for (const t of dep.transitiveDeps) {
-    out.push(...flattenJarPaths(t));
-  }
-  return out;
-}
-
-function dedupePreservingOrder(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const p of paths) {
-    if (seen.has(p)) continue;
-    seen.add(p);
-    out.push(p);
-  }
-  return out;
-}
-
-function uniqueInOrder(values: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const v of values) {
-    if (seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return out;
 }

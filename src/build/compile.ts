@@ -98,7 +98,12 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
   });
 }
 
-async function findJavaSources(dir: string): Promise<string[]> {
+/**
+ * Recursively collect every `.java` file under `dir`, sorted for deterministic
+ * argv ordering. Exported for reuse by tooling that drives `javac`/`javadoc`
+ * outside the build pipeline (e.g. `pluggy docs`).
+ */
+export async function findJavaSources(dir: string): Promise<string[]> {
   const results: string[] = [];
 
   let info;
