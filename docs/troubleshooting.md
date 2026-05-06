@@ -44,12 +44,13 @@ monorepo using [workspaces](./workspaces.md#multi-family-monorepos).
 
 ### BuildTools fails mid-init / `pluggy dev` on a freshly scaffolded spigot project
 
-`pluggy init` reads each MC version's declared Java range from Spigot's
-manifest and skips releases your JDK can't decompile. If you still see a
-BuildTools decompile error (typically `FileNotFoundException … DataComponentPatch.java`),
-either upgrade your JDK (Mojang's 26.x line needs Java 25+) or pin a
-version that fits your current Java with `--mc-version 1.21.11` (or
-similar).
+pluggy provisions a JDK matching the chosen MC version's class-file
+range, so a build mismatch normally can't happen. If BuildTools still
+errors out (typically `FileNotFoundException … DataComponentPatch.java`),
+the most likely cause is a `JAVA_HOME` short-circuit picking up a
+toolchain that doesn't satisfy the range. Unset `JAVA_HOME` to force
+pluggy to provision its own JDK, or pin the JDK explicitly with
+[`pluggy sdk use`](./commands/sdk.md#use).
 
 `pluggy dev` also hits the platform registry for the server jar. The
 first run per `(platform, version)` needs network; subsequent runs
@@ -137,13 +138,17 @@ verbatim. Fix the errors in your editor and re-run.
 The workspace's `src/` directory is empty or missing. pluggy expects
 sources to live under `<workspace>/src/`.
 
-### `compile: failed to spawn javac for project "<name>": spawn javac ENOENT`
+### `compile: failed to spawn javac for project "<name>": spawn <path> ENOENT`
 
-No `javac` on `PATH`. Install a JDK (not just a JRE). On macOS:
-`brew install openjdk@21` and symlink `javac` into a directory that's on
-your `PATH`. On Linux: `apt install openjdk-21-jdk` or equivalent.
+The cached JDK pluggy resolved is missing or its slot was deleted out of
+band. Run `pluggy sdk install` to repopulate the cache, or
+`pluggy sdk path <major>` to verify the slot exists. The `<path>` in the
+error is the absolute `javac` pluggy expected.
 
-Run `pluggy doctor` to see the detected JDK version.
+If the spawn is for `javac` (no path prefix), pluggy fell back to `PATH`
+because `compileJava` was invoked without a resolved JDK. That's normally
+unreachable from CLI commands; file an issue with the surrounding
+output.
 
 ### `shade: workspace dependency "<name>" has not been built yet — expected jar at "<path>". Build the sibling workspace first (topological order is the caller's responsibility).`
 
@@ -159,11 +164,17 @@ Check the path relative to the project root.
 
 ## `pluggy dev`
 
-### `java not found`
+### `java not found` from the dev server spawn
 
-See the `javac` entry above — same fix. `pluggy dev` spawns `java` to
-run the server jar, and spawns `javac` (via the build pipeline) to
-compile your sources.
+Same root cause as the `javac` entry above: the JDK slot is missing.
+`pluggy dev` runs the server JVM with the same JDK that compiled it.
+Run `pluggy sdk install` to repopulate.
+
+### `sdk: <distribution> JDK <major> is not installed and PLUGGY_NO_AUTO_INSTALL=1.`
+
+The CI escape hatch is set and the cache is cold. Pre-warm with
+`pluggy sdk install` in a step before the failing command, or unset the
+env var. The error already includes the exact command to run.
 
 ### Server hangs on first startup
 
@@ -195,16 +206,29 @@ with stateful plugins. Full restart is slower but correct.
 
 ### `✖ Java toolchain — java not found or failed to run: spawn java ENOENT`
 
-Install a JDK. See the `javac` entry above.
+`doctor` probes the host's `java` for visibility, separately from the JDK
+pluggy provisions for builds. Builds still work without `java` on
+`PATH`. Install a JDK to silence this check, or rely on the `Project JDK`
+check below for a pluggy-managed verdict.
+
+### `! Project JDK — temurin <major> not yet installed — pluggy will fetch on first build.`
+
+The required JDK isn't cached, but auto-install is on. The next
+`pluggy build` will download it. Pre-install with
+`pluggy sdk install <major>` if you want the download to happen now.
+
+### `✖ Project JDK — temurin <major> not installed and PLUGGY_NO_AUTO_INSTALL=1`
+
+The CI escape hatch is set and the cache is cold. Pre-warm with the
+exact command in the message, or unset the env var.
 
 ### `! Java toolchain — Java <x> — BuildTools requires Java <y>+`
 
-The detected JDK is older than the floor declared by the cached
-`BuildTools.jar` (read from its `Build-Jdk-Spec` manifest attribute). This
-is a warning — if you're building against Paper, it doesn't matter. If
-you're building against Spigot or Bukkit, install a JDK at or above the
-reported floor and make it the first one on `PATH`. The floor moves as
-SpigotMC ships new BuildTools releases.
+The host `java` is older than the floor declared by the cached
+`BuildTools.jar` (read from its `Build-Jdk-Spec` manifest attribute).
+This is a warning. pluggy uses its own provisioned JDK for the build, so
+the host version usually doesn't matter — fix this if a tool outside
+pluggy depends on the host `java`.
 
 ### `✖ Cache reachability — cache is not writable: <path> (<errno>)`
 

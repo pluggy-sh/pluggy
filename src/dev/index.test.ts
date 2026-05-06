@@ -58,6 +58,18 @@ vi.mock("./jbr.ts", () => ({
   ensureJbr: vi.fn(async () => "java"),
 }));
 
+vi.mock("../sdk/index.ts", () => ({
+  ensureJdkForProject: vi.fn(async () => ({
+    javaPath: "java",
+    javacPath: "javac",
+    javaHome: "/fake",
+    major: 21,
+    source: "system" as const,
+    distribution: "system",
+    selection: { major: 21, distribution: "temurin", source: "fallback-default" as const },
+  })),
+}));
+
 vi.mock("../portable.ts", async () => {
   const actual = await vi.importActual<typeof import("../portable.ts")>("../portable.ts");
   return { ...actual, linkOrCopy: vi.fn(async () => {}) };

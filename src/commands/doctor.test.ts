@@ -35,6 +35,7 @@ function passingHooks(): DoctorCommandOptions["checks"] {
   });
   return {
     java: async () => pass("java", "Java toolchain"),
+    sdk: async () => pass("sdk", "Project JDK"),
     cache: async () => pass("cache", "Cache reachability"),
     registries: async () => [pass("registry", "Registries")],
     project: () => pass("project", "project.json"),

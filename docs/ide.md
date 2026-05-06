@@ -128,8 +128,13 @@ The `.iml` lists every library as an `orderEntry`, plus a single
 | 1.16 and earlier | 8   |
 
 Unparseable versions default to 21 (current Paper baseline). IntelliJ
-will honor `project-jdk-name="21"` if you have a JDK registered under
-that name in `File > Project Structure > SDKs`.
+honors `project-jdk-name="21"` if you have a JDK registered under that
+name in `File > Project Structure > SDKs`.
+
+pluggy provisions a matching JDK on the first build into
+`<cachePath>/jdk/temurin-<major>-<os>-<arch>/`. Run
+`pluggy sdk path 21` to print the absolute `JAVA_HOME` and register that
+path in IntelliJ if no SDK is set up yet — see [`pluggy sdk`](./commands/sdk.md).
 
 **Verifying:** `File > Open...` and point at the repo root. IntelliJ
 should recognize it as an existing project and load the module without

@@ -14,7 +14,6 @@ import bungeePackage from "../defaults/bungee-package.java" with { type: "text" 
 import { writeIntellijStub } from "../build/intellij.ts";
 import { getPlatform, getRegisteredPlatforms, type PlatformFamily } from "../platform/index.ts";
 import { deriveVelocityId } from "../platform/descriptor/velocity.ts";
-import { getJavaRange } from "../platform/spigot/buildtools.ts";
 import { bold, dim, log } from "../logging.ts";
 import { writeFileLF } from "../portable.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
@@ -26,7 +25,6 @@ import {
   type TemplateFile,
 } from "../templates/index.ts";
 
-import { getJavaMajor } from "./doctor.ts";
 import { parseMcVersion, parsePlatform, parseSemver } from "./parsers.ts";
 
 /** Optional inputs to {@link generateProject}. */
@@ -150,30 +148,6 @@ export async function generateProject(
   } catch (e) {
     throw new Error(`Failed to write IntelliJ stub: ${(e as Error).message}`);
   }
-}
-
-/**
- * Pick the newest version from `candidates` that the user's installed Java
- * can compile. Spigot/Bukkit run BuildTools locally, which silently fails
- * (e.g. decompile output missing) when the Minecraft version's `javaVersions`
- * window excludes the user's JDK — so we probe the first few candidates and
- * skip any whose declared range doesn't include `javaMajor`. Falls through
- * to `candidates[0]` when Java can't be detected or no metadata is usable.
- */
-async function pickCompatibleVersion(candidates: string[], platforms: string[]): Promise<string> {
-  const fallback = candidates[0];
-  if (!platforms.includes("spigot") && !platforms.includes("bukkit")) return fallback;
-
-  const javaMajor = await getJavaMajor().catch(() => undefined);
-  if (javaMajor === undefined) return fallback;
-
-  for (const candidate of candidates.slice(0, 10)) {
-    const range = await getJavaRange(candidate);
-    if (range === undefined) continue;
-    const [minJava, maxJava] = range;
-    if (javaMajor >= minJava && javaMajor <= maxJava) return candidate;
-  }
-  return fallback;
 }
 
 /**
@@ -389,7 +363,9 @@ export function initCommand(): Command {
               `Try selecting fewer platforms or specifying a version manually with --mc-version.`,
           );
         }
-        versions = [await pickCompatibleVersion(common, platforms)];
+        // Newest common version. The user's local Java is no longer a
+        // constraint — pluggy provisions the right JDK on first build.
+        versions = [common[0]];
       }
 
       let INITIAL_PROJECT: Project = {

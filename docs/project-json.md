@@ -49,6 +49,9 @@ which workspace you're sitting in.
     "config.yml": "src/config.yml",
     "lang/": "src/lang"
   },
+  "jdk": {
+    "major": 21
+  },
   "dev": {
     "port": 25565,
     "memory": "2G",
@@ -163,10 +166,11 @@ PaperMC's `maven-metadata.xml` and picks the highest matching entry, so you
 write the plain MC version and pluggy works out the rest.
 
 Spigot and Bukkit go through BuildTools, which decompiles the Mojang
-server jar using the JDK on `PATH`. Different Minecraft releases require
-different Java versions (MC 1.21.x allows Java 21 – 26; MC 26.1.x requires
-Java 25 – 26). `pluggy init` reads each candidate's manifest and won't pin
-your project to a version your Java can't actually compile.
+server jar using a JDK from pluggy's cache. Different Minecraft releases
+require different Java versions (MC 1.21.x allows Java 21 – 26; MC
+26.1.x requires Java 25 – 26). pluggy provisions a matching JDK from the
+[Foojay Disco API](./commands/sdk.md) on first build, so the version
+you pick at `init` time isn't constrained by your host Java.
 
 ### `registries` (optional)
 
@@ -296,6 +300,30 @@ model yet (`commands:`, `permissions:`, `softdepend:`, and so on).
 
 On output-path collisions, the first-declared entry wins and subsequent
 ones are skipped with a warning.
+
+### `jdk` (optional)
+
+Pin the JDK pluggy installs for `build`, `test`, and `dev`. When omitted,
+pluggy derives the required Java major from `compatibility.versions[0]`
+(Java 21 for 1.20.5+, Java 17 for 1.18-1.20.4, and so on) and downloads
+the default distribution (Temurin) on first use.
+
+```json
+"jdk": {
+  "major": 21,
+  "distribution": "zulu"
+}
+```
+
+| Field          | Default     | Notes                                                                                                                      |
+| -------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `major`        | derived     | Java major release. Overrides the version-derived default.                                                                 |
+| `distribution` | `"temurin"` | One of `temurin`, `zulu`, `liberica`, `corretto`, `microsoft`, `graalvm_community`. See [`pluggy sdk`](./commands/sdk.md). |
+
+`pluggy sdk use 21 --distribution zulu` writes this block for you. Pin
+when your team has standardized on a non-default distribution, or when a
+project must build against a specific Java major regardless of the MC
+version.
 
 ### `dev` (optional)
 

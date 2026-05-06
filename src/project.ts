@@ -22,6 +22,20 @@ export interface Project {
   resources?: Record<string, string>;
   workspaces?: string[];
   dev?: DevConfig;
+  /**
+   * Optional JDK pin. When omitted, pluggy derives the required major from
+   * `compatibility.versions[0]` and downloads the default distribution
+   * (Temurin) on demand. Pinning here travels with the repo so teammates
+   * land on the same JDK.
+   */
+  jdk?: JdkConfig;
+}
+
+export interface JdkConfig {
+  /** Java major release, e.g. 21. When omitted, derived from MC version. */
+  major?: number;
+  /** Disco distribution slug. Default `"temurin"`. */
+  distribution?: string;
 }
 
 /** Project augmented with its resolved on-disk location. */

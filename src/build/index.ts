@@ -15,6 +15,7 @@ import type { ResolvedProject } from "../project.ts";
 import { parseSource } from "../source.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
+import { ensureJdkForProject } from "../sdk/index.ts";
 
 import { compileJava } from "./compile.ts";
 import { pickDescriptor } from "./descriptor.ts";
@@ -97,8 +98,11 @@ export async function buildProject(
   await mkdir(stagingDir, { recursive: true });
 
   const registries = collectRegistries(project);
-  const resolvedDeps = await resolveDeclaredDependencies(project, registries);
-  const platformApiJars = await resolvePlatformApiJars(project, registries);
+  const [resolvedDeps, platformApiJars, jdk] = await Promise.all([
+    resolveDeclaredDependencies(project, registries),
+    resolvePlatformApiJars(project, registries),
+    ensureJdkForProject(project),
+  ]);
 
   const depJars = resolvedDeps.flatMap(flattenJarPaths);
   const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
@@ -126,6 +130,7 @@ export async function buildProject(
     sourceDir: join(project.rootDir, "src"),
     outputDir: stagingDir,
     classpath,
+    javacPath: jdk.javacPath,
   });
 
   await applyShading(resolvedDeps, project.shading ?? {}, stagingDir);
@@ -173,8 +178,11 @@ export async function checkPlatformCompile(
   await mkdir(stagingDir, { recursive: true });
 
   const registries = collectRegistries(project);
-  const resolvedDeps = await resolveDeclaredDependencies(project, registries);
-  const platformApiJars = await resolvePlatformApiJars(project, registries, platformId);
+  const [resolvedDeps, platformApiJars, jdk] = await Promise.all([
+    resolveDeclaredDependencies(project, registries),
+    resolvePlatformApiJars(project, registries, platformId),
+    ensureJdkForProject(project),
+  ]);
 
   const depJars = resolvedDeps.flatMap(flattenJarPaths);
   const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
@@ -183,6 +191,7 @@ export async function checkPlatformCompile(
     sourceDir: join(project.rootDir, "src"),
     outputDir: stagingDir,
     classpath,
+    javacPath: jdk.javacPath,
   });
 }
 
