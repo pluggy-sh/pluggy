@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in pluggy isn't behaving the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Please search [existing issues](https://github.com/ch99q/pluggy/issues?q=is%3Aissue) before submitting.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+      placeholder: "`pluggy build` fails with X when Y."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Exact commands, starting from a clean directory, that reproduce the issue. Include any relevant `project.json` or flags.
+      render: shell
+      placeholder: |
+        pluggy init --yes --platform velocity my-plugin
+        cd my-plugin
+        pluggy build
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the relevant error output. Trim long stack traces to the meaningful frames.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: pluggy-version
+    attributes:
+      label: pluggy version
+      description: Output of `pluggy --version`. If you're on a development build, paste the commit SHA.
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: pluggy doctor output
+      description: Run `pluggy doctor` and paste the output. This captures Java version, OS, and toolchain state.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Anything else worth knowing — workarounds you tried, related issues, links to the failing CI run, etc.

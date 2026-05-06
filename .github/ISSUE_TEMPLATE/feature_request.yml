@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an enhancement to pluggy's CLI, build, dev server, or platform support.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search [existing issues](https://github.com/ch99q/pluggy/issues?q=is%3Aissue) before submitting — feature requests are often already tracked.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is the user-facing problem you're hitting? Describe the situation, not the proposed fix.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like pluggy to behave? Include CLI shapes, `project.json` fields, or output examples where useful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed and why they fall short.
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Links to upstream issues, related PRs, prior art in other tools, etc.
