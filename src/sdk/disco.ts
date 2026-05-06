@@ -6,11 +6,9 @@
  *
  * Docs: https://github.com/foojayio/discoapi
  *
- * The list response omits checksum fields; those live behind a separate
- * per-package endpoint we currently don't fetch. If a download lands corrupt,
- * archive extraction fails — that's the v1 integrity story. Adding explicit
- * SHA verification means a second `GET /packages/{id}` per install and is
- * tracked as a follow-up.
+ * The package-list response omits checksum fields, so we make a second
+ * `GET /packages/{id}` request after picking a package to retrieve them.
+ * `installJdk` refuses to extract bytes whose hash doesn't match.
  */
 
 import process from "node:process";
@@ -42,6 +40,13 @@ export interface JdkSpec {
   filename: string;
   /** Package size in bytes when Disco knows it; `undefined` otherwise. */
   sizeBytes?: number;
+  /**
+   * Cryptographic hash published by the JDK vendor and surfaced via Disco's
+   * per-package endpoint. `installJdk` verifies the downloaded bytes match
+   * before extraction; `undefined` if the vendor doesn't publish one (rare;
+   * we log a warning but don't block on it for backward compatibility).
+   */
+  checksum?: { algorithm: "sha256" | "sha512" | "sha1" | "md5"; value: string };
 }
 
 export interface ResolveJdkOptions {
@@ -96,6 +101,11 @@ export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
     throw new Error(`disco: package ${pkg.id ?? "?"} returned no pkg_download_redirect link`);
   }
 
+  const checksum =
+    typeof pkg.id === "string" && pkg.id.length > 0 && typeof pkg.links?.pkg_info_uri === "string"
+      ? await fetchPackageChecksum(pkg.links.pkg_info_uri)
+      : undefined;
+
   return {
     distribution: pkg.distribution,
     major: pkg.major_version,
@@ -106,7 +116,72 @@ export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
     downloadUrl,
     filename: pkg.filename,
     sizeBytes: typeof pkg.size === "number" ? pkg.size : undefined,
+    checksum,
   };
+}
+
+/**
+ * Fetch the per-package detail endpoint to recover the vendor-published
+ * checksum. Returns `undefined` on any failure (network, missing field,
+ * unsupported algorithm) — `installJdk` logs a warning and proceeds without
+ * verification in that case rather than refusing every install.
+ *
+ * `checksum_uri` (when present) points to a text file containing the digest
+ * value. Some vendors include the hash inline as `checksum`, others only as
+ * a sidecar URL — we handle both.
+ */
+async function fetchPackageChecksum(pkgInfoUri: string): Promise<JdkSpec["checksum"] | undefined> {
+  const data = await fetchJson(new URL(pkgInfoUri)).catch(() => undefined);
+  if (data === undefined) return undefined;
+  const result = (data as DiscoPackageInfoResponse).result;
+  if (!Array.isArray(result) || result.length === 0) return undefined;
+  const info = result[0];
+
+  const rawType = (info.checksum_type ?? "").toLowerCase();
+  if (rawType !== "sha256" && rawType !== "sha512" && rawType !== "sha1" && rawType !== "md5") {
+    return undefined;
+  }
+
+  let value = info.checksum;
+  if ((value === undefined || value.length === 0) && typeof info.checksum_uri === "string") {
+    value = await fetchChecksumSidecar(info.checksum_uri);
+  }
+  if (value === undefined || value.length === 0) return undefined;
+
+  // Sidecar files often look like "<hex>  filename"; take the leading hex
+  // token. Hashes are case-insensitive — normalize to lowercase for compare.
+  const trimmed = value.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  if (!/^[0-9a-f]+$/.test(trimmed)) return undefined;
+
+  return { algorithm: rawType, value: trimmed };
+}
+
+async function fetchChecksumSidecar(url: string): Promise<string | undefined> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return undefined;
+      return await res.text();
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+interface DiscoPackageInfoResponse {
+  result?: DiscoPackageInfo[];
+}
+
+interface DiscoPackageInfo {
+  filename?: string;
+  direct_download_uri?: string;
+  checksum?: string;
+  checksum_type?: string;
+  checksum_uri?: string;
 }
 
 /** Map `process.platform` + `process.arch` to Disco's naming. */

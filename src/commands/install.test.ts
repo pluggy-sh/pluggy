@@ -194,13 +194,7 @@ describe("doInstall: no plugin argument", () => {
     );
 
     // Plant the matching cached jar so the cache check passes.
-    const cacheJar = join(
-      cacheDir,
-      "dependencies",
-      "modrinth",
-      "worldedit",
-      "1.20.1+forge.jar",
-    );
+    const cacheJar = join(cacheDir, "dependencies", "modrinth", "worldedit", "1.20.1+forge.jar");
     await mkdir(join(cacheDir, "dependencies", "modrinth", "worldedit"), { recursive: true });
     await writeFile(cacheJar, "clean");
 

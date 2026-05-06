@@ -10,8 +10,9 @@
  */
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -57,6 +58,20 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
   // Download archive if missing. We deliberately keep archives around in
   // <cacheRoot>/jdk/archives so a re-extract (after manual slot deletion)
   // doesn't redownload — `pluggy sdk gc` is what cleans them up.
+  if (existsSync(archive)) {
+    // A cached archive whose hash drifts from Disco's published value is
+    // either corrupt or a leftover from before the integrity story; drop
+    // and redownload rather than risk extracting tampered bytes.
+    if (spec.checksum !== undefined) {
+      const cachedHash = await hashFile(archive, spec.checksum.algorithm);
+      if (cachedHash !== spec.checksum.value) {
+        log.warn(
+          `sdk: cached archive at ${archive} has unexpected ${spec.checksum.algorithm} ${cachedHash} (expected ${spec.checksum.value}); re-downloading`,
+        );
+        await rm(archive, { force: true });
+      }
+    }
+  }
   if (!existsSync(archive)) {
     await downloadArchive(spec, archive);
   }
@@ -83,6 +98,14 @@ async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
   const sizeNote = spec.sizeBytes !== undefined ? ` (~${formatMb(spec.sizeBytes)})` : "";
   log.info(`sdk: downloading ${spec.distribution} ${spec.fullVersion}${sizeNote}…`);
 
+  // Refuse to follow non-HTTPS Disco redirects — JDK CDNs are HTTPS-only,
+  // a downgrade is an attack signal worth aborting on.
+  if (!spec.downloadUrl.startsWith("https://")) {
+    throw new Error(
+      `sdk: refusing non-https download URL ${JSON.stringify(spec.downloadUrl)} — Disco redirected to a plaintext target`,
+    );
+  }
+
   const res = await fetch(spec.downloadUrl, { redirect: "follow" });
   if (!res.ok) {
     throw new Error(`sdk: download failed (${res.status} ${res.statusText}) — ${spec.downloadUrl}`);
@@ -95,9 +118,33 @@ async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
   // reliable across platforms — and JDK archives are bounded (≈200 MB).
   // Worth revisiting if we ever cache larger artifacts.
   const buf = new Uint8Array(await res.arrayBuffer());
+
+  if (spec.checksum !== undefined) {
+    const actual = createHash(spec.checksum.algorithm).update(buf).digest("hex");
+    if (actual !== spec.checksum.value) {
+      throw new Error(
+        `sdk: integrity check failed for ${spec.distribution} ${spec.fullVersion} (${spec.os}/${spec.arch}) — ` +
+          `Disco published ${spec.checksum.algorithm} ${spec.checksum.value}, downloaded bytes hash to ${actual}. ` +
+          `Refusing to extract a tampered runtime.`,
+      );
+    }
+  } else {
+    log.warn(
+      `sdk: ${spec.distribution} ${spec.fullVersion} (${spec.os}/${spec.arch}) was downloaded without an upstream checksum — Disco didn't publish one for this package`,
+    );
+  }
+
   await writeFile(tmpPath, buf);
   await rename(tmpPath, destPath);
   log.debug(`sdk: cached archive at ${destPath} (${buf.byteLength} bytes)`);
+}
+
+async function hashFile(
+  path: string,
+  algorithm: "sha256" | "sha512" | "sha1" | "md5",
+): Promise<string> {
+  const bytes = await readFile(path);
+  return createHash(algorithm).update(bytes).digest("hex");
 }
 
 /**
