@@ -26,6 +26,7 @@ the exit code.
 | `workspace`           | Workspace graph         | Cycle detected in `workspace:` deps.                               | —                                                                                                                                       |
 | `descriptor (<name>)` | Descriptor family       | `pickDescriptor` throws (unknown platform, mixed families).        | —                                                                                                                                       |
 | `outdated`            | Outdated dependencies   | —                                                                  | Any Modrinth dep has a newer stable version, or any Modrinth query failed.                                                              |
+| `pluggy-version`      | Pluggy version          | —                                                                  | A newer release is available on GitHub, or the latest release couldn't be reached.                                                      |
 
 ### Environment checks
 

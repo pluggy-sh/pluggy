@@ -43,7 +43,7 @@ install instructions and exits clean.
 $ pluggy upgrade
 Upgrading to: v0.2.0
 downloading https://github.com/ch99q/pluggy/releases/download/v0.2.0/pluggy-darwin-arm64
-✔ pluggy v0.2.0 installed at /usr/local/bin/pluggy (previous binary backed up to /usr/local/bin/pluggy.old)
+✔ pluggy v0.2.0 installed at ~/.pluggy/bin/pluggy (previous binary backed up to ~/.pluggy/bin/pluggy.old)
 ```
 
 With `--print-only`:
@@ -61,14 +61,40 @@ Install manually:
 
 ## Permissions
 
-pluggy uses the path Node reports as `process.execPath`. On macOS and
-Linux the install script drops the binary at `/usr/local/bin/pluggy`,
-which is root-owned — upgrading on those systems requires running `pluggy
-upgrade` with `sudo`, or installing the binary somewhere writable by your
-user.
+pluggy uses the path Node reports as `process.execPath`. The install
+scripts drop the binary somewhere writable by the current user, so no
+`sudo` is needed for upgrades:
 
-On Windows the install script places the binary at
-`%LOCALAPPDATA%\Programs\pluggy\pluggy.exe`, which is user-writable.
+- macOS/Linux: `~/.pluggy/bin/pluggy` (override with `PLUGGY_HOME`).
+- Windows: `%LOCALAPPDATA%\Programs\pluggy\pluggy.exe`.
+
+If pluggy is currently installed in a system-owned path (for example a
+legacy `/usr/local/bin/pluggy` install), `pluggy upgrade` detects this
+and prints recovery instructions: either re-run with `sudo`, or
+reinstall via the install script (which will land in `~/.pluggy/bin`)
+and remove the old system binary so it doesn't shadow the new one.
+
+## Update notification
+
+When pluggy starts, it reads a small cached state file
+(`<cache>/update-check.json`) and, at most once per 24 hours, fetches
+the latest release tag in the background. If the cache shows that you
+are out of date, you'll see a one-line notice on stderr after the
+command finishes:
+
+```text
+✦ pluggy 0.3.0 available → you have 0.2.0. Run pluggy upgrade.
+```
+
+The notice is suppressed when:
+
+- `--json` is set on the current command,
+- `CI` is set to a non-empty truthy value,
+- stderr isn't a TTY (e.g., piped output),
+- `PLUGGY_NO_UPDATE_CHECK=1` is set in the environment, or
+- the running build is the dev sentinel (`0.0.0`).
+
+Run `pluggy doctor` to see the same information inline.
 
 ## Error cases
 
