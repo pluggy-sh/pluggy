@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { access, chmod, constants, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -98,15 +99,70 @@ function isSystemPath(path: string): boolean {
 }
 
 /**
+ * Fetch `SHA256SUMS.txt` for the release and return a map of `assetName ->
+ * lowercase hex sha256`. Throws when the manifest is missing — the install
+ * pipeline only began publishing the manifest with this version's release
+ * workflow, so a missing manifest means we're being asked to upgrade to an
+ * unsigned release and `pluggy upgrade` refuses by design.
+ *
+ * `actions/attest-build-provenance` ships the manifest itself with a
+ * Sigstore attestation, so a `gh attestation verify SHA256SUMS.txt --repo
+ * <repo>` round-trip catches a tampered manifest at the OIDC-identity
+ * level. We don't carry that verifier in-binary yet (it's a follow-up);
+ * the manifest hash check below catches simple asset-only substitution.
+ */
+async function fetchExpectedSha256(
+  repository: string,
+  tag: string,
+  assetName: string,
+): Promise<string> {
+  const manifestUrl = `https://github.com/${repository}/releases/download/${tag}/SHA256SUMS.txt`;
+  const res = await fetch(manifestUrl);
+  if (!res.ok) {
+    throw new Error(
+      `failed to fetch ${manifestUrl}: ${res.status} ${res.statusText}. ` +
+        `This release does not publish a checksum manifest; refusing to upgrade to an unverified binary. ` +
+        `Re-install manually if you trust this release: ` +
+        `curl -fsSL https://github.com/${repository}/releases/download/${tag}/install.sh | bash`,
+    );
+  }
+  const text = await res.text();
+  const expected = parseShaManifest(text, assetName);
+  if (expected === undefined) {
+    throw new Error(
+      `SHA256SUMS.txt at ${manifestUrl} has no entry for "${assetName}". Refusing to upgrade.`,
+    );
+  }
+  return expected;
+}
+
+/** Parse `<sha256-hex>  <filename>` lines, return the hex matching `name` (or undefined). */
+function parseShaManifest(text: string, name: string): string | undefined {
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    // sha256sum format: "<hex><space><space><filename>" — but tolerate one or
+    // more spaces / tabs to match other generators.
+    const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+    if (match === null) continue;
+    if (match[2].trim() === name) return match[1].toLowerCase();
+  }
+  return undefined;
+}
+
+/**
  * Download the release asset for the current platform into a temp file,
- * rename the running binary out of the way (Windows tolerates this; Unix
- * is routine), and move the new binary into its place. On failure, the
- * old binary is restored from the `.old` backup so the user isn't left
- * with a broken install.
+ * verify it against `SHA256SUMS.txt`, rename the running binary out of the
+ * way (Windows tolerates this; Unix is routine), and move the new binary
+ * into its place. On failure, the old binary is restored from the `.old`
+ * backup so the user isn't left with a broken install.
  */
 async function replaceInPlace(
   downloadUrl: string,
   currentBinaryPath: string,
+  expectedSha256: string,
+  assetName: string,
+  repository: string,
 ): Promise<{ backupPath: string }> {
   const binaryRes = await fetch(downloadUrl);
   if (!binaryRes.ok) {
@@ -117,6 +173,14 @@ async function replaceInPlace(
   const bytes = new Uint8Array(await binaryRes.arrayBuffer());
   if (bytes.length === 0) {
     throw new Error(`downloaded asset from ${downloadUrl} is empty`);
+  }
+
+  const actualSha = createHash("sha256").update(bytes).digest("hex");
+  if (actualSha !== expectedSha256) {
+    throw new Error(
+      `integrity check failed for ${assetName} — SHA256SUMS.txt expects ${expectedSha256} but downloaded bytes hash to ${actualSha}. ` +
+        `Refusing to install a tampered binary; please report at https://github.com/${repository}/issues.`,
+    );
   }
 
   const tempDir = await mkdtemp(join(tmpdir(), "pluggy-upgrade-"));
@@ -219,7 +283,18 @@ export function upgradeCommand(options: UpgradeOptions): Command {
       log.info(`${dim(`downloading ${downloadUrl}`)}`);
 
       try {
-        const { backupPath } = await replaceInPlace(downloadUrl, currentBinaryPath);
+        const expectedSha = await fetchExpectedSha256(
+          options.repository,
+          release.tag_name,
+          assetName,
+        );
+        const { backupPath } = await replaceInPlace(
+          downloadUrl,
+          currentBinaryPath,
+          expectedSha,
+          assetName,
+          options.repository,
+        );
         log.success(
           `pluggy ${release.tag_name} installed at ${currentBinaryPath} (previous binary backed up to ${backupPath})`,
         );
