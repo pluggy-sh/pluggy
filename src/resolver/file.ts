@@ -41,6 +41,14 @@ export async function resolveFile(
   const hex = createHash("sha256").update(bytes).digest("hex");
   const integrity = `sha256-${hex}`;
 
+  if (ctx.expectedIntegrity !== undefined && integrity !== ctx.expectedIntegrity) {
+    throw new Error(
+      `file: integrity check failed for "${path}" — ` +
+        `lockfile expects ${ctx.expectedIntegrity} but the file's bytes hash to ${integrity}. ` +
+        `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
+    );
+  }
+
   const cacheDir = join(getCachePath(), "dependencies", "file");
   await mkdir(cacheDir, { recursive: true });
   const jarPath = join(cacheDir, `${hex}.jar`);

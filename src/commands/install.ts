@@ -285,7 +285,13 @@ function cachedJarPathForEntry(entry: LockfileEntry): string | undefined {
   }
 }
 
-const SAFE_NAME_RE = /^[A-Za-z0-9._-]+$/;
+// Permits the union of characters seen in legit Maven coordinates and
+// Modrinth version strings: alphanumerics plus `.`, `_`, `-`, `+`, `~`.
+// `+` is load-bearing — Modrinth `version_number` regularly contains it
+// (e.g. `1.20.1+forge`), and Maven versions allow it too. Path separators
+// (`/`, `\`), null bytes, and traversal-special components (`..`, `.`)
+// are explicitly rejected below.
+const SAFE_NAME_RE = /^[A-Za-z0-9._+~-]+$/;
 
 function assertSafeName(value: string, field: string): void {
   if (typeof value !== "string" || value.length === 0 || !SAFE_NAME_RE.test(value)) {
@@ -293,9 +299,6 @@ function assertSafeName(value: string, field: string): void {
       `install: refusing unsafe lockfile ${field} ${JSON.stringify(value)} — won't construct a cache path that could escape the cache root`,
     );
   }
-  // SAFE_NAME_RE permits dots, so `..` and `.` slip through the regex but
-  // are filesystem-special. Reject explicitly so a lockfile-crafted entry
-  // can't traverse the cache root via a single-component name.
   if (value === "." || value === "..") {
     throw new Error(
       `install: refusing reserved lockfile ${field} ${JSON.stringify(value)} — would traverse the cache root`,

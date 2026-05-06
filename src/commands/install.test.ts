@@ -162,6 +162,53 @@ describe("doInstall: no plugin argument", () => {
     expect(lock?.entries.worldedit.integrity).toBe("sha256-abc");
   });
 
+  test("accepts Modrinth versions containing '+' (e.g. 1.20.1+forge) when checking the cache", async () => {
+    await writeFile(
+      join(dir, "project.json"),
+      JSON.stringify({
+        name: "demo",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { worldedit: "1.20.1+forge" },
+      }),
+    );
+    const expectedHash = `sha256-${createHash("sha256").update("clean").digest("hex")}`;
+    await writeFile(
+      join(dir, "pluggy.lock"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          entries: {
+            worldedit: {
+              source: { kind: "modrinth", slug: "worldedit", version: "1.20.1+forge" },
+              resolvedVersion: "1.20.1+forge",
+              integrity: expectedHash,
+              declaredBy: ["demo"],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    // Plant the matching cached jar so the cache check passes.
+    const cacheJar = join(
+      cacheDir,
+      "dependencies",
+      "modrinth",
+      "worldedit",
+      "1.20.1+forge.jar",
+    );
+    await mkdir(join(cacheDir, "dependencies", "modrinth", "worldedit"), { recursive: true });
+    await writeFile(cacheJar, "clean");
+
+    const result = await doInstall({ cwd: dir });
+    expect(result.installed).toEqual([]);
+    expect(result.skipped).toContain("worldedit");
+  });
+
   test("re-resolves when a cached jar's bytes don't match the lockfile integrity", async () => {
     await writeFile(
       join(dir, "project.json"),

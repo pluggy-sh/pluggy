@@ -95,6 +95,21 @@ describe("resolveFile", () => {
     );
   });
 
+  test("rejects the resolve when expectedIntegrity disagrees with the file bytes", async () => {
+    const bytes = new Uint8Array([42, 42, 42]);
+    await writeFile(join(workDir, "ours.jar"), bytes);
+
+    const ctx: ResolveContext = {
+      rootDir: workDir,
+      includePrerelease: false,
+      force: false,
+      registries: [],
+      expectedIntegrity: "sha256-pinned",
+    };
+
+    await expect(resolveFile("./ours.jar", "1", ctx)).rejects.toThrow(/integrity check failed/);
+  });
+
   test("byte-identical files from different source paths hash to the same cache entry", async () => {
     const bytes = new Uint8Array([7, 7, 7]);
     await writeFile(join(workDir, "a.jar"), bytes);
