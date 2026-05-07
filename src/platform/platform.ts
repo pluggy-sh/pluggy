@@ -21,11 +21,11 @@ export interface MavenAPI {
 
 /**
  * Family of plugin platforms that share a runtime API: bukkit-derivatives
- * (paper/folia/spigot/bukkit), velocity proxies, or bungee proxies. Used by
- * the scaffolder + template selector to pick a stub class that actually
- * compiles against the chosen platform.
+ * (paper/folia/spigot/bukkit), velocity proxies, bungee proxies, or sponge
+ * (SpongeVanilla + SpongeAPI). Used by the scaffolder + template selector to
+ * pick a stub class that actually compiles against the chosen platform.
  */
-export type PlatformFamily = "bukkit" | "velocity" | "bungee";
+export type PlatformFamily = "bukkit" | "velocity" | "bungee" | "sponge";
 
 /** How a plugin descriptor is serialized into the final jar. */
 export interface DescriptorSpec {
@@ -37,10 +37,39 @@ export interface DescriptorSpec {
   generate(project: ResolvedProject): string;
 }
 
+/**
+ * Per-platform runtime layout. Tells `pluggy dev` how to stage the working
+ * directory and how to invoke the server jar — without it, dev would have
+ * to special-case every family.
+ */
+export interface RuntimeLayout {
+  /**
+   * Path under `dev/` where plugin jars are dropped. Forward-slashed,
+   * relative to the dev directory. Bukkit-family servers use `"plugins"`,
+   * SpongeVanilla 8+ uses `"mods/plugins"` (its launcher's default
+   * `additional-plugins-directory`), proxies use `"plugins"`.
+   */
+  pluginsDir: string;
+  /**
+   * Arguments appended after `-jar server.jar`. The Mojang vanilla server
+   * jar accepts the positional `nogui`; SpongeVanilla goes through
+   * ModLauncher and expects `--nogui`; Velocity and Bungee accept neither.
+   */
+  serverArgs: string[];
+  /**
+   * Whether the server reads `eula.txt` and `server.properties` from its
+   * working directory. Vanilla MC wrappers (paper/folia/spigot/bukkit/sponge)
+   * do; standalone proxies (velocity/bungee) ignore both.
+   */
+  vanillaServerFiles: boolean;
+}
+
 /** Contract each platform (paper, spigot, ...) implements. */
 export interface PlatformProvider {
   id: string;
   descriptor: DescriptorSpec;
+  /** Layout + invocation hints used by `pluggy dev`. */
+  runtime: RuntimeLayout;
 
   getVersions(): Promise<string[]>;
   getLatestVersion(): Promise<Version>;

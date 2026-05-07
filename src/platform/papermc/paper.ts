@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { bukkitDescriptor } from "../descriptor/bukkit.ts";
 import { createPlatform, type Version } from "../platform.ts";
+import { BUKKIT_RUNTIME } from "../runtime.ts";
 import * as papermc from "./papermc.ts";
 
 const PAPER_MAVEN_METADATA =
@@ -47,6 +48,7 @@ function buildNumber(versionString: string): number {
 export default createPlatform((ctx) => ({
   id: "paper",
   descriptor: bukkitDescriptor,
+  runtime: BUKKIT_RUNTIME,
 
   async getVersionInfo(version: string): Promise<Version> {
     const versionsList = await papermc.versions("paper");

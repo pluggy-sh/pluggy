@@ -22,6 +22,7 @@ createPlatform(() => ({
   getVersionInfo: () => Promise.resolve({ version: "1.0.0", build: 0 }),
   download: () => Promise.reject(new Error("not used")),
   api: () => Promise.resolve({ repositories: [], dependencies: [] }),
+  runtime: { pluginsDir: "plugins", serverArgs: [], vanillaServerFiles: false },
 }));
 
 createPlatform(() => ({
@@ -37,6 +38,7 @@ createPlatform(() => ({
   getVersionInfo: () => Promise.resolve({ version: "1.0.0", build: 0 }),
   download: () => Promise.reject(new Error("not used")),
   api: () => Promise.resolve({ repositories: [], dependencies: [] }),
+  runtime: { pluginsDir: "plugins", serverArgs: [], vanillaServerFiles: false },
 }));
 
 createPlatform(() => ({
@@ -52,6 +54,7 @@ createPlatform(() => ({
   getVersionInfo: () => Promise.resolve({ version: "1.0.0", build: 0 }),
   download: () => Promise.reject(new Error("not used")),
   api: () => Promise.resolve({ repositories: [], dependencies: [] }),
+  runtime: { pluginsDir: "plugins", serverArgs: [], vanillaServerFiles: false },
 }));
 
 function makeProject(platforms: string[]): ResolvedProject {

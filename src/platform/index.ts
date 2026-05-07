@@ -8,3 +8,4 @@ import "./papermc/folia.ts";
 import "./papermc/travertine.ts";
 import "./papermc/velocity.ts";
 import "./papermc/waterfall.ts";
+import "./sponge/sponge.ts";

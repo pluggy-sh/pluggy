@@ -36,6 +36,12 @@
       "name": "BungeeCord proxy plugin",
       "description": "BungeeCord plugin with a `PostLoginEvent` listener and a registered Command — the Bungee equivalent of the velocity-proxy template.",
       "family": "bungee"
+    },
+    {
+      "id": "sponge-basic",
+      "name": "Sponge plugin (basic)",
+      "description": "SpongeVanilla plugin with `@Plugin` lifecycle, a join listener, and a Brigadier-parameterized `/hello` command.",
+      "family": "sponge"
     }
   ]
 }

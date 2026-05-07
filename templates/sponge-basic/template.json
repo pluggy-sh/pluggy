@@ -1,0 +1,6 @@
+{
+  "id": "sponge-basic",
+  "name": "Sponge plugin (basic)",
+  "description": "SpongeVanilla plugin with `@Plugin` lifecycle, a join listener, and a Brigadier-parameterized `/hello` command.",
+  "family": "sponge"
+}

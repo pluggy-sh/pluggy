@@ -125,12 +125,19 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     freshWorld: opts.freshWorld,
     port: opts.port,
     onlineMode: opts.offline === true ? false : project.dev?.onlineMode,
+    vanillaServerFiles: platform.runtime.vanillaServerFiles,
   });
 
   const extraPluginsAbsolute = (project.dev?.extraPlugins ?? []).map((p) =>
     resolve(project.rootDir, p),
   );
-  await stagePlugins(devDir, buildResult.outputPath, runtimePluginDeps, extraPluginsAbsolute);
+  await stagePlugins(
+    devDir,
+    platform.runtime.pluginsDir,
+    buildResult.outputPath,
+    runtimePluginDeps,
+    extraPluginsAbsolute,
+  );
 
   const memory = opts.memory ?? project.dev?.memory ?? "2G";
   const userJvmArgs = opts.args ?? project.dev?.jvmArgs ?? [];
@@ -156,6 +163,7 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     serverJarName: "server.jar",
     memory,
     jvmArgs,
+    serverArgs: platform.runtime.serverArgs,
     javaPath,
   });
 
@@ -165,7 +173,7 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     hotswap.enabled === true ? startHotswap({ child }) : undefined;
 
   const pluginJarName = basename(buildResult.outputPath);
-  const pluginDest = join(devDir, "plugins", pluginJarName);
+  const pluginDest = join(devDir, ...platform.runtime.pluginsDir.split("/"), pluginJarName);
 
   let stopWatching: (() => void) | undefined;
 
@@ -193,6 +201,7 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
         serverJarName: "server.jar",
         memory,
         jvmArgs,
+        serverArgs: platform.runtime.serverArgs,
         javaPath,
       });
       log.debug(`dev: server respawned (pid=${child.pid ?? "?"})`);

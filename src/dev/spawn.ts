@@ -17,6 +17,12 @@ export interface SpawnServerOptions {
   /** Caller-supplied JVM flags. `-javaagent:` etc. go here. */
   jvmArgs: string[];
   /**
+   * Args appended after `-jar <serverJar>`. Comes from the platform's
+   * `runtime.serverArgs` — `["nogui"]` for bukkit-family, `["--nogui"]`
+   * for sponge (ModLauncher), `[]` for velocity/bungee proxies.
+   */
+  serverArgs: string[];
+  /**
    * Absolute path to the `java` binary to launch. Defaults to "java" on
    * PATH; the dev loop overrides this with a JBR-resolved path when hotswap
    * is enabled.
@@ -25,12 +31,18 @@ export interface SpawnServerOptions {
 }
 
 /**
- * Spawn `<javaPath> -Xmx<memory> <jvmArgs> -jar <serverJar> nogui` inside
- * `devDir`. `nogui` suppresses Bukkit's AWT console window on desktop JVMs.
- * Installs a SIGINT handler that is disposed automatically on child exit.
+ * Spawn `<javaPath> -Xmx<memory> <jvmArgs> -jar <serverJar> <serverArgs>`
+ * inside `devDir`. Installs a SIGINT handler that is disposed automatically
+ * on child exit.
  */
 export function spawnServer(opts: SpawnServerOptions): ChildProcess {
-  const argv = [`-Xmx${opts.memory}`, ...opts.jvmArgs, "-jar", opts.serverJarName, "nogui"];
+  const argv = [
+    `-Xmx${opts.memory}`,
+    ...opts.jvmArgs,
+    "-jar",
+    opts.serverJarName,
+    ...opts.serverArgs,
+  ];
 
   const child = spawn(opts.javaPath ?? "java", argv, {
     cwd: opts.devDir,

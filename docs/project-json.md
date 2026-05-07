@@ -74,9 +74,10 @@ at a time below.
 ### `name` (required)
 
 String matching `^[a-zA-Z0-9_]+$`. Becomes the plugin's name in the
-generated descriptor (`plugin.yml` / `bungee.yml` / `velocity-plugin.json`)
-and the output jar stem (`<name>-<version>.jar`). `doctor` enforces the
-regex; `init` rejects other characters.
+generated descriptor (`plugin.yml` / `bungee.yml` / `velocity-plugin.json` /
+`META-INF/sponge_plugins.json`) and the output jar stem
+(`<name>-<version>.jar`). `doctor` enforces the regex; `init` rejects other
+characters.
 
 ### `version` (required)
 
@@ -142,21 +143,22 @@ the array by hand to add or remove editors later.
   latest stable Velocity release.
 - `platforms` — non-empty array. The first entry is the primary platform.
   Every platform in the array must share the same descriptor family (same
-  `plugin.yml` vs `bungee.yml` vs `velocity-plugin.json` target) — mixing
-  families fails early with "Split them into separate workspaces — one per
-  family."
+  `plugin.yml` vs `bungee.yml` vs `velocity-plugin.json` vs
+  `META-INF/sponge_plugins.json` target) — mixing families fails early with
+  "Split them into separate workspaces — one per family."
 
 The full platform roster ships with the binary:
 
-| id           | descriptor             | Maven coordinate                           |
-| ------------ | ---------------------- | ------------------------------------------ |
-| `paper`      | `plugin.yml`           | `io.papermc.paper:paper-api`               |
-| `folia`      | `plugin.yml`           | `dev.folia:folia-api`                      |
-| `spigot`     | `plugin.yml`           | `org.spigotmc:spigot-api` (SNAPSHOT)       |
-| `bukkit`     | `plugin.yml`           | `org.spigotmc:spigot-api` (SNAPSHOT)       |
-| `velocity`   | `velocity-plugin.json` | `com.velocitypowered:velocity-api`         |
-| `waterfall`  | `bungee.yml`           | `io.github.waterfallmc:waterfall-api`      |
-| `travertine` | `bungee.yml`           | (no Maven API — compile against waterfall) |
+| id           | descriptor                     | Maven coordinate                           |
+| ------------ | ------------------------------ | ------------------------------------------ |
+| `paper`      | `plugin.yml`                   | `io.papermc.paper:paper-api`               |
+| `folia`      | `plugin.yml`                   | `dev.folia:folia-api`                      |
+| `spigot`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)       |
+| `bukkit`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)       |
+| `velocity`   | `velocity-plugin.json`         | `com.velocitypowered:velocity-api`         |
+| `waterfall`  | `bungee.yml`                   | `io.github.waterfallmc:waterfall-api`      |
+| `travertine` | `bungee.yml`                   | (no Maven API — compile against waterfall) |
+| `sponge`     | `META-INF/sponge_plugins.json` | `org.spongepowered:spongeapi`              |
 
 Paper handles version strings in two formats. For 1.17 – 1.21.x the artifact
 is `<version>-R0.1-SNAPSHOT`; for 26.x and later (Mojang's calendar scheme —
@@ -170,6 +172,12 @@ require different Java versions (MC 1.21.x allows Java 21 – 26; MC
 26.1.x requires Java 25 – 26). pluggy provisions a matching JDK from the
 [Foojay Disco API](./commands/sdk.md) on first build, so the version
 you pick at `init` time isn't constrained by your host Java.
+
+Sponge surfaces Minecraft versions in the same shape as `velocity` — pluggy
+fetches the SpongeVanilla artifact list and resolves the matching SpongeAPI
+Maven coordinate internally. Modding-specific variants (SpongeForge,
+SpongeNeo) aren't modelled; only the standalone SpongeVanilla server is
+supported.
 
 ### `registries` (optional)
 

@@ -10,10 +10,12 @@ import defaultConfig from "../defaults/config.yml" with { type: "text" };
 import bukkitPackage from "../defaults/bukkit-package.java" with { type: "text" };
 import velocityPackage from "../defaults/velocity-package.java" with { type: "text" };
 import bungeePackage from "../defaults/bungee-package.java" with { type: "text" };
+import spongePackage from "../defaults/sponge-package.java" with { type: "text" };
 
 import { writeIntellijStub } from "../build/intellij.ts";
 import { getPlatform, getRegisteredPlatforms, type PlatformFamily } from "../platform/index.ts";
 import { deriveVelocityId } from "../platform/descriptor/velocity.ts";
+import { deriveSpongeId } from "../platform/descriptor/sponge.ts";
 import { bold, dim, log } from "../logging.ts";
 import { safeJoin, writeFileLF } from "../portable.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
@@ -103,6 +105,7 @@ export async function generateProject(
         className: main.split(".").pop() || "Main",
         packageName: main.split(".").slice(0, -1).join("."),
         velocityId: deriveVelocityId(project.name),
+        spongeId: deriveSpongeId(project.name),
       },
     };
 
@@ -164,6 +167,7 @@ function stubForFamily(family: PlatformFamily): string {
   if (family === "bukkit") return bukkitPackage;
   if (family === "velocity") return velocityPackage;
   if (family === "bungee") return bungeePackage;
+  if (family === "sponge") return spongePackage;
   // exhaustiveness: TS narrowed `family` to `never` if all branches handled.
   const _exhaustive: never = family;
   throw new Error(`No stub for platform family: ${String(_exhaustive)}`);
@@ -434,6 +438,7 @@ export function initCommand(): Command {
               className,
               packageName,
               velocityId: deriveVelocityId(INITIAL_PROJECT.name),
+              spongeId: deriveSpongeId(INITIAL_PROJECT.name),
               ...(apiVersion ? { apiVersion } : {}),
             },
           },
