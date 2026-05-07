@@ -49,7 +49,15 @@ export async function resolveMaven(
   }
 
   const visited = new Set<string>();
-  return resolveOne(groupId, artifactId, version, ctx.registries, visited, 0);
+  return resolveOne(
+    groupId,
+    artifactId,
+    version,
+    ctx.registries,
+    visited,
+    0,
+    ctx.expectedIntegrity,
+  );
 }
 
 async function resolveOne(
@@ -59,6 +67,7 @@ async function resolveOne(
   registries: string[],
   visited: Set<string>,
   depth: number,
+  expectedIntegrity?: string,
 ): Promise<ResolvedDependency> {
   const coord = `${groupId}:${artifactId}:${version}`;
   const key = `${groupId}:${artifactId}`;
@@ -71,6 +80,7 @@ async function resolveOne(
   let downloadedFrom: string | undefined;
   let bytes: Uint8Array | undefined;
 
+  let downloadedJarUrl: string | undefined;
   for (const registry of registries) {
     const base = stripTrailingSlash(registry);
     const jarUrl = await resolveJarUrl(base, groupId, artifactId, version, errors);
@@ -81,17 +91,30 @@ async function resolveOne(
 
     bytes = fetched;
     downloadedFrom = base;
+    downloadedJarUrl = jarUrl;
     break;
   }
 
-  if (bytes === undefined || downloadedFrom === undefined) {
+  if (bytes === undefined || downloadedFrom === undefined || downloadedJarUrl === undefined) {
     throw new Error(
       `Maven: could not resolve "${coord}" from any configured registry. Tried:\n  ${errors.join("\n  ")}`,
     );
   }
 
-  await writeFile(jarPath, bytes);
+  await verifyAgainstSidecar(downloadedJarUrl, bytes, coord);
+
   const integrity = `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
+  // Only enforce expected-integrity on the top-level resolve (depth 0); a
+  // mismatch deeper in the tree means upstream advanced a transitive, which
+  // is normal flux and out of scope for the lockfile-pin we're enforcing.
+  if (depth === 0 && expectedIntegrity !== undefined && integrity !== expectedIntegrity) {
+    throw new Error(
+      `maven: integrity check failed for "${coord}" — ` +
+        `lockfile expects ${expectedIntegrity} but resolved bytes are ${integrity}. ` +
+        `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
+    );
+  }
+  await writeFile(jarPath, bytes);
   const source: ResolvedSource = { kind: "maven", groupId, artifactId, version };
 
   const transitiveDeps =
@@ -436,6 +459,63 @@ async function fetchText(url: string, errors: string[]): Promise<string | undefi
 
 function cachedJarPath(groupId: string, artifactId: string, version: string): string {
   return join(getCachePath(), "dependencies", "maven", groupId, artifactId, `${version}.jar`);
+}
+
+/**
+ * Verify the downloaded jar against the registry-published checksum sidecar
+ * (`<jarUrl>.sha512` / `.sha256` / `.sha1` / `.md5`, in that preference
+ * order). Maven Central and most repos publish at least one of these next
+ * to every artifact; a present-but-mismatching sidecar is a hard fail
+ * because that's the registry telling us the bytes we got aren't the bytes
+ * it intended to serve. A missing sidecar is logged at debug and tolerated
+ * — some smaller mirrors (and snapshot repos for older Spigot artifacts)
+ * skip them.
+ */
+async function verifyAgainstSidecar(
+  jarUrl: string,
+  bytes: Uint8Array,
+  coord: string,
+): Promise<void> {
+  const candidates: { ext: string; algorithm: "sha512" | "sha256" | "sha1" | "md5" }[] = [
+    { ext: "sha512", algorithm: "sha512" },
+    { ext: "sha256", algorithm: "sha256" },
+    { ext: "sha1", algorithm: "sha1" },
+    { ext: "md5", algorithm: "md5" },
+  ];
+  for (const { ext, algorithm } of candidates) {
+    const sidecarUrl = `${jarUrl}.${ext}`;
+    const text = await fetchSidecarText(sidecarUrl);
+    if (text === undefined) continue;
+    const expected = parseSidecarHex(text);
+    if (expected === undefined) continue;
+    const actual = createHash(algorithm).update(bytes).digest("hex");
+    if (actual !== expected) {
+      throw new Error(
+        `maven: ${algorithm} mismatch for "${coord}" — sidecar at ${sidecarUrl} says ${expected}, downloaded bytes hash to ${actual}. ` +
+          `Refusing to use a tampered jar.`,
+      );
+    }
+    return;
+  }
+  log.debug(`maven: no checksum sidecar found for ${coord} (${jarUrl})`);
+}
+
+async function fetchSidecarText(url: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    return await res.text();
+  } catch {
+    return undefined;
+  }
+}
+
+function parseSidecarHex(text: string): string | undefined {
+  // Maven sidecars are typically just `<hex>` or `<hex>  <filename>`. Tolerate
+  // whitespace and extract the leading hex token.
+  const trimmed = text.trim().split(/\s+/)[0]?.toLowerCase();
+  if (trimmed === undefined || !/^[0-9a-f]+$/.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 function groupPath(groupId: string): string {

@@ -15,7 +15,7 @@ import { writeIntellijStub } from "../build/intellij.ts";
 import { getPlatform, getRegisteredPlatforms, type PlatformFamily } from "../platform/index.ts";
 import { deriveVelocityId } from "../platform/descriptor/velocity.ts";
 import { bold, dim, log } from "../logging.ts";
-import { writeFileLF } from "../portable.ts";
+import { safeJoin, writeFileLF } from "../portable.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
 import { replace } from "../template.ts";
 import {
@@ -83,7 +83,12 @@ export async function generateProject(
 
   if (options.templateFiles && options.templateFiles.length > 0) {
     for (const file of options.templateFiles) {
-      const abs = join(distDir, file.path);
+      let abs: string;
+      try {
+        abs = safeJoin(distDir, file.path);
+      } catch (e) {
+        throw new Error(`Refusing to write template entry ${file.path}: ${(e as Error).message}`);
+      }
       try {
         await mkdir(dirname(abs), { recursive: true });
         await writeFileLF(abs, file.content);

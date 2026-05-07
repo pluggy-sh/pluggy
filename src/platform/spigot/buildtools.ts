@@ -2,11 +2,20 @@
  * Spigot BuildTools driver. Downloads `BuildTools.jar`, spawns it under
  * Java to compile a CraftBukkit or Spigot server jar, and surfaces the
  * child's live output as an async stream.
+ *
+ * SpigotMC publishes BuildTools.jar without a checksum sidecar, so we
+ * can't bake an upstream-known hash in. Instead we apply trust-on-first-use
+ * (TOFU) — record the SHA-256 of the first download alongside the cached
+ * jar, and refuse to use a cached copy whose bytes drift from the recorded
+ * value on subsequent runs. Catches post-install substitution and partial
+ * download even though the initial download is still trusted on its first
+ * appearance.
  */
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { classMajorToJava } from "../../jar.ts";
@@ -19,13 +28,41 @@ export const VERSIONS_URL = "https://hub.spigotmc.org/versions/";
 /** Download (or reuse a cached copy of) `BuildTools.jar` and return its path. */
 export async function download(ctx: PlatformContext, ignoreCache = false): Promise<string> {
   const BUILDTOOLS_PATH = join(ctx.getCachePath(), "BuildTools.jar");
+  const SHA_PATH = `${BUILDTOOLS_PATH}.sha256`;
+
   if (existsSync(BUILDTOOLS_PATH) && !ignoreCache) {
-    return BUILDTOOLS_PATH;
+    if (existsSync(SHA_PATH)) {
+      const recorded = (await readFile(SHA_PATH, "utf8")).trim();
+      const actual = createHash("sha256")
+        .update(await readFile(BUILDTOOLS_PATH))
+        .digest("hex");
+      if (recorded !== actual) {
+        // Cached jar drifted from the recorded hash: cache poisoning,
+        // partial overwrite, or a bit-flip. Drop both files and re-fetch
+        // so the user gets a fresh jar with a fresh recorded hash.
+        await rm(BUILDTOOLS_PATH, { force: true });
+        await rm(SHA_PATH, { force: true });
+      } else {
+        return BUILDTOOLS_PATH;
+      }
+    } else {
+      // Older install (pre-TOFU) — adopt the existing jar by recording
+      // its current hash. Strictly weaker than a clean download, but the
+      // user has already been running this jar so it's not a regression.
+      const actual = createHash("sha256")
+        .update(await readFile(BUILDTOOLS_PATH))
+        .digest("hex");
+      await writeFile(SHA_PATH, `${actual}\n`);
+      return BUILDTOOLS_PATH;
+    }
   }
+
   const res = await fetch(BUILDTOOLS_URL);
   if (!res.ok) throw new Error(`Failed to download BuildTools: ${res.statusText}`);
   const data = new Uint8Array(await res.arrayBuffer());
+  const sha = createHash("sha256").update(data).digest("hex");
   await writeFile(BUILDTOOLS_PATH, data);
+  await writeFile(SHA_PATH, `${sha}\n`);
   return BUILDTOOLS_PATH;
 }
 

@@ -2,11 +2,21 @@
  * Modrinth resolver. Fetches the version list for a slug, picks a concrete
  * version (honouring `includePrerelease`), and downloads the primary jar
  * into the user cache.
+ *
+ * Integrity is verified at two levels:
+ *   1. Modrinth's API publishes `hashes.sha512` for every file. Every
+ *      download (fresh or cache-hit) is re-verified against this value, so
+ *      a registry-side substitution or cache poisoning between runs is
+ *      caught before the jar reaches `build` / `dev`.
+ *   2. When the caller passes `ctx.expectedIntegrity` (the lockfile's
+ *      recorded `sha256-<hex>` for this dep), the resolved bytes must
+ *      match it too. Lets `install` refuse silent rolls forward across
+ *      pinned versions.
  */
 
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { access, mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -50,11 +60,29 @@ export async function resolveModrinth(
   await mkdir(cacheDir, { recursive: true });
   const jarPath = join(cacheDir, `${picked.version_number}.jar`);
 
-  if (!(await fileExists(jarPath))) {
+  // Cache-hit path: confirm the bytes match Modrinth's published sha512
+  // before reusing them. A poisoned cache (manual write, malicious tooling,
+  // older buggy resolver) is caught here rather than executed at runtime.
+  if (await fileExists(jarPath)) {
+    if (!(await cachedFileMatchesSha512(jarPath, file.hashes.sha512))) {
+      await rm(jarPath, { force: true });
+      await downloadTo(file.url, jarPath, slug, picked.version_number);
+    }
+  } else {
     await downloadTo(file.url, jarPath, slug, picked.version_number);
   }
 
+  await verifyAgainstApiHash(jarPath, slug, picked.version_number, file.hashes);
+
   const integrity = await sha256OfFile(jarPath);
+
+  if (ctx.expectedIntegrity !== undefined && integrity !== ctx.expectedIntegrity) {
+    throw new Error(
+      `modrinth: integrity check failed for "${slug}@${picked.version_number}" — ` +
+        `lockfile expects ${ctx.expectedIntegrity} but resolved bytes are ${integrity}. ` +
+        `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
+    );
+  }
 
   const source: ResolvedSource = {
     kind: "modrinth",
@@ -192,4 +220,35 @@ async function sha256OfFile(path: string): Promise<string> {
   const bytes = await readFile(path);
   const hash = createHash("sha256").update(bytes).digest("hex");
   return `sha256-${hash}`;
+}
+
+async function cachedFileMatchesSha512(
+  path: string,
+  expectedSha512: string | undefined,
+): Promise<boolean> {
+  // No upstream hash → can't verify; trust the cache. Modrinth always emits
+  // sha512 today, but the type marks it optional so be defensive.
+  if (expectedSha512 === undefined || expectedSha512.length === 0) return true;
+  const bytes = await readFile(path);
+  const actual = createHash("sha512").update(bytes).digest("hex");
+  return actual === expectedSha512.toLowerCase();
+}
+
+async function verifyAgainstApiHash(
+  jarPath: string,
+  slug: string,
+  versionNumber: string,
+  hashes: ModrinthFile["hashes"],
+): Promise<void> {
+  const expected = hashes.sha512;
+  if (expected === undefined || expected.length === 0) return;
+  const bytes = await readFile(jarPath);
+  const actual = createHash("sha512").update(bytes).digest("hex");
+  if (actual !== expected.toLowerCase()) {
+    throw new Error(
+      `modrinth: sha512 mismatch for "${slug}@${versionNumber}" — ` +
+        `Modrinth published ${expected} but downloaded bytes hash to ${actual}. ` +
+        `Refusing to use a tampered jar.`,
+    );
+  }
 }

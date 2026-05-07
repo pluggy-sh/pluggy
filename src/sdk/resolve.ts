@@ -17,6 +17,11 @@
 
 import { getJavaRange } from "../platform/spigot/buildtools.ts";
 import type { ResolvedProject } from "../project.ts";
+import {
+  DEFAULT_DISTRIBUTION as DEFAULT_DISTRIBUTION_SLUG,
+  validateDistribution,
+  validateJavaMajor,
+} from "./distributions.ts";
 
 /**
  * Hardcoded floor by MC release line. Values are conservative — older JDKs
@@ -49,7 +54,7 @@ const MC_VERSION_TO_JAVA_FALLBACK: { prefix: string; major: number }[] = [
 ];
 
 /** Default distribution when neither project.json nor flags say otherwise. */
-export const DEFAULT_DISTRIBUTION = "temurin";
+export const DEFAULT_DISTRIBUTION = DEFAULT_DISTRIBUTION_SLUG;
 
 export interface ProjectJdkSelection {
   /** Java major release, e.g. 21. */
@@ -73,10 +78,13 @@ export async function selectJdkForVersion(
   project: ResolvedProject,
   mcVersion: string | undefined,
 ): Promise<ProjectJdkSelection> {
-  const distribution = project.jdk?.distribution ?? DEFAULT_DISTRIBUTION;
+  const distribution =
+    project.jdk?.distribution !== undefined
+      ? validateDistribution(project.jdk.distribution)
+      : DEFAULT_DISTRIBUTION;
 
   if (project.jdk?.major !== undefined) {
-    return { major: project.jdk.major, distribution, source: "project-pin" };
+    return { major: validateJavaMajor(project.jdk.major), distribution, source: "project-pin" };
   }
 
   if (mcVersion === undefined) {

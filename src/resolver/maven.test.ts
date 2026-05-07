@@ -183,6 +183,50 @@ describe("resolveMaven", () => {
     expect(got.integrity).toBe(`sha256-${expectedHex}`);
   });
 
+  test("rejects the resolve when the .sha1 sidecar disagrees with the downloaded jar", async () => {
+    const bytes = new Uint8Array([0xab, 0xcd, 0xef]);
+    const fetchMock = vi.fn(async (url: string | URL): Promise<Response> => {
+      const s = String(url);
+      if (s.endsWith(".jar.sha1")) {
+        // Wrong hash on purpose — sha1 of "abcdef" bytes is not all-fs.
+        return new Response("ffffffffffffffffffffffffffffffffffffffff", { status: 200 });
+      }
+      if (s.endsWith(".jar.sha512") || s.endsWith(".jar.sha256")) {
+        return errorResponse(404, "Not Found");
+      }
+      if (s.endsWith(".jar")) return okBinary(bytes);
+      return errorResponse(404, "Not Found");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx: ResolveContext = {
+      ...baseCtx,
+      registries: ["https://repo.example.com"],
+    };
+    await expect(resolveMaven("com.foo", "bar", "1.0.0", ctx)).rejects.toThrow(
+      /sha1 mismatch.*com\.foo:bar:1\.0\.0/s,
+    );
+  });
+
+  test("accepts the resolve when the .sha512 sidecar matches", async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const realSha512 = createHash("sha512").update(bytes).digest("hex");
+    const fetchMock = vi.fn(async (url: string | URL): Promise<Response> => {
+      const s = String(url);
+      if (s.endsWith(".jar.sha512")) return new Response(realSha512, { status: 200 });
+      if (s.endsWith(".jar")) return okBinary(bytes);
+      return errorResponse(404, "Not Found");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx: ResolveContext = {
+      ...baseCtx,
+      registries: ["https://repo.example.com"],
+    };
+    const got = await resolveMaven("com.foo", "bar", "1.0.0", ctx);
+    expect(got.integrity).toBe(`sha256-${createHash("sha256").update(bytes).digest("hex")}`);
+  });
+
   test("computes SHA-256 over the downloaded bytes", async () => {
     const bytes = new TextEncoder().encode("hello world");
     const fetchMock = vi.fn(async () => okBinary(bytes));

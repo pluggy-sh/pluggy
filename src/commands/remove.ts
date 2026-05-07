@@ -178,14 +178,23 @@ function declaresDepOutside(
  * Locate the cached jar for a lockfile entry. Cache layout mirrors each
  * resolver (`<cache>/dependencies/<kind>/…`). `workspace:` deps aren't cached
  * (they're built locally), so they return undefined.
+ *
+ * Each path component coming from the lockfile is run through `assertSafeName`
+ * — a hostile clone could otherwise craft `pluggy.lock` so `unlink(cachePath)`
+ * resolves outside the cache root.
  */
 function cachedJarPathFor(entry: LockfileEntry): string | undefined {
   const base = join(getCachePath(), "dependencies");
   const src = entry.source;
   switch (src.kind) {
     case "modrinth":
+      assertSafeName(src.slug, "source.slug");
+      assertSafeName(entry.resolvedVersion, "resolvedVersion");
       return join(base, "modrinth", src.slug, `${entry.resolvedVersion}.jar`);
     case "maven":
+      assertSafeName(src.groupId, "source.groupId");
+      assertSafeName(src.artifactId, "source.artifactId");
+      assertSafeName(entry.resolvedVersion, "resolvedVersion");
       return join(base, "maven", src.groupId, src.artifactId, `${entry.resolvedVersion}.jar`);
     case "file": {
       // file-resolver cache key is `sha256-<hex>.jar`; lockfile integrity is
@@ -193,10 +202,28 @@ function cachedJarPathFor(entry: LockfileEntry): string | undefined {
       const hex = entry.integrity.startsWith("sha256-")
         ? entry.integrity.slice("sha256-".length)
         : entry.integrity;
+      assertSafeName(hex, "integrity");
       return join(base, "file", `${hex}.jar`);
     }
     case "workspace":
       return undefined;
+  }
+}
+
+// Mirrors `commands/install.ts:SAFE_NAME_RE`. `+` is load-bearing for
+// real-world Modrinth/Maven versions (e.g. `1.20.1+forge`).
+const SAFE_NAME_RE = /^[A-Za-z0-9._+~-]+$/;
+
+function assertSafeName(value: string, field: string): void {
+  if (typeof value !== "string" || value.length === 0 || !SAFE_NAME_RE.test(value)) {
+    throw new Error(
+      `remove: refusing unsafe lockfile ${field} ${JSON.stringify(value)} — won't construct a cache path that could escape the cache root`,
+    );
+  }
+  if (value === "." || value === "..") {
+    throw new Error(
+      `remove: refusing reserved lockfile ${field} ${JSON.stringify(value)} — would traverse the cache root`,
+    );
   }
 }
 
