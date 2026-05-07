@@ -32,6 +32,13 @@ export interface ResolveContext {
   registries: string[];
   /** Required for `workspace:` sources; resolving one without it throws. */
   workspaceContext?: WorkspaceContext;
+  /**
+   * Optional `sha256-<hex>` from the lockfile. When set, resolvers verify
+   * the resolved bytes match it and refuse to overwrite with anything else.
+   * Caller passes this only when it has a recorded integrity to enforce
+   * (i.e. resolving an existing pinned dep, not a fresh install).
+   */
+  expectedIntegrity?: string;
 }
 
 /**

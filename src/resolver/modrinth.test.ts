@@ -31,12 +31,13 @@ function mkVersion(
   version_number: string,
   version_type: ModrinthVersion["version_type"],
   url: string,
+  hashes: { sha1?: string; sha512?: string } = {},
 ): ModrinthVersion {
   return {
     id: `id-${version_number}`,
     version_number,
     version_type,
-    files: [{ url, filename: `${version_number}.jar`, primary: true, hashes: {} }],
+    files: [{ url, filename: `${version_number}.jar`, primary: true, hashes }],
   };
 }
 
@@ -202,6 +203,46 @@ describe("resolveModrinth", () => {
       vi.fn(async () => errorResponse(404, "Not Found")),
     );
     await expect(resolveModrinth("nope", "*", ctx)).rejects.toThrow(/Modrinth API.*"nope".*404/s);
+  });
+
+  test("rejects downloads whose bytes don't match Modrinth's published sha512", async () => {
+    const bytes = new Uint8Array([0xaa, 0xbb, 0xcc]);
+    const wrongSha512 = "f".repeat(128);
+    const versions: ModrinthVersion[] = [
+      mkVersion("1.0.0", "release", "https://cdn/1.0.0.jar", { sha512: wrongSha512 }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL): Promise<Response> => {
+        const s = String(url);
+        if (s.includes("/project/")) return okJson(versions);
+        if (s === "https://cdn/1.0.0.jar") return okBinary(bytes);
+        throw new Error(`unexpected url: ${s}`);
+      }),
+    );
+
+    await expect(resolveModrinth("evil", "1.0.0", ctx)).rejects.toThrow(/sha512 mismatch/);
+  });
+
+  test("rejects when expectedIntegrity from the lockfile doesn't match resolved bytes", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const realSha512 = createHash("sha512").update(bytes).digest("hex");
+    const versions: ModrinthVersion[] = [
+      mkVersion("1.0.0", "release", "https://cdn/1.0.0.jar", { sha512: realSha512 }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL): Promise<Response> => {
+        const s = String(url);
+        if (s.includes("/project/")) return okJson(versions);
+        if (s === "https://cdn/1.0.0.jar") return okBinary(bytes);
+        throw new Error(`unexpected url: ${s}`);
+      }),
+    );
+
+    await expect(
+      resolveModrinth("worldedit", "1.0.0", { ...ctx, expectedIntegrity: "sha256-pinned" }),
+    ).rejects.toThrow(/integrity check failed/);
   });
 
   test("skips the download when the cached jar already exists", async () => {

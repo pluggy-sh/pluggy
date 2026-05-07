@@ -106,4 +106,26 @@ describe("generateProject — template files", () => {
     );
     expect(testFile).toBe("// test from template\n");
   });
+
+  test("rejects template files that escape distDir (zip-slip)", async () => {
+    const project: Project = {
+      name: "myplugin",
+      version: "1.0.0",
+      description: "x",
+      main: "com.example.MyPlugin",
+      compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+    };
+
+    await expect(
+      generateProject(dir, project, {
+        templateFiles: [{ path: "../escape.txt", content: "evil" }],
+      }),
+    ).rejects.toThrow(/Refusing to write/);
+
+    await expect(
+      generateProject(dir, project, {
+        templateFiles: [{ path: "files/../../etc/evil", content: "evil" }],
+      }),
+    ).rejects.toThrow(/Refusing to write/);
+  });
 });

@@ -11,6 +11,7 @@ import {
   installShutdownHandler,
   linkOrCopy,
   resolveRelativeToConfig,
+  safeJoin,
   toPosixPath,
   writeFileLF,
 } from "./portable.ts";
@@ -185,6 +186,33 @@ describe("writeFileLF", () => {
 
     const read = await readFile(target, "utf8");
     expect(read).toBe(contents);
+  });
+});
+
+describe("safeJoin", () => {
+  const root = resolve("/tmp/pluggy-safe-root");
+
+  test("joins a clean relative path", () => {
+    expect(safeJoin(root, "files/a/b.txt")).toBe(resolve(root, "files/a/b.txt"));
+  });
+
+  test("rejects parent traversal", () => {
+    expect(() => safeJoin(root, "../etc/passwd")).toThrow(/escapes/);
+    expect(() => safeJoin(root, "files/../../etc/passwd")).toThrow(/escapes/);
+    expect(() => safeJoin(root, "a/b/../../../etc/passwd")).toThrow(/escapes/);
+  });
+
+  test("rejects absolute paths", () => {
+    expect(() => safeJoin(root, resolve("/etc/passwd"))).toThrow(/absolute/);
+  });
+
+  test("rejects backslash-bearing input on every host", () => {
+    expect(() => safeJoin(root, "a\\b\\c")).toThrow(/backslash/);
+    expect(() => safeJoin(root, "..\\etc\\passwd")).toThrow(/backslash/);
+  });
+
+  test("allows nested traversal that doesn't escape root", () => {
+    expect(safeJoin(root, "a/../b.txt")).toBe(resolve(root, "b.txt"));
   });
 });
 

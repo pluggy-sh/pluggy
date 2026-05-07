@@ -102,4 +102,36 @@ describe("selectJdkForVersion", () => {
     );
     expect(sel).toEqual({ major: 25, distribution: "graalvm_community", source: "project-pin" });
   });
+
+  test("rejects project.jdk.distribution outside the allowlist", async () => {
+    vi.mocked(getJavaRange).mockResolvedValue([21, 25]);
+    await expect(
+      selectJdkForVersion(
+        project({ jdk: { distribution: "../../../tmp/evil" } as never }),
+        "1.21.4",
+      ),
+    ).rejects.toThrow(/unknown distribution/);
+  });
+
+  test("rejects non-allowlisted distribution names", async () => {
+    vi.mocked(getJavaRange).mockResolvedValue([21, 25]);
+    await expect(
+      selectJdkForVersion(project({ jdk: { distribution: "oracle" } as never }), "1.21.4"),
+    ).rejects.toThrow(/unknown distribution/);
+  });
+
+  test("rejects non-integer project.jdk.major", async () => {
+    await expect(
+      selectJdkForVersion(
+        project({ jdk: { major: 21.5 as never, distribution: "temurin" } }),
+        "1.21.4",
+      ),
+    ).rejects.toThrow(/integer/);
+  });
+
+  test("rejects out-of-range project.jdk.major", async () => {
+    await expect(
+      selectJdkForVersion(project({ jdk: { major: 300, distribution: "temurin" } }), "1.21.4"),
+    ).rejects.toThrow(/between/);
+  });
 });

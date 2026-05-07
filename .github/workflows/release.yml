@@ -9,6 +9,13 @@ on:
 permissions:
   contents: write
   packages: write
+  # attest-build-provenance signs each release binary with a Sigstore-issued
+  # ephemeral certificate bound to this workflow's OIDC identity. `pluggy
+  # upgrade` checks the resulting attestation against the binary it just
+  # downloaded; a tampered binary fails verification because its sha256 won't
+  # match any attestation issued for this repo's release workflow.
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -104,6 +111,27 @@ jobs:
           cp install.sh release-assets/
           cp install.ps1 release-assets/
 
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum pluggy-linux-amd64 pluggy-linux-arm64 pluggy-darwin-amd64 pluggy-darwin-arm64 pluggy-windows-amd64.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          # Attests every published binary plus the checksum manifest. A
+          # forged binary with a matching forged manifest still fails
+          # because neither would carry an attestation issued by this
+          # workflow's OIDC identity.
+          subject-path: |
+            release-assets/pluggy-linux-amd64
+            release-assets/pluggy-linux-arm64
+            release-assets/pluggy-darwin-amd64
+            release-assets/pluggy-darwin-arm64
+            release-assets/pluggy-windows-amd64.exe
+            release-assets/SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -124,6 +152,16 @@ jobs:
             ```
             curl -fsSL https://github.com/ch99q/pluggy/releases/download/${{ github.ref_name }}/install.sh | bash
             ```
+
+            ## Verification
+
+            Each binary is attested with [build provenance](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds). To verify a downloaded binary:
+
+            ```
+            gh attestation verify pluggy-darwin-arm64 --repo ${{ github.repository }}
+            ```
+
+            `pluggy upgrade` performs an equivalent check automatically against the published `SHA256SUMS.txt` manifest and refuses to install a binary whose digest doesn't match.
 
             ---
         env:

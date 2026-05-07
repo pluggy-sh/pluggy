@@ -16,8 +16,9 @@
  */
 
 import type { ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { log } from "../logging.ts";
@@ -27,17 +28,41 @@ import { getCachePath } from "../project.ts";
 /**
  * Pinned HotswapAgent release. Bump deliberately — agent log markers and
  * config keys can shift between majors and `wait()` parses them.
+ *
+ * After bumping `HOTSWAP_AGENT_VERSION`, replace `HOTSWAP_AGENT_SHA256` with
+ * the SHA-256 of the new release JAR. The integrity check refuses the
+ * download otherwise — a missing pin is treated as a release-process bug.
  */
 export const HOTSWAP_AGENT_VERSION = "2.0.3";
+const HOTSWAP_AGENT_SHA256: Record<string, string> = {
+  "2.0.3": "4ef49724b7d8523536d2e2a7310f827f4db9f4fed3489224e05d7bf87f0594f9",
+};
 
 const AGENT_RELEASE_URL = (version: string): string =>
   `https://github.com/HotswapProjects/HotswapAgent/releases/download/RELEASE-${version}/hotswap-agent-${version}.jar`;
 
 /** Cached path to the HotswapAgent JAR (download on miss). */
 export async function ensureAgent(version = HOTSWAP_AGENT_VERSION): Promise<string> {
+  const expectedSha = HOTSWAP_AGENT_SHA256[version];
+  if (expectedSha === undefined) {
+    throw new Error(
+      `hotswap: no pinned SHA-256 for HotswapAgent ${version} — refusing to download an unverified agent. ` +
+        `Add the expected hash to HOTSWAP_AGENT_SHA256 in src/dev/hotswap.ts.`,
+    );
+  }
+
   const cacheDir = join(getCachePath(), "agents");
   const dest = join(cacheDir, `hotswap-agent-${version}.jar`);
-  if (existsSync(dest)) return dest;
+  if (existsSync(dest)) {
+    const cachedSha = createHash("sha256")
+      .update(await readFile(dest))
+      .digest("hex");
+    if (cachedSha === expectedSha) return dest;
+    log.warn(
+      `hotswap: cached agent at ${dest} has unexpected sha256 ${cachedSha} (expected ${expectedSha}); re-downloading`,
+    );
+    await rm(dest, { force: true });
+  }
 
   await mkdir(cacheDir, { recursive: true });
   const url = AGENT_RELEASE_URL(version);
@@ -46,8 +71,16 @@ export async function ensureAgent(version = HOTSWAP_AGENT_VERSION): Promise<stri
   if (!res.ok) {
     throw new Error(`hotswap: agent download failed (${res.status} ${res.statusText}) — ${url}`);
   }
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const actualSha = createHash("sha256").update(buf).digest("hex");
+  if (actualSha !== expectedSha) {
+    throw new Error(
+      `hotswap: integrity check failed for hotswap-agent-${version}.jar — expected sha256 ${expectedSha}, got ${actualSha}. ` +
+        `Refusing to load an unverified javaagent; please report at https://github.com/ch99q/pluggy/issues.`,
+    );
+  }
   const tmp = `${dest}.partial`;
-  await writeFile(tmp, new Uint8Array(await res.arrayBuffer()));
+  await writeFile(tmp, buf);
   await rename(tmp, dest);
   log.debug(`hotswap: cached agent at ${dest}`);
   return dest;
