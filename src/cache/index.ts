@@ -467,37 +467,41 @@ export async function pruneCache(opts: PruneOptions = {}): Promise<PruneResult> 
       // Hard cap: keep only the N most-recently-used slots per major.
       // Archive tarballs (`archives/...`) aren't slot-keyed; they age out
       // through `maxAgeMs` / `maxBytes` instead.
-      const byMajor = new Map<number, CacheEntry[]>();
-      const unmajored: CacheEntry[] = [];
-      for (const entry of entries) {
-        const major = parseMajorFromKey(entry.id);
-        if (major === undefined) {
-          unmajored.push(entry);
-          continue;
+      // `keepLatest === 0` opts out of the per-major LRU pin entirely —
+      // every slot flows through to age/size pruning unmolested.
+      if (keepLatest > 0) {
+        const byMajor = new Map<number, CacheEntry[]>();
+        const unmajored: CacheEntry[] = [];
+        for (const entry of entries) {
+          const major = parseMajorFromKey(entry.id);
+          if (major === undefined) {
+            unmajored.push(entry);
+            continue;
+          }
+          const list = byMajor.get(major) ?? [];
+          list.push(entry);
+          byMajor.set(major, list);
         }
-        const list = byMajor.get(major) ?? [];
-        list.push(entry);
-        byMajor.set(major, list);
-      }
-      const kept: CacheEntry[] = [...unmajored];
-      for (const list of byMajor.values()) {
-        list.sort((a, b) => b.lastUsedMs - a.lastUsedMs);
-        for (let i = 0; i < list.length; i++) {
-          if (i < keepLatest) {
-            kept.push(list[i]);
-          } else {
-            if (!dryRun) await deleteEntry(id, list[i]);
-            result.removed.push({
-              id: list[i].id,
-              path: list[i].path,
-              bytes: list[i].bytes,
-              category: id,
-              reason: "lru",
-            });
+        const kept: CacheEntry[] = [...unmajored];
+        for (const list of byMajor.values()) {
+          list.sort((a, b) => b.lastUsedMs - a.lastUsedMs);
+          for (let i = 0; i < list.length; i++) {
+            if (i < keepLatest) {
+              kept.push(list[i]);
+            } else {
+              if (!dryRun) await deleteEntry(id, list[i]);
+              result.removed.push({
+                id: list[i].id,
+                path: list[i].path,
+                bytes: list[i].bytes,
+                category: id,
+                reason: "lru",
+              });
+            }
           }
         }
+        survivors = kept;
       }
-      survivors = kept;
     }
 
     const ageCutoff = maxAgeMs > 0 ? now() - maxAgeMs : -Infinity;

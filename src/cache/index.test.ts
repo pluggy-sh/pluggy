@@ -275,6 +275,22 @@ describe("pruneCache", () => {
     expect(existsSync(slotPath("liberica-21-linux-x64"))).toBe(false);
   });
 
+  test("keep-latest 0 opts out of the LRU pin so age/size handles JDKs", async () => {
+    const now = Date.now();
+    await writeJdkSlot("temurin-21-linux-x64", "21.0.5+11", now);
+    await writeJdkSlot("zulu-21-linux-x64", "21.0.4", now - 1000);
+    await writeJdkSlot("liberica-21-linux-x64", "21.0.3", now - 2000);
+    const result = await pruneCache({
+      maxAgeMs: 0,
+      keepLatest: 0,
+      category: "jdk",
+    });
+    expect(result.removed.filter((r) => r.reason === "lru")).toHaveLength(0);
+    expect(existsSync(slotPath("temurin-21-linux-x64"))).toBe(true);
+    expect(existsSync(slotPath("zulu-21-linux-x64"))).toBe(true);
+    expect(existsSync(slotPath("liberica-21-linux-x64"))).toBe(true);
+  });
+
   test("dry-run reports what would be removed without touching disk", async () => {
     const stale = await writeFixture("versions/stale.jar", 100, Date.now() - 100 * 86_400_000);
     const result = await pruneCache({

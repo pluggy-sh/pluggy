@@ -31,6 +31,7 @@ import {
   scanCache,
 } from "../cache/index.ts";
 import { bold, dim, log, yellow } from "../logging.ts";
+import { getCachePath } from "../project.ts";
 
 interface CacheGlobalOpts {
   json?: boolean;
@@ -161,12 +162,12 @@ function pathSubcommand(): Command {
     .description("Print the cache directory path. Useful in shell scripts.")
     .action(async function action(this: Command) {
       const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
-      const summary = await scanCache();
+      const cachePath = getCachePath();
       if (globalOpts.json === true) {
-        emitJson({ status: "success", cachePath: summary.cachePath });
+        emitJson({ status: "success", cachePath });
         return;
       }
-      process.stdout.write(`${summary.cachePath}\n`);
+      process.stdout.write(`${cachePath}\n`);
     });
 }
 
