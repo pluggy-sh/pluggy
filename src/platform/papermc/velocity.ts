@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { velocityDescriptor } from "../descriptor/velocity.ts";
 import { createPlatform, type Version } from "../platform.ts";
+import { VELOCITY_RUNTIME } from "../runtime.ts";
 import * as papermc from "./papermc.ts";
 
 /**
@@ -25,6 +26,7 @@ async function latestVelocityRelease(): Promise<{ id: string; build: number }> {
 export default createPlatform((ctx) => ({
   id: "velocity",
   descriptor: velocityDescriptor,
+  runtime: VELOCITY_RUNTIME,
 
   async getVersions(): Promise<string[]> {
     const mc = await papermc.versions("paper");

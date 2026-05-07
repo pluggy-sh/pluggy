@@ -130,7 +130,7 @@ describe("stagePlugins", () => {
       },
     ];
 
-    await stagePlugins(devDir, ownJar, runtimeDeps, [extra]);
+    await stagePlugins(devDir, "plugins", ownJar, runtimeDeps, [extra]);
 
     const names = (await readdir(join(devDir, "plugins"))).sort();
     expect(names).toEqual([
@@ -149,7 +149,7 @@ describe("stagePlugins", () => {
     const ownJar = join(workDir, "plugin.jar");
     await writeFile(ownJar, "OWN");
 
-    await stagePlugins(devDir, ownJar, [], []);
+    await stagePlugins(devDir, "plugins", ownJar, [], []);
 
     const names = await readdir(join(devDir, "plugins"));
     expect(names).toEqual(["plugin.jar"]);
@@ -164,7 +164,20 @@ describe("stagePlugins", () => {
     await mkdir(join(devDir, "plugins"), { recursive: true });
     await writeFile(join(devDir, "plugins", "plugin.jar"), "OLD");
 
-    await stagePlugins(devDir, ownJar, [], []);
+    await stagePlugins(devDir, "plugins", ownJar, [], []);
     expect(await readFile(join(devDir, "plugins", "plugin.jar"), "utf8")).toBe("NEW-OWN");
+  });
+
+  test("stages into a nested pluginsDir (sponge mods/plugins) and creates parents", async () => {
+    const ownJar = join(workDir, "sponge-plugin.jar");
+    await writeFile(ownJar, "SPONGE");
+
+    await stagePlugins(devDir, "mods/plugins", ownJar, [], []);
+
+    const names = await readdir(join(devDir, "mods", "plugins"));
+    expect(names).toEqual(["sponge-plugin.jar"]);
+    expect(await readFile(join(devDir, "mods", "plugins", "sponge-plugin.jar"), "utf8")).toBe(
+      "SPONGE",
+    );
   });
 });

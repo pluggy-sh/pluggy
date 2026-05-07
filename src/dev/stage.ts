@@ -24,6 +24,13 @@ export interface StageDevOptions {
   port?: number;
   /** Force online mode one way or another. Overrides `project.dev.onlineMode`. */
   onlineMode?: boolean;
+  /**
+   * Whether the platform runtime expects vanilla MC server files. When
+   * `true` (paper/folia/spigot/bukkit/sponge) `eula.txt` and
+   * `server.properties` are written; when `false` (velocity/bungee) both
+   * are skipped — proxies don't read them.
+   */
+  vanillaServerFiles: boolean;
 }
 
 const EULA_HEADER =
@@ -57,12 +64,14 @@ export async function stageDev(
   const serverJar = join(devDir, "server.jar");
   await linkOrCopy(platformJarPath, serverJar);
 
-  if (process.env.PLUGGY_DEV_NO_EULA !== "1") {
-    await writeFileLF(join(devDir, "eula.txt"), `${EULA_HEADER}eula=true\n`);
-  }
+  if (opts.vanillaServerFiles) {
+    if (process.env.PLUGGY_DEV_NO_EULA !== "1") {
+      await writeFileLF(join(devDir, "eula.txt"), `${EULA_HEADER}eula=true\n`);
+    }
 
-  const serverProperties = renderServerProperties(project, opts);
-  await writeFileLF(join(devDir, "server.properties"), serverProperties);
+    const serverProperties = renderServerProperties(project, opts);
+    await writeFileLF(join(devDir, "server.properties"), serverProperties);
+  }
 
   return devDir;
 }

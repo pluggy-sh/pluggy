@@ -4,11 +4,13 @@ import { join } from "node:path";
 
 import { bukkitDescriptor } from "../descriptor/bukkit.ts";
 import { createPlatform } from "../platform.ts";
+import { BUKKIT_RUNTIME } from "../runtime.ts";
 import { compile, versions, VERSIONS_URL } from "./buildtools.ts";
 
 export default createPlatform((ctx) => ({
   id: "bukkit",
   descriptor: bukkitDescriptor,
+  runtime: BUKKIT_RUNTIME,
 
   async getVersionInfo(version: string) {
     const res = await fetch(`${VERSIONS_URL}${version}.json`);

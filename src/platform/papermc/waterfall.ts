@@ -4,11 +4,13 @@ import { join } from "node:path";
 
 import { bungeeDescriptor } from "../descriptor/bungee.ts";
 import { createPlatform, type Version } from "../platform.ts";
+import { BUNGEE_RUNTIME } from "../runtime.ts";
 import * as papermc from "./papermc.ts";
 
 export default createPlatform((ctx) => ({
   id: "waterfall",
   descriptor: bungeeDescriptor,
+  runtime: BUNGEE_RUNTIME,
 
   async getVersionInfo(version: string): Promise<Version> {
     const versionsList = await papermc.versions("waterfall");

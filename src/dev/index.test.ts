@@ -107,6 +107,7 @@ function fakePlatform(id = "paper"): PlatformProvider {
   return {
     id,
     descriptor: fakeDescriptor(),
+    runtime: { pluginsDir: "plugins", serverArgs: ["nogui"], vanillaServerFiles: true },
     getVersions: vi.fn(async () => ["1.21.8"]),
     getLatestVersion: vi.fn(async () => ({ version: "1.21.8", build: 42 }) as Version),
     getVersionInfo: vi.fn(async (v: string) => ({ version: v, build: 42 }) as Version),
@@ -191,8 +192,10 @@ describe("runDev", () => {
     expect(stageOptsArg.port).toBeUndefined();
 
     expect(stagePlugins).toHaveBeenCalledTimes(1);
-    const [devDirArg, ownJarArg, runtimeDepsArg, extrasArg] = vi.mocked(stagePlugins).mock.calls[0];
+    const [devDirArg, pluginsDirArg, ownJarArg, runtimeDepsArg, extrasArg] =
+      vi.mocked(stagePlugins).mock.calls[0];
     expect(devDirArg).toBe(devDirPath);
+    expect(pluginsDirArg).toBe("plugins");
     expect(ownJarArg).toBe(join(workDir, "bin", "testplugin-1.0.0.jar"));
     expect(runtimeDepsArg).toEqual([]);
     expect(extrasArg).toEqual([]);
@@ -281,7 +284,7 @@ describe("runDev", () => {
     });
     await runDev(project, { watch: false });
 
-    const runtimeDepsArg = vi.mocked(stagePlugins).mock.calls[0][2];
+    const runtimeDepsArg = vi.mocked(stagePlugins).mock.calls[0][3];
     expect(runtimeDepsArg).toHaveLength(1);
     expect(runtimeDepsArg[0].source.kind).toBe("modrinth");
   });
@@ -308,7 +311,7 @@ describe("runDev", () => {
     });
     await runDev(project, { watch: false });
 
-    const extras = vi.mocked(stagePlugins).mock.calls[0][3];
+    const extras = vi.mocked(stagePlugins).mock.calls[0][4];
     expect(extras).toEqual([
       join(workDir, "dev-plugins", "debug.jar"),
       join(workDir, "dev-plugins", "tools.jar"),

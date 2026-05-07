@@ -57,7 +57,7 @@ describe("spawnServer", () => {
     vi.restoreAllMocks();
   });
 
-  test("invokes `java -Xmx… jvmArgs -jar server.jar nogui` with cwd=devDir, stdin piped", () => {
+  test("invokes `java -Xmx… jvmArgs -jar server.jar <serverArgs>` with cwd=devDir, stdin piped", () => {
     const fake = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
 
@@ -66,6 +66,7 @@ describe("spawnServer", () => {
       serverJarName: "server.jar",
       memory: "2G",
       jvmArgs: ["-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled"],
+      serverArgs: ["nogui"],
     });
 
     expect(spawn).toHaveBeenCalledTimes(1);
@@ -96,6 +97,7 @@ describe("spawnServer", () => {
       serverJarName: "server.jar",
       memory: "1G",
       jvmArgs: [],
+      serverArgs: ["nogui"],
     });
 
     expect(installShutdownHandler).toHaveBeenCalledTimes(1);
@@ -117,6 +119,7 @@ describe("spawnServer", () => {
       serverJarName: "server.jar",
       memory: "1G",
       jvmArgs: [],
+      serverArgs: ["nogui"],
     });
 
     expect(dispose).not.toHaveBeenCalled();
@@ -133,13 +136,14 @@ describe("spawnServer", () => {
       serverJarName: "server.jar",
       memory: "512M",
       jvmArgs: [],
+      serverArgs: ["nogui"],
     });
 
     const args = vi.mocked(spawn).mock.calls[0][1] as string[];
     expect(args[0]).toBe("-Xmx512M");
   });
 
-  test("serverJarName sits between -jar and the trailing `nogui`", () => {
+  test("serverJarName sits between -jar and the trailing serverArgs", () => {
     const fake = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
 
@@ -148,11 +152,44 @@ describe("spawnServer", () => {
       serverJarName: "paperclip-1.21.8.jar",
       memory: "4G",
       jvmArgs: ["-Dfoo=bar"],
+      serverArgs: ["nogui"],
     });
 
     const args = vi.mocked(spawn).mock.calls[0][1] as string[];
     expect(args[args.length - 3]).toBe("-jar");
     expect(args[args.length - 2]).toBe("paperclip-1.21.8.jar");
     expect(args[args.length - 1]).toBe("nogui");
+  });
+
+  test("serverArgs are appended verbatim — empty array means no trailing args (proxies)", () => {
+    const fake = makeFakeChild();
+    vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
+
+    spawnServer({
+      devDir: "/tmp/dev",
+      serverJarName: "velocity.jar",
+      memory: "1G",
+      jvmArgs: [],
+      serverArgs: [],
+    });
+
+    const args = vi.mocked(spawn).mock.calls[0][1] as string[];
+    expect(args).toEqual(["-Xmx1G", "-jar", "velocity.jar"]);
+  });
+
+  test("serverArgs supports multi-value lists (e.g. sponge --nogui)", () => {
+    const fake = makeFakeChild();
+    vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
+
+    spawnServer({
+      devDir: "/tmp/dev",
+      serverJarName: "spongevanilla.jar",
+      memory: "2G",
+      jvmArgs: [],
+      serverArgs: ["--nogui"],
+    });
+
+    const args = vi.mocked(spawn).mock.calls[0][1] as string[];
+    expect(args).toEqual(["-Xmx2G", "-jar", "spongevanilla.jar", "--nogui"]);
   });
 });

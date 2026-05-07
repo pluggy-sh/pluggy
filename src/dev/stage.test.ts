@@ -48,7 +48,7 @@ describe("stageDev", () => {
   test("creates dev/ with server.jar, eula.txt, server.properties", async () => {
     const project = makeProject(workDir);
 
-    const devDir = await stageDev(project, serverJar, {});
+    const devDir = await stageDev(project, serverJar, { vanillaServerFiles: true });
     expect(devDir).toBe(join(workDir, "dev"));
 
     const linkedBytes = await readFile(join(devDir, "server.jar"), "utf8");
@@ -69,7 +69,7 @@ describe("stageDev", () => {
   test("PLUGGY_DEV_NO_EULA=1 skips writing eula.txt", async () => {
     process.env.PLUGGY_DEV_NO_EULA = "1";
     const project = makeProject(workDir);
-    const devDir = await stageDev(project, serverJar, {});
+    const devDir = await stageDev(project, serverJar, { vanillaServerFiles: true });
 
     await stat(join(devDir, "server.properties"));
     await expect(stat(join(devDir, "eula.txt"))).rejects.toThrow();
@@ -78,7 +78,7 @@ describe("stageDev", () => {
   test("opts.port overrides project.dev.port and the default", async () => {
     const project = makeProject(workDir, { dev: { port: 30000 } });
 
-    const devDir = await stageDev(project, serverJar, { port: 25570 });
+    const devDir = await stageDev(project, serverJar, { port: 25570, vanillaServerFiles: true });
     const props = await readFile(join(devDir, "server.properties"), "utf8");
     expect(props).toContain("server-port=25570");
     expect(props).not.toContain("server-port=30000");
@@ -96,7 +96,7 @@ describe("stageDev", () => {
       },
     });
 
-    const devDir = await stageDev(project, serverJar, {});
+    const devDir = await stageDev(project, serverJar, { vanillaServerFiles: true });
     const props = await readFile(join(devDir, "server.properties"), "utf8");
     expect(props).toContain("motd=custom");
     expect(props).not.toContain("motd=testplugin dev");
@@ -111,7 +111,7 @@ describe("stageDev", () => {
     await writeFile(join(devDir, "leftover.txt"), "bye");
 
     const project = makeProject(workDir);
-    await stageDev(project, serverJar, { clean: true });
+    await stageDev(project, serverJar, { clean: true, vanillaServerFiles: true });
 
     await expect(stat(join(devDir, "world"))).rejects.toThrow();
     await expect(stat(join(devDir, "leftover.txt"))).rejects.toThrow();
@@ -129,7 +129,7 @@ describe("stageDev", () => {
     await writeFile(join(devDir, "logs.txt"), "keep-me");
 
     const project = makeProject(workDir);
-    await stageDev(project, serverJar, { freshWorld: true });
+    await stageDev(project, serverJar, { freshWorld: true, vanillaServerFiles: true });
 
     await expect(stat(join(devDir, "world"))).rejects.toThrow();
     await expect(stat(join(devDir, "world_nether"))).rejects.toThrow();
@@ -142,15 +142,27 @@ describe("stageDev", () => {
 
   test("onlineMode option overrides project.dev.onlineMode", async () => {
     const project = makeProject(workDir, { dev: { onlineMode: true } });
-    const devDir = await stageDev(project, serverJar, { onlineMode: false });
+    const devDir = await stageDev(project, serverJar, {
+      onlineMode: false,
+      vanillaServerFiles: true,
+    });
     const props = await readFile(join(devDir, "server.properties"), "utf8");
     expect(props).toContain("online-mode=false");
   });
 
   test("server.properties is LF only", async () => {
     const project = makeProject(workDir);
-    const devDir = await stageDev(project, serverJar, {});
+    const devDir = await stageDev(project, serverJar, { vanillaServerFiles: true });
     const raw = await readFile(join(devDir, "server.properties"));
     expect(raw.includes(Buffer.from("\r\n"))).toBe(false);
+  });
+
+  test("vanillaServerFiles=false skips eula.txt and server.properties (proxies)", async () => {
+    const project = makeProject(workDir);
+    const devDir = await stageDev(project, serverJar, { vanillaServerFiles: false });
+
+    await stat(join(devDir, "server.jar"));
+    await expect(stat(join(devDir, "eula.txt"))).rejects.toThrow();
+    await expect(stat(join(devDir, "server.properties"))).rejects.toThrow();
   });
 });

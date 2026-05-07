@@ -55,26 +55,30 @@ export function isRuntimePlugin(jarPath: string, descriptor: DescriptorSpec): Pr
 }
 
 /**
- * Populate `<devDir>/plugins/` with the user's plugin jar, every runtime-
- * plugin dep, and the `extraPlugins` jars. Each is hardlinked (copy
- * fallback) under its basename — callers must ensure unique names.
+ * Populate `<devDir>/<pluginsDir>/` with the user's plugin jar, every
+ * runtime-plugin dep, and the `extraPlugins` jars. `pluginsDir` is the
+ * platform's `runtime.pluginsDir` (e.g. `"plugins"` for bukkit,
+ * `"mods/plugins"` for sponge) — forward-slashed and resolved relative to
+ * `devDir`. Each jar is hardlinked (copy fallback) under its basename;
+ * callers must ensure unique names.
  */
 export async function stagePlugins(
   devDir: string,
+  pluginsDir: string,
   ownJarPath: string,
   runtimeDeps: ResolvedDependency[],
   extraPlugins: string[],
 ): Promise<void> {
-  const pluginsDir = join(devDir, "plugins");
-  await mkdir(pluginsDir, { recursive: true });
+  const dest = join(devDir, ...pluginsDir.split("/"));
+  await mkdir(dest, { recursive: true });
 
-  await linkOrCopy(ownJarPath, join(pluginsDir, basename(ownJarPath)));
+  await linkOrCopy(ownJarPath, join(dest, basename(ownJarPath)));
 
   for (const dep of runtimeDeps) {
-    await linkOrCopy(dep.jarPath, join(pluginsDir, basename(dep.jarPath)));
+    await linkOrCopy(dep.jarPath, join(dest, basename(dep.jarPath)));
   }
 
   for (const extra of extraPlugins) {
-    await linkOrCopy(extra, join(pluginsDir, basename(extra)));
+    await linkOrCopy(extra, join(dest, basename(extra)));
   }
 }
