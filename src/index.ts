@@ -4,6 +4,7 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { buildCommand } from "./commands/build.ts";
+import { cacheCommand } from "./commands/cache.ts";
 import { completionsCommand } from "./commands/completions.ts";
 import { devCommand } from "./commands/dev.ts";
 import { docsCommand } from "./commands/docs.ts";
@@ -48,6 +49,7 @@ program.addCommand(docsCommand());
 program.addCommand(doctorCommand({ pluggyVersion: CLI_VERSION, repository: REPOSITORY }));
 program.addCommand(devCommand());
 program.addCommand(sdkCommand());
+program.addCommand(cacheCommand());
 program.addCommand(upgradeCommand({ repository: REPOSITORY }));
 program.addCommand(completionsCommand(program));
 

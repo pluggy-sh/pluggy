@@ -1,5 +1,5 @@
 /**
- * On-disk layout for cached JDKs and the LRU manifest used by `pluggy sdk gc`.
+ * On-disk layout for cached JDKs and the LRU manifest used by `pluggy cache prune`.
  *
  *   <cachePath>/jdk/
  *     manifest.json                     -- {entries: {<key>: {lastUsed, fullVersion, installedAt}}}
@@ -30,7 +30,7 @@ const MANIFEST_FILE = "manifest.json";
 const ARCHIVES_DIR = "archives";
 
 export interface ManifestEntry {
-  /** epoch ms — `ensureJdk` updates this on every cache hit for LRU gc. */
+  /** epoch ms — `ensureJdk` updates this on every cache hit for LRU prune. */
   lastUsed: number;
   /** epoch ms — set when the slot is first populated. */
   installedAt: number;

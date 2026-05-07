@@ -76,8 +76,9 @@ and remove the old system binary so it doesn't shadow the new one.
 
 ## Update notification
 
-When pluggy starts, it reads a small cached state file
-(`<cache>/update-check.json`) and, at most once per 24 hours, fetches
+When pluggy starts, it reads a small state file
+(`<state>/update-check.json`, separate from the cache so `pluggy cache
+clean` doesn't reset it) and, at most once per 24 hours, fetches
 the latest release tag in the background. If the cache shows that you
 are out of date, you'll see a one-line notice on stderr after the
 command finishes:

@@ -1,6 +1,8 @@
 # `pluggy sdk`
 
-Manage the JDKs pluggy provisions for `build`, `test`, and `dev`. You rarely run these commands directly: `pluggy build` auto-installs the right JDK on first use. Reach for `pluggy sdk` to pre-warm the cache, pin a distribution per project, or evict old slots.
+Manage the JDKs pluggy provisions for `build`, `test`, and `dev`. You rarely run these commands directly: `pluggy build` auto-installs the right JDK on first use. Reach for `pluggy sdk` to pre-warm the cache, pin a distribution per project, or remove a slot.
+
+For cross-cutting cache housekeeping (LRU eviction across all categories, total size, cleaning everything) see [`pluggy cache`](./cache.md).
 
 ## Background
 
@@ -12,15 +14,14 @@ Set `PLUGGY_NO_AUTO_INSTALL=1` to make a cache miss raise instead of downloading
 
 Every subcommand supports the global `--json` flag for structured output.
 
-| Subcommand                          | Purpose                                                  |
-| ----------------------------------- | -------------------------------------------------------- |
-| `pluggy sdk install [<major>]`      | Download and cache a JDK.                                |
-| `pluggy sdk list`                   | Show cached JDKs, with their full versions and last use. |
-| `pluggy sdk list --available`       | Show distributions pluggy can install.                   |
-| `pluggy sdk path <major>`           | Print `JAVA_HOME` for a cached JDK.                      |
-| `pluggy sdk use <major>`            | Pin a JDK in `project.json`.                             |
-| `pluggy sdk remove <major>`         | Delete a cached JDK.                                     |
-| `pluggy sdk gc [--keep-latest <n>]` | Evict cached JDKs by LRU per major.                      |
+| Subcommand                     | Purpose                                                  |
+| ------------------------------ | -------------------------------------------------------- |
+| `pluggy sdk install [<major>]` | Download and cache a JDK.                                |
+| `pluggy sdk list`              | Show cached JDKs, with their full versions and last use. |
+| `pluggy sdk list --available`  | Show distributions pluggy can install.                   |
+| `pluggy sdk path <major>`      | Print `JAVA_HOME` for a cached JDK.                      |
+| `pluggy sdk use <major>`       | Pin a JDK in `project.json`.                             |
+| `pluggy sdk remove <major>`    | Delete a cached JDK.                                     |
 
 ## `install`
 
@@ -48,7 +49,7 @@ Cached JDKs:
   ✓ zulu 17     (17.0.13)     last used 3d ago
 ```
 
-A red `✗` means the manifest still references the slot but the directory is gone — `pluggy sdk gc` cleans those up.
+A red `✗` means the manifest still references the slot but the directory is gone — `pluggy cache prune --category jdk` cleans those up.
 
 `pluggy sdk list --available` switches to the install allowlist.
 
@@ -96,16 +97,6 @@ $ pluggy sdk remove 17 --distribution zulu
 
 `remove` always honors the `--distribution` value, so you can prune one distribution while keeping another.
 
-## `gc`
-
-Evict cached JDKs by LRU per major. Default: keep the two most-recently-used slots per major. Manifest entries whose on-disk slots are missing are dropped automatically.
-
-```text
-$ pluggy sdk gc --keep-latest 1
-  - zulu-17-macos-aarch64 (lru)
-✔ Evicted 1; kept 1.
-```
-
 ## CI escape hatch
 
 CI workflows that don't want pluggy reaching the network mid-build should pre-warm the cache and set `PLUGGY_NO_AUTO_INSTALL=1`:
@@ -122,5 +113,6 @@ The first command resolves the major from `project.json` and downloads the JDK. 
 ## See also
 
 - [`jdk` in the `project.json` reference](../project-json.md#jdk-optional) — the per-project pin.
+- [`pluggy cache`](./cache.md) — cross-category cache housekeeping (`info`, `prune`, `clean`).
 - [`pluggy doctor`](./doctor.md) — the `Project JDK` check reports cache state.
 - [Foojay Disco distributions](https://api.foojay.io/disco/v3.0/distributions) — every distribution Disco knows about.

@@ -40,7 +40,7 @@ export interface InstallResult {
 /**
  * Download (if needed) and extract `spec` into the cache. Atomic: a partial
  * extract on crash leaves no slot behind. Records the install in the
- * manifest so `pluggy sdk gc` can LRU-evict later.
+ * manifest so `pluggy cache prune` can LRU-evict later.
  */
 export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
   await ensureCacheDirs();
@@ -57,7 +57,7 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
 
   // Download archive if missing. We deliberately keep archives around in
   // <cacheRoot>/jdk/archives so a re-extract (after manual slot deletion)
-  // doesn't redownload — `pluggy sdk gc` is what cleans them up.
+  // doesn't redownload — `pluggy cache prune --category jdk` is what cleans them up.
   if (existsSync(archive)) {
     // A cached archive whose hash drifts from Disco's published value is
     // either corrupt or a leftover from before the integrity story; drop

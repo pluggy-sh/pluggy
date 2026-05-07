@@ -9,12 +9,13 @@
  * `PLUGGY_NO_UPDATE_CHECK=1`.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { bold, brightBlue, dim } from "./logging.ts";
-import { getCachePath } from "./project.ts";
+import { getCachePath, getStatePath } from "./project.ts";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2000;
@@ -44,9 +45,26 @@ export interface UpdateCheckHandle {
   dispose: () => void;
 }
 
-/** Default location of the cached state file. */
+/** Default location of the state file. */
 export function getStateFilePath(): string {
-  return join(getCachePath(), "update-check.json");
+  return join(getStatePath(), "update-check.json");
+}
+
+/**
+ * One-shot migration: pluggy <= 0.x kept `update-check.json` inside the
+ * cache directory, where it would have been wiped by `pluggy cache clean`.
+ * On first read after upgrade, move it under the state directory.
+ */
+async function migrateLegacyState(stateFile: string): Promise<void> {
+  const legacy = join(getCachePath(), "update-check.json");
+  if (!existsSync(legacy) || existsSync(stateFile)) return;
+  try {
+    await mkdir(dirname(stateFile), { recursive: true });
+    await rename(legacy, stateFile);
+  } catch {
+    // Best-effort: a failed migration just means the next fetch repopulates
+    // the new path. Don't block the user's command on this.
+  }
 }
 
 /**
@@ -126,6 +144,7 @@ export async function startUpdateCheck(opts: UpdateCheckOptions): Promise<Update
 
   const now = opts.now ?? (() => new Date());
   const stateFile = opts.stateFile ?? getStateFilePath();
+  if (opts.stateFile === undefined) await migrateLegacyState(stateFile);
   const cached = await readState(stateFile);
 
   const stale =
