@@ -174,13 +174,16 @@ export function safeJoin(root: string, relativePath: string): string {
   if (typeof relativePath !== "string") {
     throw new Error(`safeJoin: relativePath must be a string`);
   }
+  // Absolute-path check has to come first: on Windows, `path.resolve("/x")`
+  // returns `C:\x` — `\` is the platform separator, so the backslash check
+  // below would fire before the absolute one and misreport the error.
+  if (isAbsolute(relativePath)) {
+    throw new Error(`safeJoin: refusing absolute path: ${JSON.stringify(relativePath)}`);
+  }
   if (relativePath.includes("\\")) {
     throw new Error(
       `safeJoin: refusing entry containing backslash: ${JSON.stringify(relativePath)}`,
     );
-  }
-  if (isAbsolute(relativePath)) {
-    throw new Error(`safeJoin: refusing absolute path: ${JSON.stringify(relativePath)}`);
   }
   const resolvedRoot = resolve(root);
   const candidate = resolve(resolvedRoot, relativePath);
