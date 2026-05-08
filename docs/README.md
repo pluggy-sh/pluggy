@@ -1,21 +1,17 @@
 # pluggy docs
 
-A CLI for Minecraft plugin development. Scaffold a project, pull dependencies
-from Modrinth / Maven / local jars / sibling workspaces, build a real plugin
-jar with the full Maven transitive closure on the classpath, and boot a live
-Paper / Spigot / Velocity server with a file-watcher that rebuilds on save.
+pluggy is a single-binary toolchain for Minecraft plugin development. Scaffold a project, install dependencies from Modrinth, Maven, local jars, or sibling workspaces, build a real plugin jar, and boot a live Paper, Spigot, Velocity, or Sponge server that rebuilds when you save.
 
-Ships as a single native binary. No global JVM-based toolchain, no Gradle
-wrapper, no `pom.xml`. One JSON file per project.
+No global JVM toolchain, no Gradle wrapper, no `pom.xml`. One `project.json` per project.
 
 ## Start here
 
-- [Getting started](./getting-started.md) — install, scaffold, build, run a
-  dev server. Eight minutes from zero to a live server.
-- [project.json reference](./project-json.md) — every field, every form, and
-  the validation rules.
-- [Dependency sources](./dependencies.md) — the Modrinth / Maven / file /
-  workspace grammar.
+If you have never used pluggy before, read these in order. The first page is enough to get a plugin running.
+
+- [Getting started](./getting-started.md): install, scaffold, build, and run a dev server. Eight minutes from zero to a live server.
+- [Glossary](./glossary.md): plain-English definitions for every term in these docs. Bookmark it.
+- [`project.json` reference](./project-json.md): every field, every form, and the validation rules.
+- [Dependency sources](./dependencies.md): the Modrinth, Maven, file, and workspace grammar.
 
 ## Commands
 
@@ -26,51 +22,45 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 | [`init`](./commands/init.md)               | Scaffold a new project in an empty directory.            |
 | [`install`](./commands/install.md)         | Add a dependency or refresh the lockfile.                |
 | [`remove`](./commands/remove.md)           | Drop a dependency and (optionally) its cached jar.       |
-| [`info`](./commands/info.md)               | Inspect a Modrinth / Maven / file / workspace source.    |
-| [`search`](./commands/search.md)           | Query Modrinth by keyword.                               |
+| [`info`](./commands/info.md)               | Inspect a Modrinth, Maven, file, or workspace source.    |
+| [`search`](./commands/search.md)           | Search Modrinth by keyword.                              |
 | [`list`](./commands/list.md)               | Print declared deps, resolved versions, and registries.  |
-| [`build`](./commands/build.md)             | Compile → resources → descriptor → shade → jar.          |
+| [`build`](./commands/build.md)             | Compile, copy resources, write the descriptor, jar.      |
 | [`test`](./commands/test.md)               | Compile and run JUnit Platform tests under `test/`.      |
 | [`docs`](./commands/docs.md)               | Generate Javadoc HTML against the resolved classpath.    |
 | [`dev`](./commands/dev.md)                 | Boot a live server with the plugin and its runtime deps. |
-| [`doctor`](./commands/doctor.md)           | Validate the environment and every workspace.            |
+| [`sdk`](./commands/sdk.md)                 | Manage the JDKs pluggy provisions for builds.            |
+| [`cache`](./commands/cache.md)             | Inspect and prune the download cache.                    |
+| [`doctor`](./commands/doctor.md)           | Check the environment and every workspace.               |
 | [`upgrade`](./commands/upgrade.md)         | Replace the running binary with the latest release.      |
 | [`completions`](./commands/completions.md) | Print a shell completion script.                         |
 
 ## Deeper topics
 
-- [Build pipeline](./build-pipeline.md) — what happens between `pluggy build`
-  and the output jar. Maven transitive resolution, SNAPSHOT handling,
-  classpath construction, descriptor generation.
-- [Dev server](./dev-server.md) — the `dev/` staging directory, runtime vs
-  compile plugin detection, EULA handling, `--reload` vs restart, shutdown
-  semantics.
-- [Workspaces](./workspaces.md) — monorepo layout, inheritance rules, the
-  `workspace:` source kind, topological build order.
-- [IDE integration](./ide.md) — what `ide: "vscode" | "eclipse" | "intellij"`
-  writes and where.
-- [Cross-platform notes](./cross-platform.md) — install paths, cache paths,
-  line endings, signal handling.
-- [Troubleshooting](./troubleshooting.md) — common failures, the error
-  messages the code actually prints, and what to do about them.
+These pages explain how pluggy works once you've outgrown the tutorial. They assume you've shipped at least one plugin.
+
+- [Build pipeline](./build-pipeline.md): what happens between `pluggy build` and the output jar. Maven dependency resolution, SNAPSHOT handling, classpath construction, descriptor generation.
+- [Dev server](./dev-server.md): the `dev/` staging directory, runtime vs compile-time plugin detection, EULA handling, `--reload` vs restart, shutdown semantics.
+- [Workspaces](./workspaces.md): monorepo layout, inheritance rules, the `workspace:` source kind, topological build order.
+- [IDE integration](./ide.md): what `ide: "vscode" | "eclipse" | "intellij"` writes and where.
+- [Cross-platform notes](./cross-platform.md): install paths, cache paths, line endings, signal handling.
+- [Troubleshooting](./troubleshooting.md): common failures, the error messages the code actually prints, and what to do about them.
 
 ## Recipes
 
-Task-oriented walkthroughs for situations that come up often.
+Task-oriented walkthroughs for situations that come up often. Each recipe stands alone; pick the one that matches what you're trying to do.
 
-- [Adding a Paper plugin that uses adventure-api](./recipes/paper-with-adventure.md)
-- [Testing a Paper plugin with MockBukkit](./recipes/testing-with-mockbukkit.md)
-- [Setting up a monorepo with a shared API module](./recipes/monorepo-shared-api.md)
-- [Upgrading across Paper major versions](./recipes/upgrade-paper-major.md)
-- [CI builds without pluggy installed globally](./recipes/ci-without-global-pluggy.md)
-- [Migrating from a Maven or Gradle plugin project](./recipes/migrating-from-maven-gradle.md)
+- [Add a Paper plugin that uses adventure-api](./recipes/paper-with-adventure.md)
+- [Test a Paper plugin with MockBukkit](./recipes/testing-with-mockbukkit.md)
+- [Set up a monorepo with a shared API module](./recipes/monorepo-shared-api.md)
+- [Upgrade across Paper major versions](./recipes/upgrade-paper-major.md)
+- [Run CI builds without pluggy installed globally](./recipes/ci-without-global-pluggy.md)
+- [Migrate from a Maven or Gradle plugin project](./recipes/migrating-from-maven-gradle.md)
 
-## Reading conventions
+## Reading these docs
 
-Commands in this documentation that show paths use POSIX form
-(`~/Library/Caches/pluggy/...`). Where the Windows path differs materially,
-the difference is called out inline.
+Path examples use POSIX form (`~/Library/Caches/pluggy/...`). When the Windows path differs in a way that matters, the difference is called out inline.
 
-pluggy reads one file, `project.json`, and writes one lockfile, `pluggy.lock`.
-Everything else — the cache, the build staging directory, the `dev/` server
-directory — is derived.
+pluggy reads one file (`project.json`) and writes one lockfile (`pluggy.lock`). Everything else, the cache, the build staging directory, the `dev/` server directory, is derived from those two.
+
+If a term feels unfamiliar, check the [glossary](./glossary.md) first.

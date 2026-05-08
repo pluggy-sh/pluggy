@@ -1,9 +1,6 @@
 # Upgrading across Paper major versions
 
-Paper's API isn't fully stable across Minecraft major versions. Going
-from 1.20 to 1.21 usually requires code changes; going from 1.16 to 1.21
-definitely does. This recipe shows how pluggy makes the transition as
-mechanical as possible.
+Paper's API isn't fully stable across Minecraft major versions. Going from 1.20 to 1.21 usually requires code changes. Going from 1.16 to 1.21 definitely does. This recipe shows how pluggy makes the transition as mechanical as possible.
 
 ## The version string
 
@@ -37,8 +34,7 @@ pluggy uses that one string to wire up everything else.
    pluggy build --clean
    ```
 
-   `--clean` wipes the staging directory so stale class files from the
-   old MC version don't mask failures.
+   `--clean` wipes the staging directory so stale class files from the old Minecraft version don't mask failures.
 
 3. Let `javac` tell you what's deprecated or removed:
 
@@ -54,19 +50,15 @@ pluggy uses that one string to wire up everything else.
 4. Fix the compile errors. Refer to Paper's [release notes](https://papermc.io/software/paper)
    for the breaking changes in the major you're jumping over.
 
-5. If you also need a newer JDK for the new Paper version, install it
-   and update `PATH`. `pluggy doctor` reports the detected JDK:
+5. If you also need a newer JDK for the new Paper version, install it and update `PATH`. `pluggy doctor` reports the detected JDK:
 
    ```text
-   ✔ Java toolchain — Java 21
+   ✔ Java toolchain: Java 21
    ```
 
 ## Migrating the `dev/` directory
 
-MC stores world data in `dev/world*`. A world saved by 1.20 will be
-read-write-compatible with 1.21 most of the time — Mojang does an
-automatic world conversion on first boot — but some upgrades are
-one-way.
+Minecraft stores world data in `dev/world*`. A world saved by 1.20 will be read-write-compatible with 1.21 most of the time (Mojang does an automatic world conversion on first boot), but some upgrades are one-way.
 
 Safe default: delete `dev/world*` when upgrading across a major.
 
@@ -84,8 +76,7 @@ and the server jar hardlink.
 
 ## Runtime plugin compatibility
 
-Your Modrinth dependencies might not support the new MC version.
-`pluggy info <slug>` shows compat hints against your project:
+Your Modrinth dependencies might not support the new Minecraft version. `pluggy info <slug>` shows compat hints against your project:
 
 ```text
 $ pluggy info worldedit
@@ -97,10 +88,7 @@ versions:
   7.3.14  release  2025-07-02T12:00:00Z  [warn]
 ```
 
-`[ok]` means the plugin declares `game_versions` that overlap with your
-`compatibility.versions`. `[warn]` means no overlap — the plugin may
-still load (Modrinth metadata isn't always complete), but test before
-you ship.
+`[ok]` means the plugin declares `game_versions` that overlap with your `compatibility.versions`. `[warn]` means no overlap. The plugin may still load (Modrinth metadata isn't always complete), but test before you ship.
 
 ## Check for outdated deps before shipping
 
@@ -112,7 +100,7 @@ The `outdated` check compares every Modrinth entry in `pluggy.lock`
 against the current newest stable on Modrinth:
 
 ```text
-! Outdated dependencies — worldedit: 7.3.14 → 7.3.15; luckperms: 5.4.110 → 5.5.0
+! Outdated dependencies: worldedit 7.3.14 -> 7.3.15, luckperms 5.4.110 -> 5.5.0
 ```
 
 Update with:
@@ -155,8 +143,6 @@ pluggy build
 
 ## See also
 
-- [`pluggy build --clean`](../commands/build.md) — forces a full rebuild.
-- [`pluggy dev --fresh-world`](../commands/dev.md) — resets the dev
-  world without touching config.
-- [project.json `compatibility`](../project-json.md#compatibility-required)
-  — the one string that drives the upgrade.
+- [`pluggy build --clean`](../commands/build.md): forces a full rebuild.
+- [`pluggy dev --fresh-world`](../commands/dev.md): resets the dev world without touching config.
+- [project.json `compatibility`](../project-json.md#compatibility-required): the one string that drives the upgrade.

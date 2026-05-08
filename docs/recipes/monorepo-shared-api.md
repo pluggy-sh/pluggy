@@ -1,15 +1,12 @@
 # Setting up a monorepo with a shared API module
 
-A common pattern for larger plugin projects: one `api` module that
-exposes types and interfaces, one `impl` module that implements them,
-and an addon or two that consume the api. Everything in one repo, one
-lockfile, one command to build them all.
+A common pattern for larger plugin projects: one `api` module that exposes types and interfaces, one `impl` module that implements them, and an addon or two that consume the api. Everything in one repo, one lockfile, one command to build them all. The pluggy term for this layout is [workspaces](../glossary.md#workspace).
 
 ## Layout
 
 ```text
 my-network/
-├── project.json            (root — paper compat, no main, no build)
+├── project.json            (root: paper compat, no main, no build)
 ├── pluggy.lock             (shared)
 ├── api/
 │   ├── project.json
@@ -43,11 +40,9 @@ my-network/
 }
 ```
 
-No `main`. The root isn't buildable in its own right — it's a container
-for workspaces.
+No `main`. The root isn't buildable in its own right. It's a container for workspaces.
 
-`compatibility`, `authors`, `description`, and `registries` are
-inherited by any workspace that doesn't declare its own.
+`compatibility`, `authors`, `description`, and `registries` are inherited by any workspace that doesn't declare its own.
 
 ## The `api` workspace
 
@@ -80,15 +75,14 @@ package com.example.api;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class ApiPlugin extends JavaPlugin {
-    // Empty — this workspace just publishes the API type.
+    // Empty: this workspace just publishes the API type.
     // A real api workspace might register a service via Bukkit's ServicesManager.
 }
 ```
 
 ## The `impl` workspace
 
-Depends on `api`. Shading is optional — we'll shade it here so `impl`
-is a standalone jar with the interfaces inside.
+Depends on `api`. Shading is optional. We'll shade it here so `impl` is a standalone jar with the interfaces inside.
 
 ```json
 {
@@ -135,8 +129,7 @@ public class ImplPlugin extends JavaPlugin implements StoreService {
 
 ## The `addons/shop` workspace
 
-Consumes `api` but not `impl` — it looks the `StoreService` up through
-Bukkit's `ServicesManager` at runtime.
+Consumes `api` but not `impl`. It looks the `StoreService` up through Bukkit's `ServicesManager` at runtime.
 
 ```json
 {
@@ -152,8 +145,7 @@ Bukkit's `ServicesManager` at runtime.
 }
 ```
 
-No shading — `impl` provides the `api` classes at runtime. `shop` is a
-compile-only consumer.
+No shading. `impl` provides the `api` classes at runtime. `shop` is a compile-only consumer.
 
 ## Install
 
@@ -161,11 +153,7 @@ compile-only consumer.
 pluggy install
 ```
 
-At the root, without flags, pluggy enumerates every workspace, collects
-their declared deps, and writes `pluggy.lock` at the repo root. For this
-layout the lockfile has one entry — `api` — with
-`integrity: sha256-pending-build` (the placeholder used for workspace
-deps; the real integrity isn't known until `api` is built).
+At the root, without flags, pluggy enumerates every workspace, collects their declared deps, and writes `pluggy.lock` at the repo root. For this layout the lockfile has one entry, `api`, with `integrity: sha256-pending-build` (the placeholder used for workspace deps; the real integrity isn't known until `api` is built).
 
 ## Build from the root
 
@@ -199,11 +187,7 @@ cd impl
 pluggy dev
 ```
 
-`pluggy dev` is always one-at-a-time. It builds `impl` (which triggers
-`api` through the classpath resolution), boots a Paper server, and
-drops `impl`'s jar into `dev/plugins/`. It does **not** drop `api`
-into `dev/plugins/` — `api` isn't a runtime plugin in this layout (it
-has no descriptor file in its jar).
+`pluggy dev` is always one-at-a-time. It builds `impl` (which triggers `api` through the classpath resolution), boots a Paper server, and drops `impl`'s jar into `dev/plugins/`. It does **not** drop `api` into `dev/plugins/`. `api` isn't a runtime plugin in this layout, since it has no descriptor file in its jar.
 
 To dev `shop` instead:
 
@@ -258,19 +242,12 @@ Run `pluggy install` at the root to refresh the lockfile.
 
 ## Watch out for
 
-- **Same-name deps with different versions.** If `impl` pins
-  `adventure-api@4.17.0` and `shop` pins `adventure-api@4.18.0`, bulk
-  install refuses to pick a winner: `install: conflicting declarations
-of "adventure-api" across workspaces...`. Align the versions in each
-  `project.json`.
-- **Circular workspace dependencies.** `api` → `impl` → `api`. `doctor`
-  flags these: `Workspace graph — workspace dependency cycle detected:
-api -> impl -> api`. Extract the shared bits into a third workspace.
-- **Running `dev` at the root.** `pluggy dev` requires `--workspace
-<name>` at a multi-workspace root.
+- **Same-name deps with different versions.** If `impl` pins `adventure-api@4.17.0` and `shop` pins `adventure-api@4.18.0`, bulk install refuses to pick a winner: `install: conflicting declarations of "adventure-api" across workspaces...`. Align the versions in each `project.json`.
+- **Circular workspace dependencies.** `api` -> `impl` -> `api`. `doctor` flags these: `Workspace graph: workspace dependency cycle detected: api -> impl -> api`. Extract the shared bits into a third workspace.
+- **Running `dev` at the root.** `pluggy dev` requires `--workspace <name>` at a multi-workspace root.
 
 ## See also
 
-- [Workspaces](../workspaces.md) — the full reference.
-- [`pluggy build`](../commands/build.md) — topological ordering.
-- [Dependencies](../dependencies.md) — the `workspace:` source kind.
+- [Workspaces](../workspaces.md): the full reference.
+- [`pluggy build`](../commands/build.md): topological ordering.
+- [Dependencies](../dependencies.md): the `workspace:` source kind.

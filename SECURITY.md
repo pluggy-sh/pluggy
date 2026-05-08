@@ -17,21 +17,21 @@ You will receive an acknowledgement within 72 hours. We aim to confirm or reject
 
 ## Supported versions
 
-Only the latest released version receives security fixes. pluggy is pre-1.0 and ships from `main`. The upgrade path is `pluggy upgrade`, which verifies the new binary against the published `SHA256SUMS.txt` and a Sigstore-issued build-provenance attestation before swapping it in place.
+Only the latest released version receives security fixes. pluggy is pre-1.0 and ships from `main`. The upgrade path is `pluggy upgrade`, which verifies the new binary against the published `SHA256SUMS.txt` and a [Sigstore](https://www.sigstore.dev/)-issued build-provenance attestation (a signed record of which CI workflow built the binary) before swapping it in place.
 
 ## Threat model
 
 `pluggy` is a developer-facing CLI invoked from a terminal in a trusted local environment. Its threat model assumes:
 
-- The user trusts the terminal they invoke `pluggy` from and the project directory they invoke it inside. Cloning a hostile repository and running `pluggy build` against it is **not** a supported safe operation — the same way `npm install` against a hostile package isn't.
+- The user trusts the terminal they invoke `pluggy` from and the project directory they invoke it inside. Cloning a hostile repository and running `pluggy build` against it is **not** a supported safe operation, the same way `npm install` against a hostile package isn't.
 - `process.env`, CLI flags, and `~/.config/pluggy/*` are inputs from the user, not an attacker. An attacker who can modify these on the user's machine has already won.
-- HTTPS is the trust root for every external download (GitHub Releases, Foojay Disco, Modrinth, Maven repositories, JetBrains CDN, HotswapProjects, SpigotMC). We additionally verify integrity at the artifact level wherever upstream publishes a hash.
+- HTTPS is the trust root for every external download (GitHub Releases, Foojay Disco, Modrinth, Maven repositories, JetBrains CDN, HotswapProjects, SpigotMC). pluggy additionally verifies integrity at the artifact level wherever upstream publishes a hash.
 
 In scope, and what the codebase actively defends against:
 
-- **Supply-chain substitution** of any artifact `pluggy` downloads — JDKs, BuildTools, JBR, HotswapAgent, Modrinth/Maven dependencies, the `pluggy` binary itself. Verification is layered: registry-published hashes (Disco, Modrinth API, Maven `.sha1`/`.sha512`), pinned hashes for upstreams that don't publish sidecars (JBR, HotswapAgent), TOFU pinning where neither is available (BuildTools.jar), and `SHA256SUMS.txt` + Sigstore build-provenance attestations on `pluggy upgrade`.
-- **Lockfile integrity** — `pluggy.lock`'s `integrity` is verified at install time (cache and re-resolve) and at build time (lockfile-driven `expectedIntegrity` threading through every resolver). Silent rolls forward across pinned versions are rejected.
-- **Zip/path-traversal** in any archive `pluggy` extracts — template archives from `codeload.github.com`, dependency jars during shading, JDK and JBR tarballs/zips. Every archive entry is run through a `safeJoin` that rejects `..`, absolute paths, and backslash-bearing names.
+- **Supply-chain substitution** of any artifact pluggy downloads (an attacker swapping a legitimate jar for a malicious one): JDKs, BuildTools, JBR, HotswapAgent, Modrinth and Maven dependencies, the `pluggy` binary itself. Verification is layered: registry-published hashes (Disco, Modrinth API, Maven `.sha1` and `.sha512`); pinned hashes for upstreams that don't publish sidecars (JBR, HotswapAgent); trust-on-first-use pinning where neither is available (BuildTools.jar, where pluggy records the hash on first download and refuses any future change); and `SHA256SUMS.txt` plus Sigstore build-provenance attestations on `pluggy upgrade`.
+- **Lockfile integrity**. `pluggy.lock`'s `integrity` field is verified at install time (cache and re-resolve) and at build time (the lockfile's expected integrity threads through every resolver). Silent rolls forward across pinned versions are rejected.
+- **Zip and path traversal** in any archive pluggy extracts: template archives from `codeload.github.com`, dependency jars during shading, JDK and JBR tarballs and zips. Every archive entry is run through a `safeJoin` that rejects `..`, absolute paths, and backslash-bearing names.
 - **Cache-path traversal** via hostile `pluggy.lock` or `project.json` content. Components used to compute filesystem paths (`distribution`, `slug`, `groupId`, `artifactId`, `resolvedVersion`, `integrity` hex) are checked against a tight allowlist before being joined.
 
 ## Scope

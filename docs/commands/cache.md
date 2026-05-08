@@ -14,18 +14,24 @@ The cache root is OS-specific:
 | Windows | `%LOCALAPPDATA%\pluggy\cache`                            |
 | Linux   | `$XDG_CACHE_HOME/pluggy` (defaults to `~/.cache/pluggy`) |
 
-Everything under this directory is reproducible: deleting it forces re-downloads but never loses irreplaceable state. Persistent metadata (e.g. the cached "latest pluggy release" timestamp) lives under a separate state directory and survives `pluggy cache clean`.
+Everything under this directory is reproducible. Deleting it forces re-downloads but never loses irreplaceable state. Persistent metadata (for example the cached "latest pluggy release" timestamp) lives under a separate [state directory](../glossary.md#state-directory) and survives `pluggy cache clean`. The state directory is at:
+
+| OS      | Path                                                              |
+| ------- | ----------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/pluggy`                            |
+| Windows | `%APPDATA%\pluggy`                                                |
+| Linux   | `$XDG_STATE_HOME/pluggy` (defaults to `~/.local/state/pluggy`)    |
 
 Categories pluggy tracks:
 
-| Category       | What it holds                                                              |
-| -------------- | -------------------------------------------------------------------------- |
-| `jdk`          | Cached JDKs (extracted slots + downloaded archives), with an LRU manifest. |
-| `versions`     | Platform server jars (Paper, Velocity, Waterfall, Folia, Travertine, …).   |
-| `buildtools`   | `BuildTools.jar` plus its CraftBukkit/Spigot output cache.                 |
-| `dependencies` | Resolved plugin dependencies — `maven`, `modrinth`, and `file` subkinds.   |
-| `jbr`          | JetBrains Runtime used by `pluggy dev` for hotswap.                        |
-| `hotswap`      | HotswapAgent jars used by `pluggy dev`.                                    |
+| Category       | What it holds                                                                          |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `jdk`          | Cached JDKs (extracted slots and downloaded archives), with a least-recently-used log. |
+| `versions`     | Platform server jars (Paper, Velocity, Waterfall, Folia, Travertine, Sponge, ...).     |
+| `buildtools`   | `BuildTools.jar` plus its CraftBukkit/Spigot output cache.                             |
+| `dependencies` | Resolved plugin dependencies (`maven`, `modrinth`, and `file` subkinds).               |
+| `jbr`          | JetBrains Runtime used by `pluggy dev` for hotswap.                                    |
+| `hotswap`      | HotswapAgent jars used by `pluggy dev`.                                                |
 
 ## Subcommands
 
@@ -36,12 +42,12 @@ Every subcommand supports the global `--json` flag for structured output.
 | `pluggy cache` / `pluggy cache info` | Show entries and bytes per category. The default action.  |
 | `pluggy cache list [--category]`     | Per-entry listing, newest first.                          |
 | `pluggy cache path`                  | Print the cache root. Scriptable.                         |
-| `pluggy cache clean [--category]`    | Wipe a category — or, with no flag, the entire cache.     |
-| `pluggy cache prune [...]`           | LRU-evict by age and size budget. Safe one-shot defaults. |
+| `pluggy cache clean [--category]`    | Wipe a category, or with no flag, the entire cache.       |
+| `pluggy cache prune [...]`           | Evict by age and size budget. Safe one-shot defaults.     |
 
 ## `info`
 
-Default action — running `pluggy cache` with no subcommand is identical.
+Default action. Running `pluggy cache` with no subcommand is identical.
 
 ```text
 $ pluggy cache
@@ -99,7 +105,7 @@ $ pluggy cache clean --category versions
 
 ## `prune`
 
-Budget-driven eviction. Safe to run in a one-shot — defaults are conservative.
+Budget-driven eviction. Safe to run as a one-shot, since defaults are conservative.
 
 ```text
 $ pluggy cache prune
@@ -116,7 +122,7 @@ $ pluggy cache prune
 | `--category <name>`    | (all)   | Limit pruning to one category.                                                                                                       |
 | `--dry-run`            | (off)   | Print what would be removed without touching disk.                                                                                   |
 
-For JDKs, "last used" is sourced from the LRU manifest (`ensureJdk` bumps it on every cache hit). For every other category, "last used" is the file's mtime — which is set when the entry was last downloaded.
+For JDKs, "last used" is sourced from the least-recently-used log (`ensureJdk` bumps it on every cache hit). For every other category, "last used" is the file's mtime, which is set when the entry was last downloaded.
 
 ### Combined budgets
 
@@ -138,5 +144,5 @@ In CI you usually want strict, predictable cache behavior. Two patterns:
 
 ## See also
 
-- [`pluggy sdk`](./sdk.md) — install, list, pin, and remove specific JDK toolchains.
-- [`pluggy doctor`](./doctor.md) — the `Cache reachability` check reports cache root + total size.
+- [`pluggy sdk`](./sdk.md): install, list, pin, and remove specific JDK toolchains.
+- [`pluggy doctor`](./doctor.md): the `Cache reachability` check reports cache root and total size.

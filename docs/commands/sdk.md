@@ -2,11 +2,11 @@
 
 Manage the JDKs pluggy provisions for `build`, `test`, and `dev`. You rarely run these commands directly: `pluggy build` auto-installs the right JDK on first use. Reach for `pluggy sdk` to pre-warm the cache, pin a distribution per project, or remove a slot.
 
-For cross-cutting cache housekeeping (LRU eviction across all categories, total size, cleaning everything) see [`pluggy cache`](./cache.md).
+For cross-cutting cache housekeeping (eviction across all categories, total size, cleaning everything) see [`pluggy cache`](./cache.md).
 
 ## Background
 
-pluggy resolves a project's required Java major from `compatibility.versions[0]` and provisions a matching JDK from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions). Cached slots live under `<cachePath>/jdk/<distribution>-<major>-<os>-<arch>/`. The system `JAVA_HOME` short-circuits the cache when its major matches what the project needs, so existing toolchains (asdf, mise, hand-installed JDKs) keep working.
+pluggy resolves a project's required Java major from `compatibility.versions[0]` and provisions a matching [JDK](../glossary.md#jdk) from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions). Cached slots live under `<cachePath>/jdk/<distribution>-<major>-<os>-<arch>/`. The system `JAVA_HOME` takes precedence when its major matches what the project needs, so existing toolchains (asdf, mise, hand-installed JDKs) keep working.
 
 Set `PLUGGY_NO_AUTO_INSTALL=1` to make a cache miss raise instead of downloading. Use this in CI if you want to fail loudly when the cache hasn't been pre-warmed.
 
@@ -49,7 +49,7 @@ Cached JDKs:
   ✓ zulu 17     (17.0.13)     last used 3d ago
 ```
 
-A red `✗` means the manifest still references the slot but the directory is gone — `pluggy cache prune --category jdk` cleans those up.
+A red `✗` means the manifest still references the slot but the directory is gone. `pluggy cache prune --category jdk` cleans those up.
 
 `pluggy sdk list --available` switches to the install allowlist.
 
@@ -112,7 +112,7 @@ The first command resolves the major from `project.json` and downloads the JDK. 
 
 ## See also
 
-- [`jdk` in the `project.json` reference](../project-json.md#jdk-optional) — the per-project pin.
-- [`pluggy cache`](./cache.md) — cross-category cache housekeeping (`info`, `prune`, `clean`).
-- [`pluggy doctor`](./doctor.md) — the `Project JDK` check reports cache state.
-- [Foojay Disco distributions](https://api.foojay.io/disco/v3.0/distributions) — every distribution Disco knows about.
+- [`jdk` in the `project.json` reference](../project-json.md#jdk-optional): the per-project pin.
+- [`pluggy cache`](./cache.md): cross-category cache housekeeping (`info`, `prune`, `clean`).
+- [`pluggy doctor`](./doctor.md): the `Project JDK` check reports cache state.
+- [Foojay Disco distributions](https://api.foojay.io/disco/v3.0/distributions): every distribution Disco knows about.

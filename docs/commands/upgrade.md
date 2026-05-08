@@ -76,24 +76,19 @@ and remove the old system binary so it doesn't shadow the new one.
 
 ## Update notification
 
-When pluggy starts, it reads a small state file
-(`<state>/update-check.json`, separate from the cache so `pluggy cache
-clean` doesn't reset it) and, at most once per 24 hours, fetches
-the latest release tag in the background. If the cache shows that you
-are out of date, you'll see a one-line notice on stderr after the
-command finishes:
+When pluggy starts, it reads a small state file (`<state>/update-check.json`, in the [state directory](../glossary.md#state-directory) so `pluggy cache clean` doesn't reset it) and, at most once per 24 hours, fetches the latest release tag in the background. If the cache shows that you are out of date, you'll see a one-line notice on stderr after the command finishes:
 
 ```text
-✦ pluggy 0.3.0 available → you have 0.2.0. Run pluggy upgrade.
+✦ pluggy 0.3.0 available, you have 0.2.0. Run pluggy upgrade.
 ```
 
 The notice is suppressed when:
 
-- `--json` is set on the current command,
-- `CI` is set to a non-empty truthy value,
-- stderr isn't a TTY (e.g., piped output),
-- `PLUGGY_NO_UPDATE_CHECK=1` is set in the environment, or
-- the running build is the dev sentinel (`0.0.0`).
+- `--json` is set on the current command.
+- `CI` is set to a non-empty truthy value.
+- stderr isn't a TTY (for example piped output).
+- `PLUGGY_NO_UPDATE_CHECK=1` is set in the environment.
+- The running build is the dev sentinel (`0.0.0`).
 
 Run `pluggy doctor` to see the same information inline.
 
@@ -109,5 +104,4 @@ Run `pluggy doctor` to see the same information inline.
 
 ## See also
 
-- [Cross-platform notes](../cross-platform.md) — where the binary lives on
-  each OS.
+- [Cross-platform notes](../cross-platform.md): where the binary lives on each OS.

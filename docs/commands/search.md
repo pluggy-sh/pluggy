@@ -1,7 +1,6 @@
 # `pluggy search`
 
-Query Modrinth by keyword, optionally filtered by platform and Minecraft
-version.
+Search Modrinth by keyword, optionally filtered by platform and Minecraft version.
 
 ## Usage
 
@@ -9,8 +8,7 @@ version.
 pluggy search [options] <query>
 ```
 
-`<query>` is a non-empty string — Modrinth treats it as a free-form search
-term.
+`<query>` is a non-empty string. Modrinth treats it as a free-form search term.
 
 ## Flags
 
@@ -29,8 +27,7 @@ pluggy hits `GET /v2/search` with facets:
 [["project_type:plugin"], ["categories:<platform>"], ["versions:<mcVersion>"]]
 ```
 
-The first facet is always present — the search is scoped to plugins. The
-other two appear only when you pass the corresponding flag.
+The first facet is always present, since the search is scoped to plugins. The other two appear only when you pass the corresponding flag.
 
 Results are served back in Modrinth's native order (relevance + downloads).
 
@@ -54,9 +51,7 @@ LuckPerms  (luckperms)
   ...
 ```
 
-Game-version ranges are compacted to a `<lowest> … <highest>` span when
-the plugin supports more than one. Single-version plugins show that one
-version verbatim. Plugins without version data omit the line.
+Game-version ranges are compacted to a `<lowest> ... <highest>` span when the plugin supports more than one. Single-version plugins show that one version verbatim. Plugins without version data omit the line.
 
 ## JSON output
 
@@ -85,11 +80,9 @@ version verbatim. Plugins without version data omit the line.
 }
 ```
 
-`project_type` is always `"mod"` in Modrinth's schema — plugins are a
-category within the `mod` type. Don't read too much into it.
+`project_type` is always `"mod"` in Modrinth's schema, because plugins are a category within the `mod` type. Don't read too much into it.
 
-`latest_version` is an opaque Modrinth version id, not a semver. Use
-[`pluggy info <slug>`](./info.md) to get the human version numbers.
+`latest_version` is an opaque Modrinth version id, not a semver. Use [`pluggy info <slug>`](./info.md) to get the human version numbers.
 
 ## Error cases
 
@@ -101,5 +94,5 @@ category within the `mod` type. Don't read too much into it.
 
 ## See also
 
-- [`pluggy info`](./info.md) — full metadata for one slug.
-- [`pluggy install`](./install.md) — add a search hit to your project.
+- [`pluggy info`](./info.md): full metadata for one slug.
+- [`pluggy install`](./install.md): add a search hit to your project.
