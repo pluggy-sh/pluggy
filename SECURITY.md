@@ -4,7 +4,7 @@ Report security vulnerabilities privately. Do not open public issues for securit
 
 ## Reporting a vulnerability
 
-File a report through GitHub's [private vulnerability reporting](https://github.com/ch99q/pluggy/security/advisories/new). If you cannot use GitHub, email `64793a1a@gmail.com` with the same content.
+File a report through GitHub's [private vulnerability reporting](https://github.com/pluggy-sh/pluggy/security/advisories/new). If you cannot use GitHub, email `64793a1a@gmail.com` with the same content.
 
 Include in the report:
 

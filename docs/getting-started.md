@@ -24,7 +24,7 @@ pluggy itself from source.
 ### macOS and Linux
 
 ```bash
-curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
 ```
 
 The script downloads the binary for your OS and architecture into
@@ -36,7 +36,7 @@ shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`,
 Override the install location with `PLUGGY_HOME`:
 
 ```bash
-PLUGGY_HOME=/opt/pluggy curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
+PLUGGY_HOME=/opt/pluggy curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
 ```
 
 Open a new shell or `source` the updated profile to pick up the new
@@ -45,7 +45,7 @@ Open a new shell or `source` the updated profile to pick up the new
 ### Windows
 
 ```powershell
-irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
+irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
 ```
 
 The script installs `pluggy.exe` to `%LOCALAPPDATA%\Programs\pluggy` and

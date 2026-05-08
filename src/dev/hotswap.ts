@@ -76,7 +76,7 @@ export async function ensureAgent(version = HOTSWAP_AGENT_VERSION): Promise<stri
   if (actualSha !== expectedSha) {
     throw new Error(
       `hotswap: integrity check failed for hotswap-agent-${version}.jar — expected sha256 ${expectedSha}, got ${actualSha}. ` +
-        `Refusing to load an unverified javaagent; please report at https://github.com/ch99q/pluggy/issues.`,
+        `Refusing to load an unverified javaagent; please report at https://github.com/pluggy-sh/pluggy/issues.`,
     );
   }
   const tmp = `${dest}.partial`;

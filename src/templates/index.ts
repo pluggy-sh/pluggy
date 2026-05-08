@@ -25,7 +25,7 @@ import yauzl, { type Entry, type ZipFile } from "yauzl";
 import type { PlatformFamily } from "../platform/index.ts";
 import { replace } from "../template.ts";
 
-const DEFAULT_REPO = "ch99q/pluggy";
+const DEFAULT_REPO = "pluggy-sh/pluggy";
 const DEFAULT_REF = "main";
 
 /** Lightweight entry as listed in `templates/index.json`. */
