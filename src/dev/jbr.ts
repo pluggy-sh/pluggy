@@ -179,7 +179,7 @@ async function downloadArchive(
   if (actualSha !== expectedSha) {
     throw new Error(
       `jbr: integrity check failed for ${archiveName} — expected sha256 ${expectedSha}, got ${actualSha}. ` +
-        `Refusing to extract an unverified runtime; please report at https://github.com/ch99q/pluggy/issues.`,
+        `Refusing to extract an unverified runtime; please report at https://github.com/pluggy-sh/pluggy/issues.`,
     );
   }
   const tmpPath = `${destPath}.partial`;

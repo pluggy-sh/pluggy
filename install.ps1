@@ -4,7 +4,7 @@
 # to the user PATH. No administrator privileges required.
 
 param(
-    [string]$Repo = "ch99q/pluggy",
+    [string]$Repo = "pluggy-sh/pluggy",
     [string]$Binary = "pluggy"
 )
 

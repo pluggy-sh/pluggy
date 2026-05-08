@@ -16,7 +16,7 @@ pluggy upgrade [options]
 
 ## What it does
 
-1. Queries `https://api.github.com/repos/ch99q/pluggy/releases/latest`.
+1. Queries `https://api.github.com/repos/pluggy-sh/pluggy/releases/latest`.
 2. Maps `process.platform` × `process.arch` to a release asset name:
 
    | Platform | Arch    | Asset                      |
@@ -42,7 +42,7 @@ install instructions and exits clean.
 ```text
 $ pluggy upgrade
 Upgrading to: v0.2.0
-downloading https://github.com/ch99q/pluggy/releases/download/v0.2.0/pluggy-darwin-arm64
+downloading https://github.com/pluggy-sh/pluggy/releases/download/v0.2.0/pluggy-darwin-arm64
 ✔ pluggy v0.2.0 installed at ~/.pluggy/bin/pluggy (previous binary backed up to ~/.pluggy/bin/pluggy.old)
 ```
 
@@ -51,12 +51,12 @@ With `--print-only`:
 ```text
 Latest release: v0.2.0
 Published:      2026-03-01T12:00:00Z
-URL:            https://github.com/ch99q/pluggy/releases/tag/v0.2.0
+URL:            https://github.com/pluggy-sh/pluggy/releases/tag/v0.2.0
 
 Install manually:
 
-  Unix:    curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
-  Windows: irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
+  Unix:    curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
+  Windows: irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
 ```
 
 ## Permissions

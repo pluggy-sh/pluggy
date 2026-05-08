@@ -18,13 +18,13 @@ Install pluggy with the script for your platform. Both scripts drop the binary o
 On macOS and Linux:
 
 ```bash
-curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
 ```
 
 On Windows (PowerShell):
 
 ```powershell
-irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
+irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
 ```
 
 Open a new terminal and verify:

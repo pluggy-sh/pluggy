@@ -8,7 +8,7 @@
 
 set -e
 
-REPO="ch99q/pluggy"
+REPO="pluggy-sh/pluggy"
 BINARY="pluggy"
 
 PLUGGY_HOME="${PLUGGY_HOME:-$HOME/.pluggy}"

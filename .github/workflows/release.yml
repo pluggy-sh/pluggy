@@ -145,12 +145,12 @@ jobs:
 
             ### Windows (PowerShell)
             ```
-            irm https://github.com/ch99q/pluggy/releases/download/${{ github.ref_name }}/install.ps1 | iex
+            irm https://github.com/pluggy-sh/pluggy/releases/download/${{ github.ref_name }}/install.ps1 | iex
             ```
 
             ### Unix-like Systems (macOS, Linux)
             ```
-            curl -fsSL https://github.com/ch99q/pluggy/releases/download/${{ github.ref_name }}/install.sh | bash
+            curl -fsSL https://github.com/pluggy-sh/pluggy/releases/download/${{ github.ref_name }}/install.sh | bash
             ```
 
             ## Verification

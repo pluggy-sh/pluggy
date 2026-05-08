@@ -2,15 +2,15 @@
   "name": "pluggy",
   "version": "0.0.0",
   "description": "A CLI for developing Minecraft plugins.",
-  "homepage": "https://github.com/ch99q/pluggy#readme",
+  "homepage": "https://github.com/pluggy-sh/pluggy#readme",
   "bugs": {
-    "url": "https://github.com/ch99q/pluggy/issues"
+    "url": "https://github.com/pluggy-sh/pluggy/issues"
   },
   "license": "MIT",
   "author": "Christian Hansen",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ch99q/pluggy.git"
+    "url": "git+https://github.com/pluggy-sh/pluggy.git"
   },
   "bin": {
     "pluggy": "./bin/pluggy"

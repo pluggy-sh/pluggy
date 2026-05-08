@@ -31,7 +31,7 @@ jobs:
 
       - name: Install pluggy
         run: |
-          curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
+          curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
 
       - name: Cache pluggy downloads
         uses: actions/cache@v4
@@ -72,7 +72,7 @@ a tag:
 
 ```bash
 VERSION=v0.2.0
-curl -fsSL "https://github.com/ch99q/pluggy/releases/download/${VERSION}/pluggy-linux-amd64" -o /tmp/pluggy
+curl -fsSL "https://github.com/pluggy-sh/pluggy/releases/download/${VERSION}/pluggy-linux-amd64" -o /tmp/pluggy
 chmod +x /tmp/pluggy
 sudo mv /tmp/pluggy /usr/local/bin/pluggy
 ```
@@ -86,7 +86,7 @@ container:
 
 ```dockerfile
 FROM eclipse-temurin:21-jdk
-RUN curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/pluggy-linux-amd64 \
+RUN curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/pluggy-linux-amd64 \
     -o /usr/local/bin/pluggy \
  && chmod +x /usr/local/bin/pluggy
 ```
@@ -103,7 +103,7 @@ add the directory to `$env:PATH` explicitly:
 - name: Install pluggy
   shell: pwsh
   run: |
-    irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
+    irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
     # Add to PATH for the rest of this job
     echo "$env:LOCALAPPDATA\Programs\pluggy" >> $env:GITHUB_PATH
 ```

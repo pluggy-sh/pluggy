@@ -67,7 +67,7 @@ describe("startUpdateCheck", () => {
     );
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       stateFile,
     });
@@ -86,7 +86,7 @@ describe("startUpdateCheck", () => {
     );
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       stateFile,
     });
@@ -102,7 +102,7 @@ describe("startUpdateCheck", () => {
     );
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       json: true,
       stateFile,
@@ -120,7 +120,7 @@ describe("startUpdateCheck", () => {
     );
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       stateFile,
     });
@@ -137,7 +137,7 @@ describe("startUpdateCheck", () => {
     );
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       stateFile,
     });
@@ -153,7 +153,7 @@ describe("startUpdateCheck", () => {
     );
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.0.0",
       stateFile,
     });
@@ -168,7 +168,7 @@ describe("startUpdateCheck", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ tag_name: "v0.2.0" }), { status: 200 }));
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       stateFile,
     });
@@ -185,7 +185,7 @@ describe("startUpdateCheck", () => {
     );
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
     const handle = await startUpdateCheck({
-      repository: "ch99q/pluggy",
+      repository: "pluggy-sh/pluggy",
       currentVersion: "0.1.0",
       stateFile,
     });

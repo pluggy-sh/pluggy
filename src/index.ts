@@ -25,7 +25,7 @@ import { startUpdateCheck } from "./update-check.ts";
 import "./platform/index.ts";
 
 const CLI_VERSION = "0.0.0";
-const REPOSITORY = "ch99q/pluggy";
+const REPOSITORY = "pluggy-sh/pluggy";
 
 const program = new Command()
   .name("pluggy")
