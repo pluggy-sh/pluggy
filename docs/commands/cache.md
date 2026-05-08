@@ -16,11 +16,11 @@ The cache root is OS-specific:
 
 Everything under this directory is reproducible. Deleting it forces re-downloads but never loses irreplaceable state. Persistent metadata (for example the cached "latest pluggy release" timestamp) lives under a separate [state directory](../glossary.md#state-directory) and survives `pluggy cache clean`. The state directory is at:
 
-| OS      | Path                                                              |
-| ------- | ----------------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/pluggy`                            |
-| Windows | `%APPDATA%\pluggy`                                                |
-| Linux   | `$XDG_STATE_HOME/pluggy` (defaults to `~/.local/state/pluggy`)    |
+| OS      | Path                                                           |
+| ------- | -------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/pluggy`                         |
+| Windows | `%APPDATA%\pluggy`                                             |
+| Linux   | `$XDG_STATE_HOME/pluggy` (defaults to `~/.local/state/pluggy`) |
 
 Categories pluggy tracks:
 
@@ -37,13 +37,13 @@ Categories pluggy tracks:
 
 Every subcommand supports the global `--json` flag for structured output.
 
-| Subcommand                           | Purpose                                                   |
-| ------------------------------------ | --------------------------------------------------------- |
-| `pluggy cache` / `pluggy cache info` | Show entries and bytes per category. The default action.  |
-| `pluggy cache list [--category]`     | Per-entry listing, newest first.                          |
-| `pluggy cache path`                  | Print the cache root. Scriptable.                         |
-| `pluggy cache clean [--category]`    | Wipe a category, or with no flag, the entire cache.       |
-| `pluggy cache prune [...]`           | Evict by age and size budget. Safe one-shot defaults.     |
+| Subcommand                           | Purpose                                                  |
+| ------------------------------------ | -------------------------------------------------------- |
+| `pluggy cache` / `pluggy cache info` | Show entries and bytes per category. The default action. |
+| `pluggy cache list [--category]`     | Per-entry listing, newest first.                         |
+| `pluggy cache path`                  | Print the cache root. Scriptable.                        |
+| `pluggy cache clean [--category]`    | Wipe a category, or with no flag, the entire cache.      |
+| `pluggy cache prune [...]`           | Evict by age and size budget. Safe one-shot defaults.    |
 
 ## `info`
 

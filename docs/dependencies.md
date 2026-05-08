@@ -4,12 +4,12 @@ Four [source kinds](./glossary.md#source-kind), one grammar, one [lockfile](./gl
 
 ## Source kinds
 
-| Scheme    | CLI form                                 | project.json `source`          | Resolver                                           |
-| --------- | ---------------------------------------- | ------------------------------ | -------------------------------------------------- |
-| Modrinth  | `<slug>[@<version>]`                     | `modrinth:<slug>`              | Fetches from `api.modrinth.com/v2`.                |
-| Maven     | `maven:<groupId>:<artifactId>@<version>` | `maven:<groupId>:<artifactId>` | Walks `registries` in order.                       |
-| File      | `<path>.jar`                             | `file:<path>`                  | Reads the local jar, identified by SHA-256.        |
-| Workspace | `workspace:<name>`                       | `workspace:<name>`             | Points at a sibling's built jar.                   |
+| Scheme    | CLI form                                 | project.json `source`          | Resolver                                    |
+| --------- | ---------------------------------------- | ------------------------------ | ------------------------------------------- |
+| Modrinth  | `<slug>[@<version>]`                     | `modrinth:<slug>`              | Fetches from `api.modrinth.com/v2`.         |
+| Maven     | `maven:<groupId>:<artifactId>@<version>` | `maven:<groupId>:<artifactId>` | Walks `registries` in order.                |
+| File      | `<path>.jar`                             | `file:<path>`                  | Reads the local jar, identified by SHA-256. |
+| Workspace | `workspace:<name>`                       | `workspace:<name>`             | Points at a sibling's built jar.            |
 
 ## The CLI identifier grammar
 
@@ -147,13 +147,13 @@ Registry URLs are tried in declaration order, then `DEFAULT_MAVEN_REGISTRIES` (M
 
 Every top-level entry carries:
 
-| Field             | Meaning                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------ |
-| `source`          | The full tagged union from `source.ts` (kind + identifying fields + version).                    |
-| `resolvedVersion` | Concrete version resolved by `install`. Never a range, never `"*"`.                              |
-| `integrity`       | `sha256-<hex>` of the resolved jar bytes. Verified on every consuming read.                      |
-| `declaredBy`      | Workspaces that declared this dep. Used by `remove` to know when the entry can be dropped.       |
-| `transitives`     | Optional. Recursive. Omitted when there are no transitive deps. Does not include `declaredBy`.   |
+| Field             | Meaning                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `source`          | The full tagged union from `source.ts` (kind + identifying fields + version).                  |
+| `resolvedVersion` | Concrete version resolved by `install`. Never a range, never `"*"`.                            |
+| `integrity`       | `sha256-<hex>` of the resolved jar bytes. Verified on every consuming read.                    |
+| `declaredBy`      | Workspaces that declared this dep. Used by `remove` to know when the entry can be dropped.     |
+| `transitives`     | Optional. Recursive. Omitted when there are no transitive deps. Does not include `declaredBy`. |
 
 Transitives are recorded inline. Each child carries its own grandchildren. The field is elided entirely when the closure is empty. Writers must not emit an empty array.
 

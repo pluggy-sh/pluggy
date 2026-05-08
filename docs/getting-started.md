@@ -14,11 +14,11 @@ You need:
 
 You do not need a [JDK](./glossary.md#jdk) installed. If you already have one, set `JAVA_HOME` and pluggy will reuse it when its major version matches your project. The cache lives at:
 
-| OS      | Path                                |
-| ------- | ----------------------------------- |
-| macOS   | `~/Library/Caches/pluggy/`          |
+| OS      | Path                                                   |
+| ------- | ------------------------------------------------------ |
+| macOS   | `~/Library/Caches/pluggy/`                             |
 | Linux   | `$XDG_CACHE_HOME/pluggy/` (default `~/.cache/pluggy/`) |
-| Windows | `%LOCALAPPDATA%\pluggy\cache\`      |
+| Windows | `%LOCALAPPDATA%\pluggy\cache\`                         |
 
 Manage it later with [`pluggy cache`](./commands/cache.md) or [`pluggy sdk`](./commands/sdk.md).
 

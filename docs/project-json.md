@@ -312,10 +312,10 @@ Three accepted shapes:
 - `false`: disable hotswap entirely. `pluggy dev` falls back to `/reload` (with `--reload`) or full restart.
 - An object with these keys:
 
-| Field      | Default    | Notes                                                                                              |
-| ---------- | ---------- | -------------------------------------------------------------------------------------------------- |
-| `jdk`      | `"jbr"`    | `"jbr"` downloads JetBrains Runtime to the cache. `"system"` uses `java` from `PATH` instead.      |
-| `fallback` | `"reload"` | Action when a class change can't be hotswapped. `"reload"` sends `/reload`. `"restart"` restarts.  |
+| Field      | Default    | Notes                                                                                             |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `jdk`      | `"jbr"`    | `"jbr"` downloads JetBrains Runtime to the cache. `"system"` uses `java` from `PATH` instead.     |
+| `fallback` | `"reload"` | Action when a class change can't be hotswapped. `"reload"` sends `/reload`. `"restart"` restarts. |
 
 `--no-hotswap` on the CLI overrides this block to `false`. See [Dev server](./dev-server.md#hotswap) for what hotswap does at runtime.
 

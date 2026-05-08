@@ -4,18 +4,18 @@ If you already have a plugin project built with Maven or Gradle, pluggy can take
 
 ## What pluggy replaces
 
-| Old world                                | pluggy equivalent                                     |
-| ---------------------------------------- | ----------------------------------------------------- |
-| `pom.xml` or `build.gradle`              | `project.json`                                        |
-| `<dependencies>` or `implementation(...)`| `project.json:dependencies`                           |
-| `<repositories>` or `repositories { }`   | `project.json:registries` (Maven only)                |
-| `maven-shade-plugin` config              | `project.json:shading`                                |
-| `mvn package` or `./gradlew shadowJar`   | `pluggy build`                                        |
-| `mvn test` or `./gradlew test`           | `pluggy test` (JUnit Platform via `testDependencies`) |
-| `plugin.yml` (hand-written)              | pluggy-generated, or staged via `resources`           |
-| `src/main/java/`                         | `src/`                                                |
-| `src/main/resources/`                    | `project.json:resources` mapping                      |
-| IntelliJ/Eclipse import                  | `project.json:ide` (see [IDE integration](../ide.md)) |
+| Old world                                 | pluggy equivalent                                     |
+| ----------------------------------------- | ----------------------------------------------------- |
+| `pom.xml` or `build.gradle`               | `project.json`                                        |
+| `<dependencies>` or `implementation(...)` | `project.json:dependencies`                           |
+| `<repositories>` or `repositories { }`    | `project.json:registries` (Maven only)                |
+| `maven-shade-plugin` config               | `project.json:shading`                                |
+| `mvn package` or `./gradlew shadowJar`    | `pluggy build`                                        |
+| `mvn test` or `./gradlew test`            | `pluggy test` (JUnit Platform via `testDependencies`) |
+| `plugin.yml` (hand-written)               | pluggy-generated, or staged via `resources`           |
+| `src/main/java/`                          | `src/`                                                |
+| `src/main/resources/`                     | `project.json:resources` mapping                      |
+| IntelliJ/Eclipse import                   | `project.json:ide` (see [IDE integration](../ide.md)) |
 
 ## What pluggy does not do
 

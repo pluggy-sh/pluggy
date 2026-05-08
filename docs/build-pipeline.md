@@ -31,12 +31,12 @@ Each box corresponds to a module under `src/build/`.
 
 pluggy looks at `project.compatibility.platforms`. The first platform is _primary_. Every other platform must share the same [descriptor family](./glossary.md#descriptor-family) (same value of `descriptor.path`).
 
-| Family     | Platforms                    | Path                             |
-| ---------- | ---------------------------- | -------------------------------- |
-| Bukkit     | paper, folia, spigot, bukkit | `plugin.yml`                     |
-| BungeeCord | waterfall, travertine        | `bungee.yml`                     |
-| Velocity   | velocity                     | `velocity-plugin.json`           |
-| Sponge     | sponge                       | `META-INF/sponge_plugins.json`   |
+| Family     | Platforms                    | Path                           |
+| ---------- | ---------------------------- | ------------------------------ |
+| Bukkit     | paper, folia, spigot, bukkit | `plugin.yml`                   |
+| BungeeCord | waterfall, travertine        | `bungee.yml`                   |
+| Velocity   | velocity                     | `velocity-plugin.json`         |
+| Sponge     | sponge                       | `META-INF/sponge_plugins.json` |
 
 Mixed families fail with:
 

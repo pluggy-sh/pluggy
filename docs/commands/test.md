@@ -234,10 +234,10 @@ Per-result fields:
 
 | Field      | When present                        | Meaning                                                        |
 | ---------- | ----------------------------------- | -------------------------------------------------------------- |
-| `tests`    | Tests actually ran.                 | `{ total, passed, failed, skipped }`.                                  |
-| `failures` | At least one failure.               | Array of `{ class, test, durationMs, message?, stackTrace? }`.         |
-| `skipped`  | Workspace produced no tests.        | `"no-test-dir"` or `"no-sources"`.                                     |
-| `error`    | Workspace errored before tests ran. | The error message (for example a compile failure).                     |
+| `tests`    | Tests actually ran.                 | `{ total, passed, failed, skipped }`.                          |
+| `failures` | At least one failure.               | Array of `{ class, test, durationMs, message?, stackTrace? }`. |
+| `skipped`  | Workspace produced no tests.        | `"no-test-dir"` or `"no-sources"`.                             |
+| `error`    | Workspace errored before tests ran. | The error message (for example a compile failure).             |
 
 On a failed run:
 

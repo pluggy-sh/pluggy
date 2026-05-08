@@ -162,11 +162,11 @@ Single-workspace runs rethrow the first exception so the CLI's top-level handler
 
 ## Error cases
 
-| Stage   | Message pattern                                                                          |
-| ------- | ---------------------------------------------------------------------------------------- |
-| Sources | `docs: no .java sources found under "<dir>" for project "<name>"`                        |
-| Javadoc | `docs: javadoc exited with code <n> for project "<name>" (last 40 lines):\n...`          |
-| Spawn   | `docs: failed to spawn javadoc for project "<name>": <reason>`. Usually a broken JDK.    |
+| Stage   | Message pattern                                                                       |
+| ------- | ------------------------------------------------------------------------------------- |
+| Sources | `docs: no .java sources found under "<dir>" for project "<name>"`                     |
+| Javadoc | `docs: javadoc exited with code <n> for project "<name>" (last 40 lines):\n...`       |
+| Spawn   | `docs: failed to spawn javadoc for project "<name>": <reason>`. Usually a broken JDK. |
 
 ## See also
 

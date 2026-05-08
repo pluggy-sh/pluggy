@@ -47,11 +47,11 @@ The cache path:
 
 The [state directory](./glossary.md#state-directory):
 
-| OS      | Path                                                              |
-| ------- | ----------------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/pluggy/`                           |
-| Linux   | `$XDG_STATE_HOME/pluggy/` (default `~/.local/state/pluggy/`)      |
-| Windows | `%APPDATA%\pluggy\`                                               |
+| OS      | Path                                                         |
+| ------- | ------------------------------------------------------------ |
+| macOS   | `~/Library/Application Support/pluggy/`                      |
+| Linux   | `$XDG_STATE_HOME/pluggy/` (default `~/.local/state/pluggy/`) |
+| Windows | `%APPDATA%\pluggy\`                                          |
 
 The cache layout is identical on every OS:
 
@@ -145,17 +145,17 @@ Running pluggy under WSL works. It's just Linux from pluggy's perspective. The c
 
 pluggy reads a small set of environment variables. They're all optional.
 
-| Variable                     | Effect                                                                                       |
-| ---------------------------- | -------------------------------------------------------------------------------------------- |
-| `JAVA_HOME`                  | If set and the major matches what the project needs, pluggy uses this JDK instead of its own. |
-| `PLUGGY_HOME`                | Override the install root on POSIX (default `~/.pluggy`).                                    |
-| `PLUGGY_NO_AUTO_INSTALL=1`   | Refuse to download a missing JDK. Useful for CI when the cache should be pre-warmed.          |
-| `PLUGGY_NO_UPDATE_CHECK=1`   | Suppress the daily "newer pluggy available" notice on stderr.                                |
-| `PLUGGY_DEV_NO_EULA=1`       | Don't write `dev/eula.txt`. You accept Mojang's EULA yourself on first launch.                |
-| `PLUGGY_TEMPLATE_REPO`       | `<owner>/<repo>[#<ref>]`. Override the GitHub repo `pluggy init` fetches templates from.      |
-| `PLUGGY_TEMPLATE_DIR`        | Read templates from this local directory instead of fetching from GitHub.                    |
-| `XDG_CACHE_HOME`             | Linux only. Base directory for the cache.                                                    |
-| `XDG_STATE_HOME`             | Linux only. Base directory for the state directory.                                          |
+| Variable                   | Effect                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `JAVA_HOME`                | If set and the major matches what the project needs, pluggy uses this JDK instead of its own. |
+| `PLUGGY_HOME`              | Override the install root on POSIX (default `~/.pluggy`).                                     |
+| `PLUGGY_NO_AUTO_INSTALL=1` | Refuse to download a missing JDK. Useful for CI when the cache should be pre-warmed.          |
+| `PLUGGY_NO_UPDATE_CHECK=1` | Suppress the daily "newer pluggy available" notice on stderr.                                 |
+| `PLUGGY_DEV_NO_EULA=1`     | Don't write `dev/eula.txt`. You accept Mojang's EULA yourself on first launch.                |
+| `PLUGGY_TEMPLATE_REPO`     | `<owner>/<repo>[#<ref>]`. Override the GitHub repo `pluggy init` fetches templates from.      |
+| `PLUGGY_TEMPLATE_DIR`      | Read templates from this local directory instead of fetching from GitHub.                     |
+| `XDG_CACHE_HOME`           | Linux only. Base directory for the cache.                                                     |
+| `XDG_STATE_HOME`           | Linux only. Base directory for the state directory.                                           |
 
 ## See also
 

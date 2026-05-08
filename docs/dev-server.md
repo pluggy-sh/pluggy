@@ -64,12 +64,12 @@ You're still bound by Mojang's EULA whichever path you take. pluggy isn't accept
 
 Compile dependencies and plugin dependencies are the same list in `project.json:dependencies`. pluggy distinguishes them at dev-time by opening each jar and checking whether it contains the primary platform's descriptor file.
 
-| Platform                     | Descriptor path                  |
-| ---------------------------- | -------------------------------- |
-| paper, folia, spigot, bukkit | `plugin.yml`                     |
-| waterfall, travertine        | `bungee.yml`                     |
-| velocity                     | `velocity-plugin.json`           |
-| sponge                       | `META-INF/sponge_plugins.json`   |
+| Platform                     | Descriptor path                |
+| ---------------------------- | ------------------------------ |
+| paper, folia, spigot, bukkit | `plugin.yml`                   |
+| waterfall, travertine        | `bungee.yml`                   |
+| velocity                     | `velocity-plugin.json`         |
+| sponge                       | `META-INF/sponge_plugins.json` |
 
 A jar that contains the descriptor is a _runtime plugin_. It's hardlinked into `dev/plugins/`. Everything else (pure library jars like Adventure, Caffeine, the platform's own API jar) stays on the build classpath but is not installed as a plugin.
 

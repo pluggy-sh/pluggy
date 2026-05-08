@@ -127,13 +127,13 @@ Single-workspace builds rethrow the first exception. The CLI's top-level handler
 Common failure modes (see [Troubleshooting](../troubleshooting.md) for
 the full list):
 
-| Stage      | Message pattern                                                                                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Descriptor | `build: project "<name>" declares platforms from different descriptor families ...`                                                                                                                  |
-| Compile    | `compile: javac exited with code <n> for project "<name>" (last 40 lines):\n...`                                                                                                                     |
-| Compile    | `compile: no .java sources found under "<dir>" for project "<name>"`                                                                                                                                 |
-| Shade      | `shade: workspace dependency "<name>" has not been built yet, expected jar at "<path>". Build the sibling workspace first (topological order is the caller's responsibility).`                       |
-| Resource   | `resources: source path "<rel>" (key "<k>") does not exist at "<abs>"`                                                                                                                               |
+| Stage      | Message pattern                                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Descriptor | `build: project "<name>" declares platforms from different descriptor families ...`                                                                                            |
+| Compile    | `compile: javac exited with code <n> for project "<name>" (last 40 lines):\n...`                                                                                               |
+| Compile    | `compile: no .java sources found under "<dir>" for project "<name>"`                                                                                                           |
+| Shade      | `shade: workspace dependency "<name>" has not been built yet, expected jar at "<path>". Build the sibling workspace first (topological order is the caller's responsibility).` |
+| Resource   | `resources: source path "<rel>" (key "<k>") does not exist at "<abs>"`                                                                                                         |
 
 ## See also
 

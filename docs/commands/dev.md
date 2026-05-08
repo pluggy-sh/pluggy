@@ -138,11 +138,11 @@ This is designed for CI and process supervisors. After the envelope line, the re
 
 ## Error cases
 
-| Trigger                                 | Message                                                                                                        |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Multi-workspace root, no `--workspace`  | `dev requires --workspace <name> at a root that declares workspaces. Known workspaces: ...`                    |
-| `--workspace X` from inside workspace Y | `--workspace "X" does not match the current workspace "Y". Run from the root to target a different workspace.` |
-| No platforms declared                   | `runDev: no platform configured, set compatibility.platforms[0] or pass --platform`                            |
+| Trigger                                 | Message                                                                                                         |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Multi-workspace root, no `--workspace`  | `dev requires --workspace <name> at a root that declares workspaces. Known workspaces: ...`                     |
+| `--workspace X` from inside workspace Y | `--workspace "X" does not match the current workspace "Y". Run from the root to target a different workspace.`  |
+| No platforms declared                   | `runDev: no platform configured, set compatibility.platforms[0] or pass --platform`                             |
 | `java` not on PATH                      | Standard `spawn ENOENT`. See [Troubleshooting](../troubleshooting.md#java-not-found-from-the-dev-server-spawn). |
 
 ## See also
