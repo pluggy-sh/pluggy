@@ -1,12 +1,12 @@
 /**
  * Download + extract pipeline for cached JDKs. Generalized from the JBR
- * provisioner (`src/dev/jbr.ts`) — same atomic-rename / staging-dir pattern,
+ * provisioner (`src/dev/jbr.ts`): same atomic-rename / staging-dir pattern,
  * extended to cover Windows zip archives.
  *
  * The system `tar` (macOS, Linux, Windows 10+) handles `.tar.gz`. Windows
  * `.zip` extraction uses PowerShell's `Expand-Archive` to avoid pulling in
- * a JS-side zip dependency. Both go through `spawn` directly — never a
- * shell — so cross-platform parity matches the rest of the codebase.
+ * a JS-side zip dependency. Both go through `spawn` directly (never a
+ * shell), so cross-platform parity matches the rest of the codebase.
  */
 
 import { spawn } from "node:child_process";
@@ -31,7 +31,7 @@ import {
 import type { JdkSpec } from "./disco.ts";
 
 export interface InstallResult {
-  /** Cache slot root — the directory the archive extracted into. */
+  /** Cache slot root: the directory the archive extracted into. */
   slotRoot: string;
   /** Absolute path to the `java` executable inside the slot. */
   javaPath: string;
@@ -57,7 +57,7 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
 
   // Download archive if missing. We deliberately keep archives around in
   // <cacheRoot>/jdk/archives so a re-extract (after manual slot deletion)
-  // doesn't redownload — `pluggy cache prune --category jdk` is what cleans them up.
+  // doesn't redownload; `pluggy cache prune --category jdk` is what cleans them up.
   if (existsSync(archive)) {
     // A cached archive whose hash drifts from Disco's published value is
     // either corrupt or a leftover from before the integrity story; drop
@@ -66,7 +66,7 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
       const cachedHash = await hashFile(archive, spec.checksum.algorithm);
       if (cachedHash !== spec.checksum.value) {
         log.warn(
-          `sdk: cached archive at ${archive} has unexpected ${spec.checksum.algorithm} ${cachedHash} (expected ${spec.checksum.value}); re-downloading`,
+          `Cached archive at ${archive} has unexpected ${spec.checksum.algorithm} ${cachedHash} (expected ${spec.checksum.value}); re-downloading`,
         );
         await rm(archive, { force: true });
       }
@@ -86,7 +86,7 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
   const javaPath = javaBinaryPath(slot, spec.os);
   if (!existsSync(javaPath)) {
     throw new Error(
-      `sdk: extraction completed but ${javaPath} is missing — archive layout may differ from expectation`,
+      `sdk: extraction completed but ${javaPath} is missing; archive layout may differ from expectation`,
     );
   }
 
@@ -96,26 +96,26 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
 
 async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
   const sizeNote = spec.sizeBytes !== undefined ? ` (~${formatMb(spec.sizeBytes)})` : "";
-  log.info(`sdk: downloading ${spec.distribution} ${spec.fullVersion}${sizeNote}…`);
+  log.step(`Downloading ${spec.distribution} ${spec.fullVersion}${sizeNote}…`);
 
-  // Refuse to follow non-HTTPS Disco redirects — JDK CDNs are HTTPS-only,
+  // Refuse to follow non-HTTPS Disco redirects: JDK CDNs are HTTPS-only,
   // a downgrade is an attack signal worth aborting on.
   if (!spec.downloadUrl.startsWith("https://")) {
     throw new Error(
-      `sdk: refusing non-https download URL ${JSON.stringify(spec.downloadUrl)} — Disco redirected to a plaintext target`,
+      `sdk: refusing non-https download URL ${JSON.stringify(spec.downloadUrl)}: Disco redirected to a plaintext target`,
     );
   }
 
   const res = await fetch(spec.downloadUrl, { redirect: "follow" });
   if (!res.ok) {
-    throw new Error(`sdk: download failed (${res.status} ${res.statusText}) — ${spec.downloadUrl}`);
+    throw new Error(`sdk: download failed (${res.status} ${res.statusText}): ${spec.downloadUrl}`);
   }
 
   await mkdir(dirname(destPath), { recursive: true });
   const tmpPath = `${destPath}.partial`;
   // We allocate a single buffer rather than streaming to disk because Bun's
   // single-file binary doesn't ship a `Readable.fromWeb` polyfill that's
-  // reliable across platforms — and JDK archives are bounded (≈200 MB).
+  // reliable across platforms; and JDK archives are bounded (≈200 MB).
   // Worth revisiting if we ever cache larger artifacts.
   const buf = new Uint8Array(await res.arrayBuffer());
 
@@ -123,20 +123,20 @@ async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
     const actual = createHash(spec.checksum.algorithm).update(buf).digest("hex");
     if (actual !== spec.checksum.value) {
       throw new Error(
-        `sdk: integrity check failed for ${spec.distribution} ${spec.fullVersion} (${spec.os}/${spec.arch}) — ` +
+        `sdk: integrity check failed for ${spec.distribution} ${spec.fullVersion} (${spec.os}/${spec.arch}): ` +
           `Disco published ${spec.checksum.algorithm} ${spec.checksum.value}, downloaded bytes hash to ${actual}. ` +
           `Refusing to extract a tampered runtime.`,
       );
     }
   } else {
     log.warn(
-      `sdk: ${spec.distribution} ${spec.fullVersion} (${spec.os}/${spec.arch}) was downloaded without an upstream checksum — Disco didn't publish one for this package`,
+      `${spec.distribution} ${spec.fullVersion} (${spec.os}/${spec.arch}) was downloaded without an upstream checksum: Disco didn't publish one for this package`,
     );
   }
 
   await writeFile(tmpPath, buf);
   await rename(tmpPath, destPath);
-  log.debug(`sdk: cached archive at ${destPath} (${buf.byteLength} bytes)`);
+  log.debug(`Cached JDK archive at ${destPath} (${buf.byteLength} bytes)`);
 }
 
 async function hashFile(
@@ -161,7 +161,7 @@ async function extractArchive(
   const stagingDir = join(tmpdir(), `pluggy-jdk-${Date.now()}-${process.pid}`);
   await mkdir(stagingDir, { recursive: true });
 
-  log.info("sdk: extracting JDK…");
+  log.step("Extracting JDK…");
   try {
     if (archiveType === "tar.gz") {
       await runTar(archive, stagingDir);
@@ -176,13 +176,13 @@ async function extractArchive(
     }
     if (dirs.length > 1) {
       throw new Error(
-        `sdk: archive produced ${dirs.length} top-level directories — expected exactly one`,
+        `sdk: archive produced ${dirs.length} top-level directories; expected exactly one`,
       );
     }
 
     const extractedSrc = join(stagingDir, dirs[0].name);
     await rename(extractedSrc, expectedRoot);
-    log.debug(`sdk: JDK ready at ${expectedRoot}`);
+    log.debug(`JDK ready at ${expectedRoot}`);
   } finally {
     await rm(stagingDir, { recursive: true, force: true });
   }
@@ -194,7 +194,7 @@ function runTar(archive: string, destDir: string): Promise<void> {
 
 /**
  * Use PowerShell's Expand-Archive on Windows; everything else has unzip
- * available (macOS/Linux ship it). Direct spawn — no shell.
+ * available (macOS/Linux ship it). Direct spawn; no shell.
  */
 function runUnzip(archive: string, destDir: string): Promise<void> {
   if (process.platform === "win32") {

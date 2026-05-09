@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
+import { UserError } from "./errors.ts";
+
 /** Parsed `project.json`. */
 export interface Project {
   name: string;
@@ -32,7 +34,7 @@ export interface Project {
 }
 
 export interface JdkConfig {
-  /** Java major release, e.g. 21. When omitted, derived from MC version. */
+  /** Java major release, for example 21. When omitted, derived from MC version. */
   major?: number;
   /** Disco distribution slug. Default `"temurin"`. */
   distribution?: string;
@@ -70,7 +72,7 @@ export interface DevConfig {
   serverProperties?: Record<string, string | number | boolean>;
   extraPlugins?: string[];
   /**
-   * Hotswapping is on by default — pluggy provisions JetBrains Runtime and
+   * Hotswapping is on by default. Pluggy provisions JetBrains Runtime and
    * HotswapAgent into the user cache and reloads classes in-place on every
    * rebuild. Set to `false` to fall back to plain restart-on-change.
    */
@@ -91,9 +93,9 @@ export interface HotswapConfig {
  * Windows: `%LOCALAPPDATA%/pluggy/cache`.
  * Linux/other: `$XDG_CACHE_HOME/pluggy` (defaulting to `~/.cache/pluggy`).
  *
- * Cache contents are *reproducible* — wiping this directory only forces
- * re-downloads. State that must survive `pluggy cache clean` (e.g. the
- * update-check timestamp) belongs under `getStatePath` instead.
+ * Cache contents are *reproducible*: wiping this directory only forces
+ * re-downloads. State that must survive `pluggy cache clean` (for example,
+ * the update-check timestamp) belongs under `getStatePath` instead.
  */
 export function getCachePath(): string {
   const home = homedir();
@@ -108,7 +110,7 @@ export function getCachePath(): string {
 
 /**
  * OS-appropriate user *state* directory for pluggy. Distinct from the
- * cache: state is small, non-regenerable metadata (e.g. the cached
+ * cache: state is small, non-regenerable metadata (for example, the cached
  * latest-release tag from the update checker) that must survive
  * `pluggy cache clean`.
  *
@@ -165,4 +167,41 @@ export function resolveProjectFile(path: string): ResolvedProject | undefined {
 export function getCurrentProject(cwd?: string): ResolvedProject | undefined {
   const path = cwd || process.cwd();
   return resolveProject(path);
+}
+
+/**
+ * Primary platform for a project. Plugin commands that act on a single
+ * platform (`dev`, `build`'s main jar) use this; the rest of
+ * `compatibility.platforms` are extra compile-check targets.
+ *
+ * Throws `UserError` when `compatibility.platforms` is empty or missing.
+ * The schema doesn't enforce non-empty; this helper is the single
+ * runtime gate.
+ */
+export function primaryPlatform(project: Project): string {
+  const list = project.compatibility?.platforms ?? [];
+  if (list.length === 0) {
+    throw new UserError(
+      `project "${project.name}" has no compatibility.platforms. Declare at least one platform.`,
+    );
+  }
+  return list[0];
+}
+
+/**
+ * Primary Minecraft version for a project. Used wherever pluggy needs a
+ * single MC version (dev server boot, BuildTools invocation, JDK
+ * targeting). Other entries in `compatibility.versions` are the supported
+ * range; index 0 is canonical.
+ *
+ * Throws `UserError` when `compatibility.versions` is empty or missing.
+ */
+export function primaryVersion(project: Project): string {
+  const list = project.compatibility?.versions ?? [];
+  if (list.length === 0) {
+    throw new UserError(
+      `project "${project.name}" has no compatibility.versions. Declare at least one Minecraft version.`,
+    );
+  }
+  return list[0];
 }

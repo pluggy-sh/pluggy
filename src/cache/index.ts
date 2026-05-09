@@ -77,13 +77,13 @@ export interface CacheSummary {
 export interface CacheEntry {
   /** Stable identifier used in CLI output and JSON. Unique within its category. */
   id: string;
-  /** Absolute path on disk — may be a file or a directory. */
+  /** Absolute path on disk; may be a file or a directory. */
   path: string;
   /** Total bytes, recursive for directories. */
   bytes: number;
   /** Epoch ms of most recent activity. JDKs use manifest `lastUsed`; everything else uses mtime. */
   lastUsedMs: number;
-  /** Sub-bucket key (e.g. `"maven"` for dependencies). Optional. */
+  /** Sub-bucket key (for example, `"maven"` for dependencies). Optional. */
   subcategory?: string;
 }
 
@@ -232,7 +232,7 @@ async function listBuildtoolsEntries(): Promise<CacheEntry[]> {
   }
   const outputDir = join(root, "BuildTools");
   if (existsSync(outputDir)) {
-    // The output dir is large (work tree + jars). Bill it as one entry — users
+    // The output dir is large (work tree + jars). Bill it as one entry; users
     // who want a finer view can drop into the directory themselves.
     const s = await stat(outputDir);
     out.push({
@@ -347,7 +347,7 @@ export interface CleanResult {
 }
 
 /**
- * Wholesale wipe of a category — delete every entry pluggy knows about under it.
+ * Wholesale wipe of a category: delete every entry pluggy knows about under it.
  * `all` wipes every category. JDKs are removed via the manifest so dangling
  * entries don't get left behind.
  */
@@ -429,7 +429,7 @@ export interface PruneResult {
  * Evict cache entries by per-major LRU (JDKs), age, then size budget.
  * Order of operations per category:
  *   1. JDKs only: reconcile manifests (drop dangling entries) and apply
- *      `keepLatest` as a hard cap — anything beyond the top N per major
+ *      `keepLatest` as a hard cap: anything beyond the top N per major
  *      is evicted with reason `"lru"`.
  *   2. Apply `maxAgeMs` to whatever survived step 1.
  *   3. Apply `maxBytes` (oldest-first) to whatever's left.
@@ -467,7 +467,7 @@ export async function pruneCache(opts: PruneOptions = {}): Promise<PruneResult> 
       // Hard cap: keep only the N most-recently-used slots per major.
       // Archive tarballs (`archives/...`) aren't slot-keyed; they age out
       // through `maxAgeMs` / `maxBytes` instead.
-      // `keepLatest === 0` opts out of the per-major LRU pin entirely —
+      // `keepLatest === 0` opts out of the per-major LRU pin entirely;
       // every slot flows through to age/size pruning unmolested.
       if (keepLatest > 0) {
         const byMajor = new Map<number, CacheEntry[]>();
@@ -522,12 +522,12 @@ export async function pruneCache(opts: PruneOptions = {}): Promise<PruneResult> 
       afterAge.push(entry);
     }
 
+    let evictedThrough = 0;
     if (maxBytes !== undefined) {
       afterAge.sort((a, b) => a.lastUsedMs - b.lastUsedMs);
       let total = afterAge.reduce((acc, e) => acc + e.bytes, 0);
-      while (total > maxBytes && afterAge.length > 0) {
-        const victim = afterAge.shift();
-        if (victim === undefined) break;
+      while (total > maxBytes && evictedThrough < afterAge.length) {
+        const victim = afterAge[evictedThrough];
         if (!dryRun) await deleteEntry(id, victim);
         result.removed.push({
           id: victim.id,
@@ -537,11 +537,12 @@ export async function pruneCache(opts: PruneOptions = {}): Promise<PruneResult> 
           reason: "size",
         });
         total -= victim.bytes;
+        evictedThrough++;
       }
     }
 
-    for (const survivor of afterAge) {
-      result.kept.push({ id: survivor.id, category: id });
+    for (let i = evictedThrough; i < afterAge.length; i++) {
+      result.kept.push({ id: afterAge[i].id, category: id });
     }
   }
 
@@ -552,7 +553,7 @@ export async function pruneCache(opts: PruneOptions = {}): Promise<PruneResult> 
 /**
  * Pull the major release number out of a JDK cache key like
  * `temurin-21-macos-aarch64`. Returns `undefined` for archive entries
- * (e.g. `archives/temurin-21-macos-aarch64.tar.gz`) or unrecognized shapes.
+ * (for example, `archives/temurin-21-macos-aarch64.tar.gz`) or unrecognized shapes.
  */
 function parseMajorFromKey(key: string): number | undefined {
   if (key.includes("/")) return undefined;
@@ -611,7 +612,7 @@ export async function dirSize(path: string): Promise<number> {
           const s = await stat(full);
           total += s.size;
         } catch {
-          // unreadable entry — ignore
+          // unreadable entry; ignore
         }
       }
     }
@@ -634,7 +635,8 @@ export function formatBytes(n: number): string {
  */
 export function parseDurationMs(value: string): number {
   const m = value.trim().match(/^(\d+)\s*(s|m|h|d|w)?$/);
-  if (m === null) throw new Error(`invalid duration "${value}" (expected e.g. 90d, 12h, 30m, 1w)`);
+  if (m === null)
+    throw new Error(`invalid duration "${value}" (expected for example 90d, 12h, 30m, 1w)`);
   const n = Number.parseInt(m[1], 10);
   const unit = m[2] ?? "d";
   const ms =
@@ -659,7 +661,7 @@ export function parseSizeBytes(value: string): number {
     .trim()
     .toUpperCase()
     .match(/^(\d+)\s*(B|K|KB|M|MB|G|GB|T|TB)?$/);
-  if (m === null) throw new Error(`invalid size "${value}" (expected e.g. 5G, 500M, 1024K)`);
+  if (m === null) throw new Error(`invalid size "${value}" (expected for example 5G, 500M, 1024K)`);
   const n = Number.parseInt(m[1], 10);
   const unit = m[2] ?? "B";
   const factor =

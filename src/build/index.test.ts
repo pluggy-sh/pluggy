@@ -21,7 +21,7 @@ vi.mock("../resolver/maven.ts", () => ({
   resolveMaven: vi.fn(),
 }));
 vi.mock("../sdk/index.ts", () => ({
-  // Pipeline tests don't need a real JDK — they mock spawn entirely. Return
+  // Pipeline tests don't need a real JDK; they mock spawn entirely. Return
   // PATH-style placeholders so `compileJava` falls through to its `"javac"`
   // default and assertions like `expect(cmd).toBe("javac")` keep working.
   ensureJdkForProject: vi.fn(async () => ({

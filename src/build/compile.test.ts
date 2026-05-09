@@ -1,4 +1,4 @@
-/** Tests for src/build/compile.ts. `spawn` is stubbed — no real javac. */
+/** Tests for src/build/compile.ts. `spawn` is stubbed; no real javac. */
 
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

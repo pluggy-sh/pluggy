@@ -1,5 +1,5 @@
 /**
- * Dependency resolver — dispatches a `ResolvedSource` to its per-kind
+ * Dependency resolver. Dispatches a `ResolvedSource` to its per-kind
  * resolver, which produces a `ResolvedDependency` (cached jar path plus
  * integrity hash).
  */
@@ -36,14 +36,14 @@ export interface ResolveContext {
    * Optional `sha256-<hex>` from the lockfile. When set, resolvers verify
    * the resolved bytes match it and refuse to overwrite with anything else.
    * Caller passes this only when it has a recorded integrity to enforce
-   * (i.e. resolving an existing pinned dep, not a fresh install).
+   * (that is, resolving an existing pinned dep, not a fresh install).
    */
   expectedIntegrity?: string;
 }
 
 /**
  * Dispatch a `ResolvedSource` to its per-kind resolver. Straight
- * pass-through — no retries, no fallbacks.
+ * pass-through, no retries, no fallbacks.
  */
 export function resolveDependency(
   source: ResolvedSource,

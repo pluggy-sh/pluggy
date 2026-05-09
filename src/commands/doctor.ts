@@ -10,10 +10,10 @@ import { pickDescriptor } from "../build/descriptor.ts";
 import { HOTSWAP_AGENT_VERSION } from "../dev/hotswap.ts";
 import { JBR_VERSION, jbrCacheKey, jbrJavaPath, jbrTarget } from "../dev/jbr.ts";
 import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
-import { type LockfileEntry, type TransitiveEntry, readLock } from "../lockfile.ts";
-import { bold, green, log, red, yellow } from "../logging.ts";
-import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
-import { getCachePath, type ResolvedProject } from "../project.ts";
+import { type LockfileEntry, readLock } from "../lockfile.ts";
+import { bold, emit, emitErr, green, log, red, yellow } from "../logging.ts";
+import { platforms } from "../platform/index.ts";
+import { getCachePath, primaryPlatform, type ResolvedProject } from "../project.ts";
 import { registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { getCachedJdk } from "../sdk/index.ts";
@@ -31,7 +31,6 @@ export interface CheckResult {
 }
 
 export interface DoctorCommandOptions {
-  json?: boolean;
   cwd?: string;
   /** Current pluggy CLI version (without leading `v`). Used by the `pluggy-version` check. */
   pluggyVersion?: string;
@@ -61,7 +60,7 @@ export interface DoctorCommandResult {
 
 /**
  * Run every environment and project-validation check, returning the
- * aggregated verdict. `exitCode` is 1 iff any check has `status: "fail"` —
+ * aggregated verdict. `exitCode` is 1 iff any check has `status: "fail"`;
  * warns are informational only.
  */
 export async function runDoctorCommand(
@@ -70,7 +69,7 @@ export async function runDoctorCommand(
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found — run doctor from inside a project directory.");
+    throw new Error("No pluggy project found. Run doctor from inside a project directory.");
   }
 
   const hooks = opts.checks ?? {};
@@ -129,19 +128,13 @@ export async function runDoctorCommand(
   const ok = hardFailures.length === 0;
   const exitCode: 0 | 1 = ok ? 0 : 1;
 
-  if (opts.json === true) {
-    const payload = {
-      status: ok ? "success" : "error",
-      ok,
-      checks: all,
-      failures: hardFailures,
-    };
-    if (ok) {
-      console.log(JSON.stringify(payload, null, 2));
-    } else {
-      console.error(JSON.stringify(payload, null, 2));
-    }
-  } else {
+  const payload = {
+    status: ok ? "success" : "error",
+    ok,
+    checks: all,
+    failures: hardFailures,
+  };
+  const printHuman = (): void => {
     log.info(bold("pluggy doctor"));
     for (const c of all) {
       printCheck(c);
@@ -152,7 +145,9 @@ export async function runDoctorCommand(
     } else {
       log.error(`${hardFailures.length} check(s) failed`);
     }
-  }
+  };
+  if (ok) emit(payload, printHuman);
+  else emitErr(payload, printHuman);
 
   return { ok, exitCode, checks: all };
 }
@@ -215,7 +210,7 @@ export async function checkJava(
         id: "java",
         label: "Java toolchain",
         status: "warn",
-        detail: `${detail} — BuildTools requires Java ${minJava}+`,
+        detail: `${detail}; BuildTools requires Java ${minJava}+`,
       };
     }
   }
@@ -246,11 +241,11 @@ async function runJavaVersion(): Promise<{ stdout: string; stderr: string }> {
  * Verify the JDK pluggy needs for this project is provisioned (or auto-installable).
  *
  * Three states:
- *   pass — the slot is cached or JAVA_HOME points at the right major.
- *   warn — the slot is missing but auto-install is enabled, so the next
- *          build will fetch it. Still actionable for users on slow networks.
- *   fail — the slot is missing and `PLUGGY_NO_AUTO_INSTALL=1` is set, so
- *          the next build would fail. Includes the remediation command.
+ *   pass: the slot is cached or JAVA_HOME points at the right major.
+ *   warn: the slot is missing but auto-install is enabled, so the next
+ *         build will fetch it. Still actionable for users on slow networks.
+ *   fail: the slot is missing and `PLUGGY_NO_AUTO_INSTALL=1` is set, so
+ *         the next build would fail. Includes the remediation command.
  */
 export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
   const selection = await selectJdkForProject(project);
@@ -272,7 +267,7 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
       id: "sdk",
       label: "Project JDK",
       status: "fail",
-      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1 — run: ${remedy}`,
+      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1. Run: ${remedy}`,
     };
   }
 
@@ -280,7 +275,7 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
     id: "sdk",
     label: "Project JDK",
     status: "warn",
-    detail: `${selection.distribution} ${selection.major} not yet installed — pluggy will fetch on first build. Pre-install: ${remedy}`,
+    detail: `${selection.distribution} ${selection.major} not yet installed; pluggy will fetch on first build. Pre-install: ${remedy}`,
   };
 }
 
@@ -342,7 +337,7 @@ export async function checkCache(): Promise<CheckResult> {
 /**
  * Report whether HotswapAgent + JBR are present in the user cache. Both
  * download on first `pluggy dev` run, so a missing cache is informational
- * rather than a failure — we surface it so users know what the first dev
+ * rather than a failure. We surface it so users know what the first dev
  * launch will do.
  */
 export function checkHotswap(): CheckResult {
@@ -497,12 +492,12 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
     };
   }
   for (const p of compat.platforms) {
-    if (!getRegisteredPlatforms().includes(p)) {
+    if (!platforms.list().includes(p)) {
       return {
         id: "project",
         label,
         status: "fail",
-        detail: `unknown platform "${p}" (known: ${getRegisteredPlatforms().join(", ")})`,
+        detail: `unknown platform "${p}" (known: ${platforms.list().join(", ")})`,
       };
     }
   }
@@ -520,14 +515,14 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
  * being listed for Spigot (which hasn't published that version).
  */
 export async function checkVersionCompatibility(project: ResolvedProject): Promise<CheckResult[]> {
-  const { versions, platforms } = project.compatibility ?? {};
-  if (!versions?.length || !platforms?.length) return [];
+  const { versions, platforms: declaredPlatforms } = project.compatibility ?? {};
+  if (!versions?.length || !declaredPlatforms?.length) return [];
 
   const out: CheckResult[] = [];
-  for (const platform of platforms) {
+  for (const platform of declaredPlatforms) {
     let available: string[];
     try {
-      available = await getPlatform(platform).getVersions();
+      available = await platforms.get(platform).versions();
     } catch {
       out.push({
         id: "version-compat",
@@ -598,7 +593,7 @@ export function checkDescriptors(context: WorkspaceContext): CheckResult[] {
         id: "descriptor",
         label,
         status: "pass",
-        detail: `${project.compatibility.platforms[0]} → ${desc.path}`,
+        detail: `${primaryPlatform(project)} → ${desc.path}`,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -706,22 +701,11 @@ export async function checkDependencyJars(
     };
   }
 
-  type FlatEntry = { name: string; entry: LockfileEntry | TransitiveEntry };
-  const flat: FlatEntry[] = [];
-
-  function collect(name: string, entry: LockfileEntry | TransitiveEntry): void {
-    flat.push({ name, entry });
-    for (const t of entry.transitives ?? []) {
-      const tName =
-        t.source.kind === "maven"
-          ? `${t.source.groupId}:${t.source.artifactId}`
-          : t.source.kind === "modrinth"
-            ? t.source.slug
-            : "unknown";
-      collect(tName, t);
-    }
-  }
-  for (const [name, entry] of Object.entries(lock.entries)) collect(name, entry);
+  type FlatEntry = { name: string; entry: LockfileEntry };
+  const flat: FlatEntry[] = Object.entries(lock.entries).map(([name, entry]) => ({
+    name,
+    entry,
+  }));
 
   function jarPath(e: FlatEntry): string | undefined {
     const { source, resolvedVersion } = e.entry;
@@ -826,7 +810,7 @@ export async function checkPluggyVersion(
         clearTimeout(timer);
       }
     } catch {
-      // Network failure — surface as a soft warn so the user knows we couldn't check.
+      // Network failure: surface as a soft warn so the user knows we couldn't check.
       return {
         id: "pluggy-version",
         label: "Pluggy version",
@@ -850,7 +834,7 @@ export async function checkPluggyVersion(
       id: "pluggy-version",
       label: "Pluggy version",
       status: "warn",
-      detail: `running ${currentVersion}; ${latest} is available — run 'pluggy upgrade'`,
+      detail: `running ${currentVersion}; ${latest} is available. Run 'pluggy upgrade'`,
     };
   }
 
@@ -879,7 +863,7 @@ function formatBytes(n: number): string {
 
 function printCheck(c: CheckResult): void {
   const marker = c.status === "pass" ? green("✔") : c.status === "warn" ? yellow("!") : red("✖");
-  const detail = c.detail === undefined || c.detail.length === 0 ? "" : ` — ${c.detail}`;
+  const detail = c.detail === undefined || c.detail.length === 0 ? "" : `: ${c.detail}`;
   log.info(`  ${marker} ${c.label}${detail}`);
 }
 
@@ -888,9 +872,7 @@ export function doctorCommand(options: { pluggyVersion: string; repository: stri
   return new Command("doctor")
     .description("Check your environment and project for common issues.")
     .action(async function action(this: Command) {
-      const globalOpts = this.optsWithGlobals();
       const result = await runDoctorCommand({
-        json: globalOpts.json === true,
         pluggyVersion: options.pluggyVersion,
         repository: options.repository,
       });

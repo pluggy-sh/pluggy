@@ -10,11 +10,11 @@ wrapper, no `pom.xml`. One JSON file per project.
 
 ## Start here
 
-- [Getting started](./getting-started.md) — install, scaffold, build, run a
+- [Getting started](./getting-started.md): install, scaffold, build, run a
   dev server. Eight minutes from zero to a live server.
-- [project.json reference](./project-json.md) — every field, every form, and
+- [project.json reference](./project-json.md): every field, every form, and
   the validation rules.
-- [Dependency sources](./dependencies.md) — the Modrinth / Maven / file /
+- [Dependency sources](./dependencies.md): the Modrinth / Maven / file /
   workspace grammar.
 
 ## Commands
@@ -39,19 +39,19 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 
 ## Deeper topics
 
-- [Build pipeline](./build-pipeline.md) — what happens between `pluggy build`
+- [Build pipeline](./build-pipeline.md): what happens between `pluggy build`
   and the output jar. Maven transitive resolution, SNAPSHOT handling,
   classpath construction, descriptor generation.
-- [Dev server](./dev-server.md) — the `dev/` staging directory, runtime vs
+- [Dev server](./dev-server.md): the `dev/` staging directory, runtime vs
   compile plugin detection, EULA handling, `--reload` vs restart, shutdown
   semantics.
-- [Workspaces](./workspaces.md) — monorepo layout, inheritance rules, the
+- [Workspaces](./workspaces.md): monorepo layout, inheritance rules, the
   `workspace:` source kind, topological build order.
-- [IDE integration](./ide.md) — what `ide: "vscode" | "eclipse" | "intellij"`
+- [IDE integration](./ide.md): what `ide: "vscode" | "eclipse" | "intellij"`
   writes and where.
-- [Cross-platform notes](./cross-platform.md) — install paths, cache paths,
+- [Cross-platform notes](./cross-platform.md): install paths, cache paths,
   line endings, signal handling.
-- [Troubleshooting](./troubleshooting.md) — common failures, the error
+- [Troubleshooting](./troubleshooting.md): common failures, the error
   messages the code actually prints, and what to do about them.
 
 ## Recipes
@@ -72,5 +72,5 @@ Commands in this documentation that show paths use POSIX form
 the difference is called out inline.
 
 pluggy reads one file, `project.json`, and writes one lockfile, `pluggy.lock`.
-Everything else — the cache, the build staging directory, the `dev/` server
-directory — is derived.
+Everything else (the cache, the build staging directory, the `dev/` server
+directory) is derived.

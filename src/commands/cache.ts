@@ -1,11 +1,11 @@
 /**
- * `pluggy cache` — introspect and manage everything pluggy keeps under
+ * `pluggy cache`: introspect and manage everything pluggy keeps under
  * `getCachePath()`. JDK toolchain commands (`pluggy sdk install/list/...`)
  * stay where they are; this surface exists for the cross-cutting "what is
  * eating my disk and how do I clean it up" question.
  *
  * Subcommands:
- *   info (default)       Summary table — entries + bytes per category.
+ *   info (default)       Summary table: entries + bytes per category.
  *   list [--category]    Per-entry listing.
  *   path                 Print the cache root (scriptable: `cd "$(pluggy cache path)"`).
  *   clean [--category]   Wipe a category (or everything).
@@ -30,12 +30,8 @@ import {
   pruneCache,
   scanCache,
 } from "../cache/index.ts";
-import { bold, dim, log, yellow } from "../logging.ts";
+import { bold, dim, emit, isJsonMode, log, yellow } from "../logging.ts";
 import { getCachePath } from "../project.ts";
-
-interface CacheGlobalOpts {
-  json?: boolean;
-}
 
 const DEFAULT_MAX_AGE = "90d";
 
@@ -47,8 +43,7 @@ export function cacheCommand(): Command {
 
   // No-arg invocation (`pluggy cache`) prints the same summary as `cache info`.
   cmd.action(async function action(this: Command) {
-    const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
-    await runInfo(globalOpts);
+    await runInfo();
   });
 
   cmd.addCommand(infoSubcommand());
@@ -68,36 +63,32 @@ function infoSubcommand(): Command {
   return new Command("info")
     .description("Show cache size by category. Default if no subcommand is given.")
     .action(async function action(this: Command) {
-      const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
-      await runInfo(globalOpts);
+      await runInfo();
     });
 }
 
-async function runInfo(globalOpts: CacheGlobalOpts): Promise<void> {
+async function runInfo(): Promise<void> {
   const summary = await scanCache();
 
-  if (globalOpts.json === true) {
-    emitJson({ status: "success", ...summary });
-    return;
-  }
+  emit({ status: "success", ...summary }, () => {
+    log.info(`${bold("cache")} ${dim(summary.cachePath)}`);
+    log.info("");
 
-  log.info(`${bold("cache")} ${dim(summary.cachePath)}`);
-  log.info("");
+    printCategoryRow("jdk", summary.categories.jdk);
+    printCategoryRow("versions", summary.categories.versions);
+    printCategoryRow("buildtools", summary.categories.buildtools);
+    printCategoryRow("dependencies", summary.categories.dependencies);
+    if (summary.categories.dependencies.entries > 0) {
+      printSubRow("maven", summary.categories.dependencies.maven);
+      printSubRow("modrinth", summary.categories.dependencies.modrinth);
+      printSubRow("file", summary.categories.dependencies.file);
+    }
+    printCategoryRow("jbr", summary.categories.jbr);
+    printCategoryRow("hotswap", summary.categories.hotswap);
 
-  printCategoryRow("jdk", summary.categories.jdk);
-  printCategoryRow("versions", summary.categories.versions);
-  printCategoryRow("buildtools", summary.categories.buildtools);
-  printCategoryRow("dependencies", summary.categories.dependencies);
-  if (summary.categories.dependencies.entries > 0) {
-    printSubRow("maven", summary.categories.dependencies.maven);
-    printSubRow("modrinth", summary.categories.dependencies.modrinth);
-    printSubRow("file", summary.categories.dependencies.file);
-  }
-  printCategoryRow("jbr", summary.categories.jbr);
-  printCategoryRow("hotswap", summary.categories.hotswap);
-
-  log.info("");
-  log.info(`  ${bold("total")}  ${formatBytes(summary.totalBytes)}`);
+    log.info("");
+    log.info(`  ${bold("total")}  ${formatBytes(summary.totalBytes)}`);
+  });
 }
 
 function printCategoryRow(name: string, c: { entries: number; bytes: number }): void {
@@ -124,32 +115,28 @@ function listSubcommand(): Command {
     .description("List individual cache entries.")
     .option("--category <name>", "Limit to one category.", parseCategoryArg)
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
       const category: CategoryId | "all" = (options.category as CategoryId | undefined) ?? "all";
       const groups = await listCacheEntries(category);
 
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", category, groups });
-        return;
-      }
-
-      let printed = 0;
-      for (const group of groups) {
-        if (group.entries.length === 0) continue;
-        log.info(bold(group.category));
-        // Newest first so the top of the listing is what the user just touched.
-        const sorted = [...group.entries].sort((a, b) => b.lastUsedMs - a.lastUsedMs);
-        for (const entry of sorted) {
-          const sub = entry.subcategory === undefined ? "" : `${dim(`[${entry.subcategory}]`)} `;
-          const used = formatRelative(entry.lastUsedMs);
-          log.info(`  ${sub}${entry.id}  ${dim(formatBytes(entry.bytes))}  ${dim(`(${used})`)}`);
+      emit({ status: "success", category, groups }, () => {
+        let printed = 0;
+        for (const group of groups) {
+          if (group.entries.length === 0) continue;
+          log.info(bold(group.category));
+          // Newest first so the top of the listing is what the user just touched.
+          const sorted = [...group.entries].sort((a, b) => b.lastUsedMs - a.lastUsedMs);
+          for (const entry of sorted) {
+            const sub = entry.subcategory === undefined ? "" : `${dim(`[${entry.subcategory}]`)} `;
+            const used = formatRelative(entry.lastUsedMs);
+            log.info(`  ${sub}${entry.id}  ${dim(formatBytes(entry.bytes))}  ${dim(`(${used})`)}`);
+          }
+          log.info("");
+          printed += group.entries.length;
         }
-        log.info("");
-        printed += group.entries.length;
-      }
-      if (printed === 0) {
-        log.info(`Cache is empty${category !== "all" ? ` in category "${category}"` : ""}.`);
-      }
+        if (printed === 0) {
+          log.info(`Cache is empty${category !== "all" ? ` in category "${category}"` : ""}.`);
+        }
+      });
     });
 }
 
@@ -161,13 +148,10 @@ function pathSubcommand(): Command {
   return new Command("path")
     .description("Print the cache directory path. Useful in shell scripts.")
     .action(async function action(this: Command) {
-      const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
       const cachePath = getCachePath();
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", cachePath });
-        return;
-      }
-      process.stdout.write(`${cachePath}\n`);
+      emit({ status: "success", cachePath }, () => {
+        process.stdout.write(`${cachePath}\n`);
+      });
     });
 }
 
@@ -181,18 +165,15 @@ function cleanSubcommand(): Command {
     .option("--category <name>", "Limit cleaning to one category.", parseCategoryArg)
     .option("-y, --yes", "Skip the confirmation prompt.")
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
       const category: CategoryId | "all" = (options.category as CategoryId | undefined) ?? "all";
-      const skipPrompt = options.yes === true || globalOpts.json === true;
+      const skipPrompt = options.yes === true || isJsonMode();
 
       const summary = await scanCache();
       const target = describeTarget(category, summary);
       if (target.bytes === 0) {
-        if (globalOpts.json === true) {
-          emitJson({ status: "success", action: "clean", category, removed: [], freedBytes: 0 });
-          return;
-        }
-        log.info(`Nothing to clean${category !== "all" ? ` in "${category}"` : ""}.`);
+        emit({ status: "success", action: "clean", category, removed: [], freedBytes: 0 }, () => {
+          log.info(`Nothing to clean${category !== "all" ? ` in "${category}"` : ""}.`);
+        });
         return;
       }
 
@@ -208,13 +189,11 @@ function cleanSubcommand(): Command {
       }
 
       const result = await cleanCache(category);
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", action: "clean", category, ...result });
-        return;
-      }
-      log.success(
-        `Removed ${result.removed.length} entr${result.removed.length === 1 ? "y" : "ies"} (${formatBytes(result.freedBytes)}).`,
-      );
+      emit({ status: "success", action: "clean", category, ...result }, () => {
+        log.success(
+          `Removed ${result.removed.length} entr${result.removed.length === 1 ? "y" : "ies"} (${formatBytes(result.freedBytes)}).`,
+        );
+      });
     });
 }
 
@@ -241,12 +220,12 @@ function pruneSubcommand(): Command {
     )
     .option(
       "--max-age <duration>",
-      `Drop entries older than this (e.g. 90d, 12h, 30m, 1w). Default: ${DEFAULT_MAX_AGE}. Use 0 to disable.`,
+      `Drop entries older than this (for example, 90d, 12h, 30m, 1w). Default: ${DEFAULT_MAX_AGE}. Use 0 to disable.`,
       DEFAULT_MAX_AGE,
     )
     .option(
       "--max-size <size>",
-      "After age pruning, evict oldest entries until total is at or below this budget (e.g. 5G, 500M).",
+      "After age pruning, evict oldest entries until total is at or below this budget (for example, 5G, 500M).",
     )
     .option(
       "--keep-latest <n>",
@@ -257,7 +236,6 @@ function pruneSubcommand(): Command {
     .option("--category <name>", "Limit pruning to one category.", parseCategoryArg)
     .option("--dry-run", "Print what would be removed without touching disk.")
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals() as CacheGlobalOpts;
       const maxAgeMs = parseDurationOrZero(options.maxAge as string);
       const maxBytes =
         options.maxSize === undefined ? undefined : parseSizeArg(options.maxSize as string);
@@ -267,24 +245,21 @@ function pruneSubcommand(): Command {
 
       const result = await pruneCache({ maxAgeMs, maxBytes, keepLatest, category, dryRun });
 
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", action: "prune", ...result });
-        return;
-      }
-
-      if (result.removed.length === 0) {
-        log.info(`Nothing to prune (${result.kept.length} kept).`);
-        return;
-      }
-      for (const r of result.removed) {
-        log.info(
-          `  ${yellow("-")} ${r.category}/${r.id} ${dim(`(${r.reason}, ${formatBytes(r.bytes)})`)}`,
+      emit({ status: "success", action: "prune", ...result }, () => {
+        if (result.removed.length === 0) {
+          log.info(`Nothing to prune (${result.kept.length} kept).`);
+          return;
+        }
+        for (const r of result.removed) {
+          log.info(
+            `  ${yellow("-")} ${r.category}/${r.id} ${dim(`(${r.reason}, ${formatBytes(r.bytes)})`)}`,
+          );
+        }
+        const verb = dryRun ? "Would evict" : "Evicted";
+        log.success(
+          `${verb} ${result.removed.length}; kept ${result.kept.length}. Freed ${formatBytes(result.freedBytes)}.`,
         );
-      }
-      const verb = dryRun ? "Would evict" : "Evicted";
-      log.success(
-        `${verb} ${result.removed.length}; kept ${result.kept.length}. Freed ${formatBytes(result.freedBytes)}.`,
-      );
+      });
     });
 }
 
@@ -324,10 +299,6 @@ function parseSizeArg(value: string): number {
   } catch (err) {
     throw new InvalidArgumentError((err as Error).message);
   }
-}
-
-function emitJson(payload: unknown): void {
-  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function formatRelative(epochMs: number): string {

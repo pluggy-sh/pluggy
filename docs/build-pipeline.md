@@ -66,9 +66,9 @@ recompiled.
 
 Two resolve passes run in parallel:
 
-- **Declared dependencies** — every entry in `project.dependencies`.
+- **Declared dependencies**: every entry in `project.dependencies`.
   Each one dispatches to the per-kind resolver in `src/resolver/`.
-- **Platform API** — `getPlatform(primary).api(primaryVersion)` returns
+- **Platform API**: `getPlatform(primary).api(primaryVersion)` returns
   the Maven coordinate for `paper-api` / `velocity-api` / etc. That's
   resolved with the platform's own Maven repo prepended to the project's
   registries (order-preserving dedup).
@@ -89,8 +89,8 @@ Maven transitives are resolved recursively up to 8 levels deep. See
 for the rules (BOM import handling, `compile`/`runtime` scopes,
 unresolved `${...}` placeholders).
 
-The classpath is the flattened list of jar paths — dep jars first, then
-the platform API jars — with order-preserving deduplication.
+The classpath is the flattened list of jar paths (dep jars first, then
+the platform API jars) with order-preserving deduplication.
 
 ## 4. Write IDE files
 
@@ -104,9 +104,9 @@ See [IDE integration](./ide.md) for what each `ide` value writes.
 
 Walks `project.resources`. For each entry:
 
-- Keys ending in `/` — copy the source directory recursively, mirroring
+- Keys ending in `/`: copy the source directory recursively, mirroring
   structure under the key as a prefix.
-- Other keys — copy the source file to the key verbatim.
+- Other keys: copy the source file to the key verbatim.
 
 Templated extensions get `${project.x}` substitution before being written:
 `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, `.md`. Binary files are
@@ -127,7 +127,7 @@ renders the descriptor from `project` and writes it to the staging dir.
 ### Bukkit family
 
 Fields: `name`, `version`, `main`, `description` (if set), `api-version`
-(derived from `compatibility.versions[0]` — `"1.21.8"` → `"1.21"`),
+(derived from `compatibility.versions[0]`: `"1.21.8"` → `"1.21"`),
 `authors` (as a YAML list).
 
 ### BungeeCord family
@@ -137,7 +137,7 @@ Fields: `name`, `version`, `main`, `description` (if set), `author`
 
 ### Velocity
 
-Fields: `id` (derived from `name` — lowercased, non-alnum replaced with
+Fields: `id` (derived from `name`: lowercased, non-alnum replaced with
 `-`, prefixed with `p-` if it starts with a non-letter), `name`,
 `version`, `main`, `description` (if set), `authors`.
 
@@ -153,7 +153,7 @@ javac -encoding UTF-8 -d <staging> -cp <classpath> <source1> <source2> ...
 ```
 
 Sources are every `*.java` under `<workspace>/src/`, recursive. The
-classpath separator is `:` on POSIX and `;` on Windows — handled via
+classpath separator is `:` on POSIX and `;` on Windows, handled via
 Node's `path.delimiter`.
 
 No shell is spawned. `javac` is looked up on `PATH` by `spawn`.
@@ -178,25 +178,25 @@ compile: no .java sources found under "<dir>" for project "<name>"
 
 ## 8. Apply shading
 
-For each entry in `project.shading` — keyed by dep name, same key the
-`dependencies` object uses — pluggy opens the dep jar with `yauzl` and
-walks its entries. Each entry is copied into the staging dir iff:
+For each entry in `project.shading` (keyed by dep name, same key the
+`dependencies` object uses), pluggy opens the dep jar with `yauzl` and
+walks its entries. Each entry is copied into the staging dir if:
 
 - It matches at least one pattern in `include` (default: `["**"]`), and
 - It doesn't match any pattern in `exclude`.
 
 Glob semantics:
 
-- `*` — one path segment (no `/`).
-- `**` — any depth including zero segments.
-- `**/foo.txt` — `foo.txt` at any depth.
-- `**/*.class` — every class file, any depth.
+- `*`: one path segment (no `/`).
+- `**`: any depth including zero segments.
+- `**/foo.txt`: `foo.txt` at any depth.
+- `**/*.class`: every class file, any depth.
 
 Leading `/` on either side is normalized away.
 
 Dependencies without a shading entry are not shaded. They appear on the
-compile classpath but are not bundled into the jar — your plugin
-expects them to be provided at runtime (e.g. by Paper).
+compile classpath but are not bundled into the jar: your plugin
+expects them to be provided at runtime (such as by Paper).
 
 ### Shading a workspace sibling
 
@@ -223,7 +223,7 @@ regardless of host OS. The output file is written to `<output>` (default
 
 pluggy doesn't do fancy incremental compilation. The staging directory
 persists between runs, so `javac` only recompiles what it sees as
-changed — that's the fast path for an inner dev loop.
+changed: that's the fast path for an inner dev loop.
 
 `--clean` wipes the staging directory, which effectively forces a full
 rebuild.

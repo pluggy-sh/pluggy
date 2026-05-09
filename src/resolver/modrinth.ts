@@ -78,7 +78,7 @@ export async function resolveModrinth(
 
   if (ctx.expectedIntegrity !== undefined && integrity !== ctx.expectedIntegrity) {
     throw new Error(
-      `modrinth: integrity check failed for "${slug}@${picked.version_number}" — ` +
+      `modrinth: integrity check failed for "${slug}@${picked.version_number}": ` +
         `lockfile expects ${ctx.expectedIntegrity} but resolved bytes are ${integrity}. ` +
         `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
     );
@@ -246,7 +246,7 @@ async function verifyAgainstApiHash(
   const actual = createHash("sha512").update(bytes).digest("hex");
   if (actual !== expected.toLowerCase()) {
     throw new Error(
-      `modrinth: sha512 mismatch for "${slug}@${versionNumber}" — ` +
+      `modrinth: sha512 mismatch for "${slug}@${versionNumber}": ` +
         `Modrinth published ${expected} but downloaded bytes hash to ${actual}. ` +
         `Refusing to use a tampered jar.`,
     );

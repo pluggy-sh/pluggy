@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { Command } from "commander";
 
-import { bold, dim, log } from "../logging.ts";
+import { bold, dim, emit, log } from "../logging.ts";
 import { parseIdentifier, type ResolvedSource } from "../source.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
@@ -41,7 +41,6 @@ interface ModrinthVersion {
 }
 
 export interface InfoOptions {
-  json?: boolean;
   project?: string;
 }
 
@@ -51,14 +50,14 @@ export interface InfoResult {
 }
 
 /**
- * Resolve metadata about a plugin identifier. Dispatches per source kind —
+ * Resolve metadata about a plugin identifier. Dispatches per source kind:
  * Modrinth and workspace queries hit the network / disk, file returns size +
  * sha256, maven is a passthrough.
  *
  * When invoked inside a pluggy project, Modrinth hits are annotated with a
  * per-version compatibility hint against the project's `compatibility.versions`.
  */
-export async function doInfo(identifier: string, options: InfoOptions): Promise<InfoResult> {
+export async function doInfo(identifier: string, _options: InfoOptions = {}): Promise<InfoResult> {
   const source = parseIdentifier(identifier);
 
   const ctx = resolveWorkspaceContext(process.cwd());
@@ -82,11 +81,9 @@ export async function doInfo(identifier: string, options: InfoOptions): Promise<
       break;
   }
 
-  if (options.json) {
-    console.log(JSON.stringify({ status: "success", ...result }, null, 2));
-  } else {
+  emit({ status: "success", ...result }, () => {
     printHumanInfo(result);
-  }
+  });
 
   return result;
 }
@@ -263,6 +260,6 @@ export function infoCommand(): Command {
     .argument("<plugin>", "Plugin identifier.", parseIdentifierArg)
     .action(async function action(this: Command, plugin: string) {
       const globalOpts = this.optsWithGlobals();
-      await doInfo(plugin, { json: globalOpts.json, project: globalOpts.project });
+      await doInfo(plugin, { project: globalOpts.project });
     });
 }

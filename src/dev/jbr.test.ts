@@ -1,6 +1,6 @@
 /**
  * Contract tests for the JBR provisioning module. Network-dependent
- * `ensureJbr` is intentionally left to manual playground validation —
+ * `ensureJbr` is intentionally left to manual playground validation;
  * downloading 200MB on every CI run would be hostile.
  */
 

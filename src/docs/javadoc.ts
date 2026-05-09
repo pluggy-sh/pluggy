@@ -1,5 +1,5 @@
 /**
- * javadoc driver. Same shape as `compileJava` — never invokes a shell, joins
+ * javadoc driver. Same shape as `compileJava`: never invokes a shell, joins
  * the classpath with the platform delimiter, and tails stderr on failure so
  * CI output stays readable.
  */
@@ -20,7 +20,7 @@ export interface JavadocOptions {
   sourcePaths: string[];
   /** Compile classpath used for symbol resolution. */
   classpath: string[];
-  /** Javadoc visibility — passed as `-public` / `-protected` / `-package` / `-private`. */
+  /** Javadoc visibility, passed as `-public` / `-protected` / `-package` / `-private`. */
   access: "public" | "protected" | "package" | "private";
   /** Java release the docs are compiled against (matches `--release` in javac). */
   release: number;
@@ -33,7 +33,7 @@ export interface JavadocOptions {
   /** External javadocs to cross-link via `-link <url>`. */
   links: string[];
   /**
-   * Absolute `javadoc` path. Defaults to `"javadoc"` (PATH lookup) — the
+   * Absolute `javadoc` path. Defaults to `"javadoc"` (PATH lookup); the
    * orchestrator overrides with the SDK-resolved JDK so the same JDK serves
    * the whole pipeline.
    */
@@ -49,7 +49,7 @@ const MAX_STDERR_LINES = 40;
 
 /**
  * Run `javadoc` against `opts.sources`. Throws on a non-zero exit, attaching
- * the last 40 lines of stderr to the message — matches `compileJava`'s
+ * the last 40 lines of stderr to the message; matches `compileJava`'s
  * failure shape so the CLI can render either uniformly.
  */
 export async function runJavadoc(

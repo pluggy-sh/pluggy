@@ -12,7 +12,7 @@
  *     temurin-21-windows-x64/
  *       bin/java.exe
  *
- * Cache key is `<distribution>-<major>-<os>-<arch>` — major-only on the
+ * Cache key is `<distribution>-<major>-<os>-<arch>`: major-only on the
  * version axis so reinstalling the same major replaces the slot in place.
  * Point releases are recorded inside the manifest entry's `fullVersion`.
  */
@@ -30,11 +30,11 @@ const MANIFEST_FILE = "manifest.json";
 const ARCHIVES_DIR = "archives";
 
 export interface ManifestEntry {
-  /** epoch ms — `ensureJdk` updates this on every cache hit for LRU prune. */
+  /** epoch ms; `ensureJdk` updates this on every cache hit for LRU prune. */
   lastUsed: number;
-  /** epoch ms — set when the slot is first populated. */
+  /** epoch ms; set when the slot is first populated. */
   installedAt: number;
-  /** Full Disco version string (e.g. "21.0.11+10"). */
+  /** Full Disco version string (for example, "21.0.11+10"). */
   fullVersion: string;
   /** Distribution slug snapshot (so callers can list installed JDKs without parsing the key). */
   distribution: string;
@@ -56,7 +56,7 @@ export interface CacheKeyParts {
 }
 
 /**
- * Build the cache key — stable per (distribution, major, os, arch). Each
+ * Build the cache key, stable per (distribution, major, os, arch). Each
  * component is checked against a tight allowlist; the key is joined into a
  * filesystem path under the user cache, so a `..` or path separator here
  * would let a hostile project.json escape the cache root.
@@ -99,9 +99,9 @@ export function archivePath(key: string, archiveType: "tar.gz" | "zip"): string 
  * ship as Mac app bundles (`Contents/Home/bin/java`); Linux, Windows, and a
  * few flattened macOS distros are flat (`bin/java`).
  *
- * `slotRoot` is the directory the archive extracted *into* — i.e. our cache
+ * `slotRoot` is the directory the archive extracted *into* (that is, our cache
  * slot directory after the install pipeline renamed the inner top-level dir
- * into place.
+ * into place).
  */
 export function javaBinaryPath(slotRoot: string, os: DiscoOs): string {
   const bin = os === "windows" ? "java.exe" : "java";
@@ -117,7 +117,7 @@ export function javaHomePath(slotRoot: string, os: DiscoOs): string {
   return slotRoot;
 }
 
-/** Resolve the `javac` binary alongside `java` — same directory on every layout. */
+/** Resolve the `javac` binary alongside `java`, same directory on every layout. */
 export function javacBinaryPath(slotRoot: string, os: DiscoOs): string {
   const javacName = os === "windows" ? "javac.exe" : "javac";
   return join(javaHomePath(slotRoot, os), "bin", javacName);

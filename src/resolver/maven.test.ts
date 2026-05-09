@@ -188,7 +188,7 @@ describe("resolveMaven", () => {
     const fetchMock = vi.fn(async (url: string | URL): Promise<Response> => {
       const s = String(url);
       if (s.endsWith(".jar.sha1")) {
-        // Wrong hash on purpose — sha1 of "abcdef" bytes is not all-fs.
+        // Wrong hash on purpose: sha1 of "abcdef" bytes is not all-fs.
         return new Response("ffffffffffffffffffffffffffffffffffffffff", { status: 200 });
       }
       if (s.endsWith(".jar.sha512") || s.endsWith(".jar.sha256")) {

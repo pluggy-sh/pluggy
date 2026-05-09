@@ -11,11 +11,11 @@ const PAPER_MAVEN_METADATA =
   "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/maven-metadata.xml";
 
 /**
- * Resolve an MC version (e.g. `"1.21.8"`, `"26.1.2"`) to the Maven
+ * Resolve an MC version (for example, `"1.21.8"`, `"26.1.2"`) to the Maven
  * coordinate Paper publishes for `paper-api`.
  *
  * Paper has two formats in the wild:
- *   - Old SNAPSHOT form: `<mc>-R0.1-SNAPSHOT` (1.17 — 1.21.x)
+ *   - Old SNAPSHOT form: `<mc>-R0.1-SNAPSHOT` (1.17 to 1.21.x)
  *   - New build-stamped form: `<mc>.build.<N>-alpha` (26.x+)
  *
  * The provider fetches Paper's top-level `maven-metadata.xml` and picks
@@ -50,21 +50,21 @@ export default createPlatform((ctx) => ({
   descriptor: bukkitDescriptor,
   runtime: BUKKIT_RUNTIME,
 
-  async getVersionInfo(version: string): Promise<Version> {
+  async info(version: string): Promise<Version> {
     const versionsList = await papermc.versions("paper");
     const versionInfo = versionsList.find((v) => v.version.id === version);
     if (!versionInfo) throw new Error(`Failed to fetch version info for ${version}`);
     return { version, build: versionInfo.builds[0] };
   },
 
-  async getLatestVersion(): Promise<Version> {
+  async latest(): Promise<Version> {
     const versionsList = await papermc.versions("paper");
     if (versionsList.length === 0) throw new Error("No versions found for paper");
     const latestVersion = versionsList[0];
     return { version: latestVersion.version.id, build: latestVersion.builds[0] };
   },
 
-  async getVersions(): Promise<string[]> {
+  async versions(): Promise<string[]> {
     const versionsList = await papermc.versions("paper");
     return versionsList.map((v) => v.version.id);
   },

@@ -8,7 +8,7 @@ import { VELOCITY_RUNTIME } from "../runtime.ts";
 import * as papermc from "./papermc.ts";
 
 /**
- * Velocity is a proxy, not a server — a plugin built against
+ * Velocity is a proxy, not a server: a plugin built against
  * `velocity-api:3.4.0` works with any Minecraft protocol the running proxy
  * supports. Pluggy's `compatibility.versions` field represents Minecraft
  * versions across the whole tool, though, so this provider surfaces MC
@@ -28,17 +28,17 @@ export default createPlatform((ctx) => ({
   descriptor: velocityDescriptor,
   runtime: VELOCITY_RUNTIME,
 
-  async getVersions(): Promise<string[]> {
+  async versions(): Promise<string[]> {
     const mc = await papermc.versions("paper");
     return mc.map((v) => v.version.id);
   },
 
-  async getVersionInfo(mcVersion: string): Promise<Version> {
+  async info(mcVersion: string): Promise<Version> {
     const release = await latestVelocityRelease();
     return { version: mcVersion, build: release.build };
   },
 
-  async getLatestVersion(): Promise<Version> {
+  async latest(): Promise<Version> {
     const mc = await papermc.versions("paper");
     if (mc.length === 0) throw new Error("No versions found for velocity");
     const release = await latestVelocityRelease();

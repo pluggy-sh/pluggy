@@ -25,14 +25,14 @@ interface GithubRelease {
 export interface UpgradeOptions {
   /** GitHub `owner/repo` slug whose releases are queried. */
   repository: string;
-  /** Optional GitHub token — only needed for rate-limited CI runs. */
+  /** Optional GitHub token; only needed for rate-limited CI runs. */
   token?: string;
 }
 
 /**
  * Map `process.platform` + `process.arch` to the release asset name used
  * by `.github/workflows/release.yml`. Returns `undefined` when the current
- * platform isn't a published target — the action falls back to printing
+ * platform isn't a published target. The action falls back to printing
  * manual install instructions.
  */
 function currentAssetName(): string | undefined {
@@ -75,7 +75,7 @@ function printManualInstructions(repository: string, release: GithubRelease): vo
 
 /**
  * Returns true if the current process can replace the file at `path`
- * (i.e., it can write to the containing directory). We probe the
+ * (that is, it can write to the containing directory). We probe the
  * directory rather than the file itself because the in-place upgrade
  * works by renaming around the existing binary.
  */
@@ -101,12 +101,12 @@ function isSystemPath(path: string): boolean {
 
 /**
  * Fetch `SHA256SUMS.txt` for the release and return a map of `assetName ->
- * lowercase hex sha256`. Throws when the manifest is missing — the install
+ * lowercase hex sha256`. Throws when the manifest is missing. The install
  * pipeline only began publishing the manifest with this version's release
  * workflow, so a missing manifest means we're being asked to upgrade to an
  * unsigned release and `pluggy upgrade` refuses by design.
  *
- * The manifest itself isn't trust-rooted — an attacker substituting both
+ * The manifest itself isn't trust-rooted: an attacker substituting both
  * the binary and the manifest URL still wins this layer. The downstream
  * attestation check (`assertAttestedByWorkflow`) closes that gap by
  * binding the binary's sha256 to a Sigstore certificate issued for this
@@ -142,7 +142,7 @@ function parseShaManifest(text: string, name: string): string | undefined {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (line.length === 0) continue;
-    // sha256sum format: "<hex><space><space><filename>" — but tolerate one or
+    // sha256sum format: "<hex><space><space><filename>"; tolerate one or
     // more spaces / tabs to match other generators.
     const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
     if (match === null) continue;
@@ -179,7 +179,7 @@ async function replaceInPlace(
   const actualSha = createHash("sha256").update(bytes).digest("hex");
   if (actualSha !== expectedSha256) {
     throw new Error(
-      `integrity check failed for ${assetName} — SHA256SUMS.txt expects ${expectedSha256} but downloaded bytes hash to ${actualSha}. ` +
+      `integrity check failed for ${assetName}: SHA256SUMS.txt expects ${expectedSha256} but downloaded bytes hash to ${actualSha}. ` +
         `Refusing to install a tampered binary; please report at https://github.com/${repository}/issues.`,
     );
   }
@@ -222,14 +222,14 @@ async function replaceInPlace(
  *   2. The attestation's leaf certificate's SAN identifies the issuing
  *      OIDC identity as this repo's `.github/workflows/*.yml` workflow.
  *
- * (1) means an attacker who substitutes only the asset URL fails — they
+ * (1) means an attacker who substitutes only the asset URL fails: they
  * can't generate an attestation for arbitrary bytes without GitHub's
  * Fulcio-issued cert. (2) hardens against an attacker substituting both
  * the asset and an attestation from an unrelated repo: the cert's
  * subject-alternative-name is bound to the OIDC identity that requested
  * it, so a different workflow's attestation has a different SAN.
  *
- * We deliberately don't verify the Sigstore signature in-binary — that
+ * We deliberately don't verify the Sigstore signature in-binary: that
  * would mean shipping a Fulcio trust root and a full bundle verifier, a
  * substantial amount of crypto code. The check above trusts GitHub's
  * attestation API as a transport (same channel as the asset download),
@@ -259,7 +259,7 @@ async function assertAttestedByWorkflow(
   if (attestations.length === 0) {
     throw new Error(
       `no build-provenance attestation found for ${assetName} in ${repository}. ` +
-        `Refusing to install — every release after this version must be attested by the release workflow. ` +
+        `Refusing to install: every release after this version must be attested by the release workflow. ` +
         `If this is unexpected, report at https://github.com/${repository}/issues.`,
     );
   }
@@ -291,7 +291,7 @@ async function assertAttestedByWorkflow(
     );
   }
   throw new Error(
-    `attestation identity mismatch for ${assetName} — none of the ${attestations.length} attestation(s) were issued for ${expectedIdentityPrefix}*. ` +
+    `attestation identity mismatch for ${assetName}: none of the ${attestations.length} attestation(s) were issued for ${expectedIdentityPrefix}*. ` +
       `Refusing to install. Details: ${errors.join("; ")}`,
   );
 }
@@ -335,7 +335,7 @@ function extractLeafCertificatePem(bundle: Record<string, unknown>): string | un
 
 function printPermissionGuidance(repository: string, currentBinaryPath: string): void {
   log.error(
-    `cannot write to ${currentBinaryPath} — pluggy was installed to a system path and upgrades from there require root.`,
+    `cannot write to ${currentBinaryPath}: pluggy was installed to a system path and upgrades from there require root.`,
   );
   log.info("");
   log.info(`${bold("Recommended:")} reinstall pluggy to your home directory (no sudo):`);
@@ -358,7 +358,7 @@ function printPermissionGuidance(repository: string, currentBinaryPath: string):
  *
  * Default behaviour: fetch the latest GitHub release, download the asset
  * for the running platform, and atomically replace the current binary.
- * `--print-only` skips the replacement and prints manual instructions —
+ * `--print-only` skips the replacement and prints manual instructions:
  * same behaviour we had before in-place upgrade was wired up.
  */
 export function upgradeCommand(options: UpgradeOptions): Command {

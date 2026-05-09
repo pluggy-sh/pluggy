@@ -30,7 +30,7 @@ curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.
 The script downloads the binary for your OS and architecture into
 `~/.pluggy/bin/pluggy` and adds that directory to your `PATH` via your
 shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`,
-`~/.profile`, `~/.config/fish/config.fish` — whichever exist). No
+`~/.profile`, `~/.config/fish/config.fish`, whichever exist). No
 `sudo` required.
 
 Override the install location with `PLUGGY_HOME`:
@@ -68,10 +68,10 @@ pluggy init --yes --name my_plugin --main com.example.myplugin.Main
 
 `init` writes three files:
 
-- `project.json` — the only config file pluggy reads.
-- `src/com/example/myplugin/Main.java` — a Bukkit `JavaPlugin` with stubbed
+- `project.json`: the only config file pluggy reads.
+- `src/com/example/myplugin/Main.java`: a Bukkit `JavaPlugin` with stubbed
   `onEnable` / `onDisable` methods.
-- `src/config.yml` — a resources file with `${project.name}` placeholders
+- `src/config.yml`: a resources file with `${project.name}` placeholders
   rendered at build time.
 
 The project name must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores,
@@ -136,10 +136,10 @@ plugins; populated for Maven artifacts).
 The dep identifier grammar is documented in
 [Dependency sources](./dependencies.md). In short:
 
-- `worldedit` — latest stable from Modrinth.
-- `worldedit@7.3.15` — a specific Modrinth version.
-- `./libs/my-lib.jar` — a local file. pluggy content-addresses it.
-- `maven:net.kyori:adventure-api@4.17.0` — a Maven artifact. Requires at
+- `worldedit`: latest stable from Modrinth.
+- `worldedit@7.3.15`: a specific Modrinth version.
+- `./libs/my-lib.jar`: a local file. pluggy content-addresses it.
+- `maven:net.kyori:adventure-api@4.17.0`: a Maven artifact. Requires at
   least one entry in `registries` (see below).
 
 ## Run the dev server
@@ -158,8 +158,8 @@ with your plugin and any runtime plugin deps hardlinked into `dev/plugins/`.
 When you save a `.java` file, pluggy debounces the event for 200ms,
 rebuilds, sends `stop\n` to the server's stdin, waits for it to exit, swaps
 in the new jar, and spawns a fresh server. Pass `--reload` to use Bukkit's
-`/reload confirm` instead of a full restart — faster, but Bukkit's own docs
-warn that `/reload` is unreliable for stateful plugins.
+`/reload confirm` instead of a full restart (faster, but Bukkit's own docs
+warn that `/reload` is unreliable for stateful plugins).
 
 Press Ctrl+C once for graceful shutdown (30 seconds grace). A second Ctrl+C
 within 2 seconds sends SIGKILL.
@@ -195,7 +195,7 @@ Override with `--output path/to/out.jar`.
   `description`, and the derived `api-version` (`"1.21"` for `1.21.8`).
 - Zipped the staging dir into the output jar.
 
-Each step lives in a dedicated module under `src/build/` — see
+Each step lives in a dedicated module under `src/build/`. See
 [Build pipeline](./build-pipeline.md) for the full walkthrough.
 
 ## Where to go next

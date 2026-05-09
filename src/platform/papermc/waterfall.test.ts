@@ -1,26 +1,26 @@
 import { expect, test } from "vite-plus/test";
-import { getPlatform } from "../index.ts";
+import { platforms } from "../index.ts";
 
 test("waterfall platform exists", () => {
-  expect(getPlatform("waterfall").id).toBe("waterfall");
-  expect(getPlatform("Waterfall").id).toBe("waterfall");
-  expect(() => getPlatform("@Waterfall")).toThrow("Platform with id '@Waterfall' not found");
+  expect(platforms.get("waterfall").id).toBe("waterfall");
+  expect(platforms.get("Waterfall").id).toBe("waterfall");
+  expect(() => platforms.get("@Waterfall")).toThrow("Platform with id '@Waterfall' not found");
 });
 
 test("waterfall platform versions", async () => {
-  const waterfall = getPlatform("waterfall");
-  const versions = await waterfall.getVersions();
+  const waterfall = platforms.get("waterfall");
+  const versions = await waterfall.versions();
   expect(Array.isArray(versions)).toBe(true);
   expect(versions).toEqual(expect.arrayContaining(["1.21", "1.20", "1.19", "1.18"]));
   expect(versions.length).toBeGreaterThan(0);
 
-  const latest = await waterfall.getLatestVersion();
+  const latest = await waterfall.latest();
   expect(latest.version).toBe(versions[0]);
 });
 
 test("waterfall platform download latest version", async () => {
-  const waterfall = getPlatform("waterfall");
-  const latestVersion = await waterfall.getLatestVersion();
+  const waterfall = platforms.get("waterfall");
+  const latestVersion = await waterfall.latest();
   const result = await waterfall.download(latestVersion, true);
 
   expect(result?.version).toBe(latestVersion.version);

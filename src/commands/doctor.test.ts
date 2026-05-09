@@ -14,6 +14,7 @@ import type { ResolvedProject } from "../project.ts";
 import yazl from "yazl";
 import { createWriteStream } from "node:fs";
 
+import { initLogging } from "../logging.ts";
 import {
   checkDependencyJars,
   checkDescriptors,
@@ -55,6 +56,7 @@ describe("runDoctorCommand", () => {
     rootDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-"));
     stdoutSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    initLogging({ json: false, verbose: false, noColor: true });
     await writeFile(
       join(rootDir, "project.json"),
       JSON.stringify({
@@ -71,6 +73,7 @@ describe("runDoctorCommand", () => {
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
     vi.restoreAllMocks();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   test("all checks pass → exitCode 0, ok=true", async () => {
@@ -114,7 +117,8 @@ describe("runDoctorCommand", () => {
   });
 
   test("JSON mode, success: single JSON blob on stdout", async () => {
-    await runDoctorCommand({ cwd: rootDir, json: true, checks: passingHooks() });
+    initLogging({ json: true });
+    await runDoctorCommand({ cwd: rootDir, checks: passingHooks() });
     expect(stdoutSpy).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(stdoutSpy.mock.calls[0][0] as string);
     expect(parsed.ok).toBe(true);
@@ -130,7 +134,8 @@ describe("runDoctorCommand", () => {
       status: "fail",
       detail: "not found",
     });
-    const res = await runDoctorCommand({ cwd: rootDir, json: true, checks: hooks });
+    initLogging({ json: true });
+    const res = await runDoctorCommand({ cwd: rootDir, checks: hooks });
     expect(res.ok).toBe(false);
     expect(stderrSpy).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(stderrSpy.mock.calls[0][0] as string);
@@ -434,7 +439,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "some-plugin": {
             source: { kind: "modrinth", slug: "some-plugin", version: "1.0.0" },
@@ -455,7 +460,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "some-plugin": {
             source: { kind: "modrinth", slug: "some-plugin", version: "1.0.0" },
@@ -482,7 +487,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "heavy-dep": {
             source: { kind: "modrinth", slug: "heavy-dep", version: "2.0.0" },
@@ -514,7 +519,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "compat-dep": {
             source: { kind: "modrinth", slug: "compat-dep", version: "1.0.0" },

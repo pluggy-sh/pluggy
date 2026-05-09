@@ -263,7 +263,7 @@ describe("resolveModrinth", () => {
     const secondFetch = vi.fn(async (url: string | URL): Promise<Response> => {
       const s = String(url);
       if (s.includes("/project/")) return okJson(versions);
-      throw new Error(`should not have fetched ${s} — cache should be hit`);
+      throw new Error(`should not have fetched ${s}; cache should be hit`);
     });
     vi.stubGlobal("fetch", secondFetch);
     const second = await resolveModrinth("slugA", "*", ctx);

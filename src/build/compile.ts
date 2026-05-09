@@ -1,5 +1,5 @@
 /**
- * javac driver. Never invokes a shell — Node's `spawn` handles `.exe` on
+ * javac driver. Never invokes a shell. Node's `spawn` handles `.exe` on
  * Windows automatically. Classpath joins use `delimiter` from `node:path`
  * (`:` on POSIX, `;` on Windows).
  */
@@ -16,7 +16,7 @@ export interface CompileOptions {
   outputDir: string;
   classpath: string[];
   /**
-   * Absolute `javac` path. Defaults to `"javac"` (PATH lookup) — orchestrators
+   * Absolute `javac` path. Defaults to `"javac"` (PATH lookup). Orchestrators
    * (`buildProject`, `runTests`, …) override with the SDK-resolved JDK so a
    * single JDK lookup serves the whole pipeline. Keeping `compileJava`
    * itself decoupled from the SDK module also avoids network-dependent unit
@@ -101,7 +101,7 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
 /**
  * Recursively collect every `.java` file under `dir`, sorted for deterministic
  * argv ordering. Exported for reuse by tooling that drives `javac`/`javadoc`
- * outside the build pipeline (e.g. `pluggy docs`).
+ * outside the build pipeline (for example, `pluggy docs`).
  */
 export async function findJavaSources(dir: string): Promise<string[]> {
   const results: string[] = [];

@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { initLogging } from "../logging.ts";
 import { doSearch } from "./search.ts";
 
 function okJson(body: unknown): Response {
@@ -18,16 +19,18 @@ function errorResponse(status: number, statusText: string): Response {
 const origLog = console.log;
 beforeEach(() => {
   console.log = () => {};
+  initLogging({ json: false, verbose: false, noColor: true });
 });
 afterEach(() => {
   console.log = origLog;
   vi.unstubAllGlobals();
+  initLogging({ json: false, verbose: false, noColor: true });
 });
 
 describe("doSearch", () => {
   test("hits the Modrinth search endpoint with plugin facet and returns hits", async () => {
     let capturedUrl = "";
-    // Mirrors the real /v2/search shape — `latest_version` is opaque,
+    // Mirrors the real /v2/search shape: `latest_version` is opaque,
     // `project_type` is always "mod", `versions` is the MC version list.
     const body = {
       hits: [
@@ -61,7 +64,7 @@ describe("doSearch", () => {
       }),
     );
 
-    const result = await doSearch("worldedit", { size: 10, page: 0, json: true });
+    const result = await doSearch("worldedit", { size: 10, page: 0 });
     expect(result.hits).toHaveLength(1);
     expect(result.hits[0].slug).toBe("worldedit");
     expect(result.total).toBe(1);
@@ -92,7 +95,6 @@ describe("doSearch", () => {
       page: 3,
       platform: "paper",
       version: "1.21.8",
-      json: true,
     });
 
     const parsed = new URL(capturedUrl);
@@ -106,7 +108,7 @@ describe("doSearch", () => {
       "fetch",
       vi.fn(async () => errorResponse(500, "Internal Server Error")),
     );
-    await expect(doSearch("x", { size: 10, page: 0, json: true })).rejects.toThrow(
+    await expect(doSearch("x", { size: 10, page: 0 })).rejects.toThrow(
       /Modrinth search failed.*"x".*500/s,
     );
   });
@@ -129,7 +131,8 @@ describe("doSearch", () => {
       captured.push(s);
     };
     try {
-      await doSearch("a", { size: 10, page: 0, json: true });
+      initLogging({ json: true });
+      await doSearch("a", { size: 10, page: 0 });
     } finally {
       console.log = origLog;
     }

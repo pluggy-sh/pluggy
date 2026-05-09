@@ -3,7 +3,7 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { generateDocs, type DocsResult } from "../docs/index.ts";
-import { bold, log } from "../logging.ts";
+import { bold, emit, emitErr, log } from "../logging.ts";
 import type { ResolvedProject } from "../project.ts";
 import {
   findWorkspace,
@@ -19,7 +19,6 @@ export interface DocsCommandOptions {
   links?: string[];
   workspace?: string;
   workspaces?: boolean;
-  json?: boolean;
   cwd?: string;
 }
 
@@ -49,7 +48,7 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found — run this from inside a project directory.");
+    throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
 
   const targets = selectDocsTargets(context, opts);
@@ -62,9 +61,7 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
     const rootDir = target.rootDir;
     const started = Date.now();
     try {
-      if (!opts.json) {
-        log.info(`${bold("docs")} ${label}`);
-      }
+      log.info(`${bold("docs")} ${label}`);
       const res: DocsResult = await generateDocs(target, {
         output: opts.output,
         clean: opts.clean,
@@ -83,13 +80,11 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
         durationMs: res.durationMs,
       });
 
-      if (!opts.json) {
-        const warnSuffix =
-          res.warnings > 0 ? `, ${res.warnings} warning${res.warnings === 1 ? "" : "s"}` : "";
-        log.success(
-          `${label}: ${res.outputPath} (${res.fileCount} files, ${formatBytes(res.sizeBytes)}${warnSuffix}, ${res.durationMs}ms)`,
-        );
-      }
+      const warnSuffix =
+        res.warnings > 0 ? `, ${res.warnings} warning${res.warnings === 1 ? "" : "s"}` : "";
+      log.success(
+        `${label}: ${res.outputPath} (${res.fileCount} files, ${formatBytes(res.sizeBytes)}${warnSuffix}, ${res.durationMs}ms)`,
+      );
     } catch (err) {
       anyFailed = true;
       const message = err instanceof Error ? err.message : String(err);
@@ -100,9 +95,7 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
         durationMs: Date.now() - started,
         error: message,
       });
-      if (!opts.json) {
-        log.error(`${label}: ${message}`);
-      }
+      log.error(`${label}: ${message}`);
       if (targets.length === 1) {
         throw err;
       }
@@ -112,27 +105,22 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
   const exitCode: 0 | 1 = anyFailed ? 1 : 0;
   const status: DocsCommandResult["status"] = anyFailed ? "partial" : "success";
 
-  if (opts.json) {
-    const payload = {
-      status: anyFailed ? "error" : "success",
-      results: results.map((r) => ({
-        workspace: r.workspace,
-        rootDir: r.rootDir,
-        ok: r.ok,
-        outputPath: r.outputPath,
-        fileCount: r.fileCount,
-        sizeBytes: r.sizeBytes,
-        warnings: r.warnings,
-        durationMs: r.durationMs,
-        error: r.error,
-      })),
-    };
-    if (anyFailed) {
-      console.error(JSON.stringify(payload, null, 2));
-    } else {
-      console.log(JSON.stringify(payload, null, 2));
-    }
-  } else if (targets.length > 1) {
+  const payload = {
+    status: anyFailed ? "error" : "success",
+    results: results.map((r) => ({
+      workspace: r.workspace,
+      rootDir: r.rootDir,
+      ok: r.ok,
+      outputPath: r.outputPath,
+      fileCount: r.fileCount,
+      sizeBytes: r.sizeBytes,
+      warnings: r.warnings,
+      durationMs: r.durationMs,
+      error: r.error,
+    })),
+  };
+  const printSummary = (): void => {
+    if (targets.length <= 1) return;
     log.info("");
     log.info(bold("summary"));
     for (const r of results) {
@@ -141,17 +129,19 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
           `  ${r.workspace}: ${r.outputPath} (${r.fileCount} files, ${formatBytes(r.sizeBytes ?? 0)}, ${r.durationMs}ms)`,
         );
       } else {
-        log.info(`  ${r.workspace}: FAILED — ${r.error ?? "unknown error"}`);
+        log.info(`  ${r.workspace}: FAILED: ${r.error ?? "unknown error"}`);
       }
     }
-  }
+  };
+  if (anyFailed) emitErr(payload, printSummary);
+  else emit(payload, printSummary);
 
   return { status, exitCode, results };
 }
 
 /**
  * Pick which workspaces `pluggy docs` should cover. Identical contract to
- * `selectBuildTargets` / `selectTestTargets` — root with workspaces → all in
+ * `selectBuildTargets` / `selectTestTargets`: root with workspaces → all in
  * topological order, `--workspace` narrows, inside a workspace → just that
  * one.
  */
@@ -212,7 +202,6 @@ export function docsCommand(): Command {
     .option("--workspace <name>", "Document a single workspace.")
     .option("--workspaces", "Explicit all-workspaces docs run.")
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals();
       const result = await runDocsCommand({
         output: options.output,
         clean: options.clean === true,
@@ -220,7 +209,6 @@ export function docsCommand(): Command {
         links: options.link as string[] | undefined,
         workspace: options.workspace,
         workspaces: options.workspaces === true,
-        json: globalOpts.json === true,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

@@ -2,10 +2,10 @@
  * `${project.x}` substitution used by `init` and the build pipeline to seed
  * template files with values from `project.json`.
  *
- * Escape hatch: prefix a placeholder with a backslash to keep it literal —
+ * Escape hatch: prefix a placeholder with a backslash to keep it literal.
  * `\${anything}` emits as `${anything}`, with the leading backslash stripped.
  * Useful for YAML / JSON files that legitimately contain `${...}` syntax
- * (e.g. plugin configs that reference their own placeholders at runtime).
+ * (for example, plugin configs that reference their own placeholders at runtime).
  */
 
 /**
@@ -40,7 +40,7 @@ export function generateReplacementMap(
 /**
  * Substitute every `${dotted.key}` in `template` with the matching value
  * from `obj`. Occurrences preceded by a backslash (`\${...}`) are treated
- * as literal — the backslash is stripped and the placeholder is emitted
+ * as literal: the backslash is stripped and the placeholder is emitted
  * unchanged. Unknown keys are left as-is.
  */
 export function replace(template: string, obj: Record<string, unknown>): string {

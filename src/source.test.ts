@@ -118,7 +118,7 @@ describe("stringifySource (round trip)", () => {
     expect(stringifySource(parseSource(input, "*"))).toBe(input);
   });
 
-  // file: paths must round-trip byte-for-byte — no normalizing, no stripping "./".
+  // file: paths must round-trip byte-for-byte: no normalizing, no stripping "./".
   test("file sources round-trip exactly, including awkward paths", () => {
     const absolute = "file:/opt/plugins/lib.jar";
     expect(stringifySource(parseSource(absolute, "1.0.0"))).toBe(absolute);

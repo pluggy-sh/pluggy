@@ -306,7 +306,7 @@ describe("topologicalOrder", () => {
 
     const ctx = resolveWorkspaceContext(rootDir);
     const ordered = topologicalOrder(ctx!.workspaces);
-    // Both leaf nodes — declaration order preserved.
+    // Both leaf nodes; declaration order preserved.
     expect(ordered.map((w) => w.name)).toEqual(["ws-a", "ws-b"]);
   });
 

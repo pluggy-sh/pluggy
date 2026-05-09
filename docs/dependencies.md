@@ -43,7 +43,7 @@ pluggy install maven:net.kyori:adventure-api@4.17.0
 ```
 
 `groupId` and `artifactId` both match `^[a-zA-Z][\w.-]*$`. The version
-after `@` is mandatory on the CLI — there's no "latest" equivalent for
+after `@` is mandatory on the CLI: there's no "latest" equivalent for
 Maven, because pluggy doesn't index Maven registries.
 
 ### File
@@ -65,7 +65,7 @@ pluggy install workspace:api
 Names the sibling in `<root>/project.json:workspaces`. Valid only inside a
 pluggy project; `info workspace:api` from outside a project errors.
 
-A `workspace:` identifier does not accept a version — the sibling's own
+A `workspace:` identifier does not accept a version: the sibling's own
 `project.json:version` is authoritative.
 
 ## The project.json form
@@ -86,7 +86,7 @@ the long form with `source: "modrinth:worldedit"`. Every other kind must
 use the long form.
 
 The dependency key is the name `list`, `shading`, and the lockfile use.
-`install` picks it automatically — slug for Modrinth, `artifactId` for
+`install` picks it automatically: slug for Modrinth, `artifactId` for
 Maven, basename-without-`.jar` for files, workspace name for workspaces.
 
 ## Registries
@@ -95,7 +95,7 @@ Maven Central (`https://repo1.maven.org/maven2/`) is appended automatically,
 so a Maven dependency that lives there needs no `registries` entry at all.
 Declare extra registries when you depend on artifacts that Central doesn't
 host (PaperMC, Spigot snapshots, GitHub Packages, …). Modrinth is implicit
-too — no registry declaration is required.
+too: no registry declaration is required.
 
 ```json
 "registries": [
@@ -128,8 +128,8 @@ Aliases work in both string and object form; credentials stay attached:
 ```
 
 Registry URLs are tried in declaration order, then `DEFAULT_MAVEN_REGISTRIES`
-(Maven Central). The platform's own Maven repository (e.g. PaperMC for
-Paper's `paper-api`) is prepended automatically during a build — you don't
+(Maven Central). The platform's own Maven repository (such as PaperMC for
+Paper's `paper-api`) is prepended automatically during a build, you don't
 need to list it in `registries`.
 
 ## Lockfile
@@ -173,13 +173,13 @@ Every top-level entry carries:
 
 | Field             | Meaning                                                                                    |
 | ----------------- | ------------------------------------------------------------------------------------------ |
-| `source`          | The full tagged union from `source.ts` — kind + identifying fields + version.              |
+| `source`          | The full tagged union from `source.ts`: kind + identifying fields + version.               |
 | `resolvedVersion` | Concrete version resolved by `install`. Never a range, never `"*"`.                        |
 | `integrity`       | `sha256-<hex>` of the resolved jar bytes. Verified on every consuming read.                |
 | `declaredBy`      | Workspaces that declared this dep. Used by `remove` to know when the entry can be dropped. |
 | `transitives`     | Optional. Recursive. Omitted when the closure is empty. Does not include `declaredBy`.     |
 
-Transitives are recorded inline — each child carries its own grandchildren.
+Transitives are recorded inline: each child carries its own grandchildren.
 The field is elided entirely when the closure is empty; writers must not
 emit an empty array.
 
@@ -189,17 +189,17 @@ diffs are deterministic. Trailing LF.
 
 ### When pluggy rewrites it
 
-- `pluggy install` — on a single-identifier run, adds or updates that one
+- `pluggy install`: on a single-identifier run, adds or updates that one
   entry; on a bare `install`, resolves anything stale and prunes orphans.
-- `pluggy install --force` — re-resolves everything even if the lockfile
+- `pluggy install --force`: re-resolves everything even if the lockfile
   is fresh.
-- `pluggy remove` — drops an entry when no workspace still declares it
+- `pluggy remove`: drops an entry when no workspace still declares it
   (shrinks `declaredBy` otherwise).
 
 `build` and `dev` do not write `pluggy.lock`. They resolve against the
 live `project.json` (using the cache where possible) and expect `install`
 to have produced the lockfile. A missing lockfile is not an error for a
-build — pluggy will resolve on the fly — but your builds stop being
+build (pluggy will resolve on the fly), but your builds stop being
 reproducible.
 
 ### Drift detection
@@ -215,7 +215,7 @@ when `install` runs without a specific plugin argument. A targeted
 
 ## SNAPSHOT semantics
 
-Maven versions ending in `-SNAPSHOT` require a metadata lookup — published
+Maven versions ending in `-SNAPSHOT` require a metadata lookup: published
 artifacts are stored under timestamped filenames, not the declared version.
 pluggy fetches `<base>/<group>/<artifact>/<version>/maven-metadata.xml`,
 reads the `<snapshotVersion>` for extension `jar` (and `pom` for the
@@ -223,10 +223,10 @@ transitives query), and constructs the real download URL.
 
 Behaviour:
 
-- `1.0.0-SNAPSHOT` — resolved on every `install`; the cached jar path stays
+- `1.0.0-SNAPSHOT`: resolved on every `install`; the cached jar path stays
   `<cache>/dependencies/maven/<group>/<artifact>/1.0.0-SNAPSHOT.jar`, and
   the file is rewritten when a new timestamped publish appears.
-- `1.0.0` (release) — resolved once, cached forever.
+- `1.0.0` (release): resolved once, cached forever.
 
 Plain SNAPSHOT versions are transparent to users. You write
 `"version": "1.0.0-SNAPSHOT"` in `project.json` and pluggy does the rest.
@@ -238,7 +238,7 @@ Every Maven artifact's POM is fetched and parsed. pluggy understands:
 - Direct `<dependencies>` entries with scope `compile`, `runtime`, or unset.
 - `<dependencyManagement>` BOM imports (`<type>pom</type>` +
   `<scope>import</scope>`).
-- Lower-bounded ranges like `[1.0,2.0)` — pluggy picks the lower bound.
+- Lower-bounded ranges like `[1.0,2.0)`: pluggy picks the lower bound.
 
 It does not implement:
 
@@ -280,15 +280,15 @@ BuildTools.jar          (spigot/bukkit)
 BuildTools/             (per-version BuildTools working directory)
 ```
 
-`workspace:` deps are not cached — the resolver points at the sibling's
+`workspace:` deps are not cached: the resolver points at the sibling's
 `<workspace>/bin/<name>-<version>.jar`, and the build pipeline is
 responsible for producing that file.
 
 Cache size is surfaced by `pluggy doctor`. Wipe with `rm -rf` at the path
-above — pluggy reconstructs everything on the next run.
+above; pluggy reconstructs everything on the next run.
 
 ## See also
 
-- [`pluggy install`](./commands/install.md) — the CLI flags.
-- [Build pipeline](./build-pipeline.md) — how resolved deps hit the classpath.
-- [Workspaces](./workspaces.md) — the `workspace:` kind in detail.
+- [`pluggy install`](./commands/install.md): the CLI flags.
+- [Build pipeline](./build-pipeline.md): how resolved deps hit the classpath.
+- [Workspaces](./workspaces.md): the `workspace:` kind in detail.

@@ -97,7 +97,7 @@ describe("doInstall: no plugin argument", () => {
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           entries: {
             worldedit: {
               source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -133,7 +133,7 @@ describe("doInstall: no plugin argument", () => {
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           entries: {
             worldedit: {
               source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -162,7 +162,7 @@ describe("doInstall: no plugin argument", () => {
     expect(lock?.entries.worldedit.integrity).toBe("sha256-abc");
   });
 
-  test("accepts Modrinth versions containing '+' (e.g. 1.20.1+forge) when checking the cache", async () => {
+  test("accepts Modrinth versions containing '+' (for example, 1.20.1+forge) when checking the cache", async () => {
     await writeFile(
       join(dir, "project.json"),
       JSON.stringify({
@@ -178,7 +178,7 @@ describe("doInstall: no plugin argument", () => {
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           entries: {
             worldedit: {
               source: { kind: "modrinth", slug: "worldedit", version: "1.20.1+forge" },
@@ -219,7 +219,7 @@ describe("doInstall: no plugin argument", () => {
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           entries: {
             worldedit: {
               source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -263,7 +263,7 @@ describe("doInstall: no plugin argument", () => {
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           entries: {
             worldedit: {
               source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -288,7 +288,7 @@ describe("doInstall: no plugin argument", () => {
         ctx.expectedIntegrity !== "sha256-rolled-forward"
       ) {
         throw new Error(
-          `modrinth: integrity check failed for "worldedit@7.3.15" — lockfile expects ${ctx.expectedIntegrity} but resolved bytes are sha256-rolled-forward`,
+          `modrinth: integrity check failed for "worldedit@7.3.15": lockfile expects ${ctx.expectedIntegrity} but resolved bytes are sha256-rolled-forward`,
         );
       }
       return makeResolved({ source, integrity: "sha256-rolled-forward" });
@@ -296,7 +296,7 @@ describe("doInstall: no plugin argument", () => {
 
     // worldedit isn't drifted so it shouldn't even be re-resolved; only
     // newdep is. The expectedIntegrity threading kicks in if worldedit ever
-    // does need re-resolution (e.g. cache mismatch in another test).
+    // does need re-resolution (for example, cache mismatch in another test).
     const result = await doInstall({ cwd: dir });
     expect(result.installed).toEqual(["newdep"]);
     expect(result.skipped).toContain("worldedit");
@@ -317,7 +317,7 @@ describe("doInstall: no plugin argument", () => {
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           entries: {
             worldedit: {
               source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -409,22 +409,28 @@ describe("doInstall: no plugin argument", () => {
     const lock = readLock(dir);
     const top = lock?.entries["paper-api"];
     expect(top).toBeDefined();
+    // Top-level entry's transitives are now stored as names referencing
+    // sibling entries in the flat map.
+    expect(top?.transitives).toEqual(
+      expect.arrayContaining(["net.kyori:adventure-api", "com.google.guava:guava"]),
+    );
     expect(top?.transitives).toHaveLength(2);
 
-    const adv = top?.transitives?.find(
-      (t) => t.source.kind === "maven" && t.source.artifactId === "adventure-api",
-    );
+    const adv = lock?.entries["net.kyori:adventure-api"];
     expect(adv).toBeDefined();
     expect(adv?.resolvedVersion).toBe("4.14.0");
     expect(adv?.integrity).toBe("sha256-adv");
-    expect(adv?.transitives).toHaveLength(1);
-    expect(adv?.transitives?.[0].resolvedVersion).toBe("1.3.0");
-    // Leaves omit the field rather than emitting [].
-    expect(adv?.transitives?.[0].transitives).toBeUndefined();
+    expect(adv?.declaredBy).toEqual([]);
+    expect(adv?.transitives).toEqual(["net.kyori:examination-api"]);
 
-    const guava = top?.transitives?.find(
-      (t) => t.source.kind === "maven" && t.source.artifactId === "guava",
-    );
+    const exam = lock?.entries["net.kyori:examination-api"];
+    expect(exam).toBeDefined();
+    expect(exam?.resolvedVersion).toBe("1.3.0");
+    // Leaves omit the field rather than emitting [].
+    expect(exam?.transitives).toBeUndefined();
+
+    const guava = lock?.entries["com.google.guava:guava"];
+    expect(guava).toBeDefined();
     expect(guava?.transitives).toBeUndefined();
   });
 

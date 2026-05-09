@@ -18,7 +18,8 @@ import { searchCommand } from "./commands/search.ts";
 import { sdkCommand } from "./commands/sdk.ts";
 import { testCommand } from "./commands/test.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
-import { bold, red } from "./logging.ts";
+import { UserError } from "./errors.ts";
+import { emitError, initLogging } from "./logging.ts";
 import { startUpdateCheck } from "./update-check.ts";
 
 // Side-effect import: platform providers self-register via createPlatform.
@@ -55,29 +56,38 @@ program.addCommand(completionsCommand(program));
 
 program.exitOverride();
 
-const wantsJson = process.argv.includes("--json");
-const isUpgradeRun = detectSubcommand(process.argv) === "upgrade";
-
-/**
- * Find the first positional argument in argv after the executable and
- * script paths. Skips global flags and consumes the value of flags that
- * take one (`-p` / `--project`) so we don't mistake the value for a
- * subcommand. Returns `undefined` if no subcommand is present.
- */
-function detectSubcommand(argv: string[]): string | undefined {
-  const valueFlags = new Set(["-p", "--project"]);
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--") return argv[i + 1];
-    if (valueFlags.has(a)) {
-      i++;
-      continue;
-    }
-    if (a.startsWith("-")) continue;
-    return a;
-  }
-  return undefined;
+// Pre-parse the global flags so logging is initialized before any command
+// runs. Commander mutates the program when dispatching to a subcommand, so
+// we parse a sentinel program with the same global options first; the
+// residual positional `args` give us the subcommand name without a manual
+// argv walk. `helpOption(false)` lets `--help` and `--version` fall through
+// to the real program; `exitOverride()` keeps the probe from exiting the
+// process on parse errors before we reach the main dispatch.
+const globalProbe = new Command()
+  .option("-v, --verbose")
+  .option("--json")
+  .option("--no-color")
+  .option("-p, --project <path>")
+  .helpOption(false)
+  .allowExcessArguments(true)
+  .allowUnknownOption(true)
+  .exitOverride();
+try {
+  globalProbe.parse(process.argv, { from: "node" });
+} catch {
+  // Probe is best-effort. If it can't parse, the main program will surface
+  // the real error in its own handler.
 }
+const probed = globalProbe.opts();
+
+initLogging({
+  verbose: probed.verbose === true,
+  noColor: probed.color === false,
+  json: probed.json === true,
+});
+
+const wantsJson = probed.json === true;
+const isUpgradeRun = globalProbe.args[0] === "upgrade";
 
 // Kick off the cached-state read and (optionally) a background fetch
 // before parsing so the banner is ready by the time the command exits.
@@ -106,18 +116,14 @@ try {
     process.exit(0);
   }
 
-  const globalOpts = program.opts();
-  const exitCode = error.exitCode ?? (error instanceof InvalidArgumentError ? 2 : 1);
+  const exitCode =
+    error.exitCode ?? (error instanceof UserError || error instanceof InvalidArgumentError ? 2 : 1);
 
-  if (globalOpts.json) {
-    console.error(JSON.stringify({ status: "error", message: error.message, exitCode }, null, 2));
+  if (error.code?.startsWith("commander.") && !wantsJson) {
     process.exit(exitCode);
   }
 
-  if (error.code?.startsWith("commander.")) {
-    process.exit(exitCode);
-  }
-
-  console.error(red(`  ${bold("error")}: ${error.message}\n`));
+  const extra = error instanceof UserError ? error.extra : undefined;
+  emitError(error.message, exitCode, extra);
   process.exit(exitCode);
 }

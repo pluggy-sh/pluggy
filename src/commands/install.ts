@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import process from "node:process";
 
 import { Command } from "commander";
 
-import { log } from "../logging.ts";
+import { UserError } from "../errors.ts";
+import { bold, dim, emit, log } from "../logging.ts";
 import { writeFileLF } from "../portable.ts";
 import { getCachePath, type Project } from "../project.ts";
 import { resolveDependency } from "../resolver/index.ts";
@@ -13,21 +13,17 @@ import type { ResolvedDependency } from "../resolver/index.ts";
 import {
   type Lockfile,
   type LockfileEntry,
-  type TransitiveEntry,
+  pruneOrphans,
   readLock,
   verifyLock,
   writeLock,
 } from "../lockfile.ts";
 import { parseIdentifier, parseSource, stringifySource } from "../source.ts";
+import type { ResolvedSource } from "../source.ts";
 
-import {
-  buildResolveContext,
-  canonicalizeDeclared,
-  collectDeclared,
-  resolveScope,
-  type ResolvedScope,
-  type ScopeTarget,
-} from "./context.ts";
+import { resolveScope, type ResolvedScope, type ScopeTarget } from "../workspace.ts";
+
+import { buildResolveContext, canonicalizeDeclared, collectDeclared } from "./context.ts";
 
 /** Flattened per-command + global options consumed by `doInstall`. */
 export interface InstallOptions {
@@ -36,7 +32,6 @@ export interface InstallOptions {
   beta?: boolean;
   workspace?: string;
   workspaces?: boolean;
-  json?: boolean;
   project?: string;
   cwd?: string;
 }
@@ -74,7 +69,7 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
 
   // The lockfile is flat: two workspaces declaring the same dep share one
   // entry with a merged `declaredBy`. Conflicting source/version between
-  // workspaces is fatal — we can't pick a winner.
+  // workspaces is fatal: we can't pick a winner.
   const byName = new Map<
     string,
     { source: ReturnType<typeof parseSource>; declaredBy: string[] }
@@ -92,7 +87,7 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
       existing.source.version !== resolvedSource.version
     ) {
       throw new Error(
-        `install: conflicting declarations of "${name}" across workspaces — ${stringifySource(existing.source)}@${existing.source.version} vs ${stringifySource(resolvedSource)}@${resolvedSource.version}`,
+        `install: conflicting declarations of "${name}" across workspaces: ${stringifySource(existing.source)}@${existing.source.version} vs ${stringifySource(resolvedSource)}@${resolvedSource.version}`,
       );
     }
     if (!existing.declaredBy.includes(declaredBy)) {
@@ -101,7 +96,7 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   }
 
   const existingLock: Lockfile = readLock(scope.context.root.rootDir) ?? {
-    version: 1,
+    version: 2,
     entries: {},
   };
   const declaredMap: Record<string, { source: ReturnType<typeof parseSource> }> = {};
@@ -111,7 +106,7 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   const drift = verifyLock(existingLock, declaredMap);
 
   if (drift.length === 0 && opts.force !== true) {
-    // The lockfile is fresh against project.json — but the bytes on disk
+    // The lockfile is fresh against project.json, but the bytes on disk
     // might have drifted (cache poisoning, manual jar replacement, partial
     // download). Re-hash every cached jar against the recorded integrity
     // and re-resolve any that don't match. A fresh-lockfile install
@@ -131,6 +126,10 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   const resolveCtx = buildResolveContext(scope.context, { beta: opts.beta, force: opts.force });
   const nextEntries: Record<string, LockfileEntry> = { ...existingLock.entries };
 
+  // Names that are top-level declared. Any lockfile entry not in this set
+  // and not pulled in transitively after re-resolution is an orphan.
+  const topLevelNames = new Set(byName.keys());
+
   for (const name of toResolve) {
     const info = byName.get(name);
     if (info === undefined) continue;
@@ -146,18 +145,16 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
         ? prior.integrity
         : undefined;
     const resolved = await resolveDependency(info.source, { ...resolveCtx, expectedIntegrity });
-    nextEntries[name] = toLockEntry(resolved, info.declaredBy);
+    flattenInto(nextEntries, resolved, name, info.declaredBy);
   }
 
   // Drop orphan lockfile entries: after a full-resolve run the lock should
-  // only contain what's declared across the repo.
-  for (const key of Object.keys(nextEntries)) {
-    if (!byName.has(key)) {
-      delete nextEntries[key];
-    }
-  }
+  // only contain top-level declared deps and the transitive closure they
+  // pull in. Anything else (left over from a removed dep or a previous
+  // resolve that is no longer reachable) is dropped.
+  pruneOrphans(nextEntries, topLevelNames);
 
-  await writeLock(scope.context.root.rootDir, { version: 1, entries: nextEntries });
+  await writeLock(scope.context.root.rootDir, { version: 2, entries: nextEntries });
 
   const result: InstallResult = { installed: toResolve, skipped };
   emitInstallResult(opts, result);
@@ -166,14 +163,14 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
 
 async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promise<InstallResult> {
   if (scope.context.atRoot && scope.context.workspaces.length > 0 && opts.workspace === undefined) {
-    throw new Error(
-      `install: at the workspace root — pass --workspace <name> to pick a target for "${opts.plugin}"`,
+    throw new UserError(
+      `install: at the workspace root. Pass --workspace <name> to pick a target for "${opts.plugin}"`,
     );
   }
 
   if (scope.targets.length !== 1) {
-    throw new Error(
-      `install: --workspaces and a specific [plugin] are mutually exclusive — pick one workspace with --workspace <name>`,
+    throw new UserError(
+      `install: --workspaces and a specific [plugin] are mutually exclusive. Pick one workspace with --workspace <name>`,
     );
   }
 
@@ -190,7 +187,7 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
   });
 
   const existingLock: Lockfile = readLock(scope.context.root.rootDir) ?? {
-    version: 1,
+    version: 2,
     entries: {},
   };
   const nextEntries: Record<string, LockfileEntry> = { ...existingLock.entries };
@@ -199,8 +196,15 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
     prior !== undefined && prior.declaredBy.includes(target.name)
       ? prior.declaredBy
       : [...(prior?.declaredBy ?? []), target.name];
-  nextEntries[depName] = toLockEntry(resolved, declaredBy);
-  await writeLock(scope.context.root.rootDir, { version: 1, entries: nextEntries });
+  flattenInto(nextEntries, resolved, depName, declaredBy);
+
+  // The previous resolution of `depName` may have pulled in transitives
+  // that the new resolution doesn't. With v2's flat schema those siblings
+  // would otherwise linger. Prune everything not reachable from a current
+  // top-level entry.
+  pruneOrphans(nextEntries);
+
+  await writeLock(scope.context.root.rootDir, { version: 2, entries: nextEntries });
 
   const result: InstallResult = {
     installed: [depName],
@@ -214,7 +218,7 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
 /**
  * Re-hash every cached jar against its recorded `entry.integrity` and return
  * the names whose bytes diverged from the lockfile. A divergence means the
- * cache was poisoned, manually replaced, or partially written — install
+ * cache was poisoned, manually replaced, or partially written. Install
  * should re-resolve those rather than serve tampered bytes.
  *
  * Entries whose jar isn't in the cache yet are silently skipped (build/dev
@@ -255,7 +259,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * Locate the cached jar for a lockfile entry — mirrors each resolver's cache
+ * Locate the cached jar for a lockfile entry. Mirrors each resolver's cache
  * layout. Returns `undefined` for `workspace:` (built locally) and refuses
  * to construct paths whose components contain traversal characters, so a
  * lockfile crafted by a hostile clone can't escape the cache root.
@@ -287,8 +291,8 @@ function cachedJarPathForEntry(entry: LockfileEntry): string | undefined {
 
 // Permits the union of characters seen in legit Maven coordinates and
 // Modrinth version strings: alphanumerics plus `.`, `_`, `-`, `+`, `~`.
-// `+` is load-bearing — Modrinth `version_number` regularly contains it
-// (e.g. `1.20.1+forge`), and Maven versions allow it too. Path separators
+// `+` is load-bearing: Modrinth `version_number` regularly contains it
+// (for example, `1.20.1+forge`), and Maven versions allow it too. Path separators
 // (`/`, `\`), null bytes, and traversal-special components (`..`, `.`)
 // are explicitly rejected below.
 const SAFE_NAME_RE = /^[A-Za-z0-9._+~-]+$/;
@@ -296,17 +300,52 @@ const SAFE_NAME_RE = /^[A-Za-z0-9._+~-]+$/;
 function assertSafeName(value: string, field: string): void {
   if (typeof value !== "string" || value.length === 0 || !SAFE_NAME_RE.test(value)) {
     throw new Error(
-      `install: refusing unsafe lockfile ${field} ${JSON.stringify(value)} — won't construct a cache path that could escape the cache root`,
+      `install: refusing unsafe lockfile ${field} ${JSON.stringify(value)}: won't construct a cache path that could escape the cache root`,
     );
   }
   if (value === "." || value === "..") {
     throw new Error(
-      `install: refusing reserved lockfile ${field} ${JSON.stringify(value)} — would traverse the cache root`,
+      `install: refusing reserved lockfile ${field} ${JSON.stringify(value)}: would traverse the cache root`,
     );
   }
 }
 
-function toLockEntry(resolved: ResolvedDependency, declaredBy: string[]): LockfileEntry {
+/**
+ * Walk a `ResolvedDependency` and write a flat entry for the root and every
+ * node in its transitive closure into `entries`. The root entry uses
+ * `topLevelName` (the user-facing key for declared deps); transitives use
+ * `nameForSource` (a stable key derived from their `ResolvedSource`).
+ *
+ * `declaredBy` is applied to the root only. When a transitive collides with
+ * an entry that's already top-level declared, its `declaredBy` is preserved
+ * instead of being clobbered with `[]`.
+ */
+function flattenInto(
+  entries: Record<string, LockfileEntry>,
+  resolved: ResolvedDependency,
+  topLevelName: string,
+  declaredBy: string[],
+): void {
+  entries[topLevelName] = buildEntry(resolved, declaredBy);
+  for (const child of resolved.transitiveDeps) {
+    addTransitive(entries, child);
+  }
+}
+
+function addTransitive(entries: Record<string, LockfileEntry>, resolved: ResolvedDependency): void {
+  const name = nameForSource(resolved.source);
+  const existing = entries[name];
+  // If an entry already exists (top-level dep that's also pulled in
+  // transitively, or the same transitive showing up under multiple parents),
+  // preserve its `declaredBy` rather than overwriting it with [].
+  const declaredBy = existing?.declaredBy ?? [];
+  entries[name] = buildEntry(resolved, declaredBy);
+  for (const child of resolved.transitiveDeps) {
+    addTransitive(entries, child);
+  }
+}
+
+function buildEntry(resolved: ResolvedDependency, declaredBy: string[]): LockfileEntry {
   const entry: LockfileEntry = {
     source: resolved.source,
     resolvedVersion: resolved.source.version,
@@ -314,31 +353,35 @@ function toLockEntry(resolved: ResolvedDependency, declaredBy: string[]): Lockfi
     declaredBy,
   };
   if (resolved.transitiveDeps.length > 0) {
-    entry.transitives = resolved.transitiveDeps.map(toTransitiveEntry);
+    entry.transitives = resolved.transitiveDeps.map((d) => nameForSource(d.source));
   }
   return entry;
 }
 
 /**
- * Recursively project a resolved transitive dependency into a lockfile
- * `TransitiveEntry`. `declaredBy` is intentionally omitted — only
- * user-declared top-level deps carry that field. Empty transitive arrays
- * are omitted to keep lockfile diffs clean.
+ * Stable key for a `ResolvedSource` used as a lockfile entry name. Mirrors
+ * the user-facing forms produced by `pickDepName` for top-level deps:
+ * modrinth → slug, maven → `groupId:artifactId`, file → basename, workspace
+ * → name. Two sources that should occupy the same lockfile entry must map
+ * to the same string.
  */
-function toTransitiveEntry(resolved: ResolvedDependency): TransitiveEntry {
-  const entry: TransitiveEntry = {
-    source: resolved.source,
-    resolvedVersion: resolved.source.version,
-    integrity: resolved.integrity,
-  };
-  if (resolved.transitiveDeps.length > 0) {
-    entry.transitives = resolved.transitiveDeps.map(toTransitiveEntry);
+function nameForSource(source: ResolvedSource): string {
+  switch (source.kind) {
+    case "modrinth":
+      return source.slug;
+    case "maven":
+      return `${source.groupId}:${source.artifactId}`;
+    case "workspace":
+      return source.name;
+    case "file": {
+      const base = source.path.replace(/\\/g, "/").split("/").pop() ?? source.path;
+      return base.replace(/\.jar$/i, "") || source.path;
+    }
   }
-  return entry;
 }
 
 /**
- * Pick the human-readable dependency key for a CLI-parsed identifier —
+ * Pick the human-readable dependency key for a CLI-parsed identifier:
  * slug, artifactId, workspace name, or file basename. Prefer these over the
  * raw source string so `project.json` stays legible.
  */
@@ -386,39 +429,33 @@ async function writeDependencyToProject(
 }
 
 function emitInstallResult(
-  opts: InstallOptions,
+  _opts: InstallOptions,
   result: InstallResult,
   human?: { message?: string },
 ): void {
-  if (opts.json === true) {
-    process.stdout.write(
-      `${JSON.stringify(
-        { status: "success", installed: result.installed, skipped: result.skipped },
-        null,
-        2,
-      )}\n`,
+  emit({ status: "success", installed: result.installed, skipped: result.skipped }, () => {
+    if (human?.message !== undefined) {
+      log.info(human.message);
+      return;
+    }
+    if (result.added !== undefined) {
+      log.success(
+        `Installed ${bold(result.added.name)} into ${result.added.workspace} ${dim(`(${result.installed.length} resolved)`)}`,
+      );
+      return;
+    }
+    if (result.installed.length === 0) {
+      log.success(
+        `Nothing to install ${dim(`(${result.skipped.length} dependencies already locked)`)}`,
+      );
+      return;
+    }
+    log.success(
+      `Installed ${result.installed.length} dependencies${
+        result.skipped.length > 0 ? dim(` (${result.skipped.length} already fresh)`) : ""
+      }`,
     );
-    return;
-  }
-  if (human?.message !== undefined) {
-    console.log(human.message);
-    return;
-  }
-  if (result.added !== undefined) {
-    console.log(
-      `Installed ${result.added.name} into ${result.added.workspace} (${result.installed.length} resolved).`,
-    );
-    return;
-  }
-  if (result.installed.length === 0) {
-    console.log(`Nothing to install. ${result.skipped.length} dependencies already locked.`);
-    return;
-  }
-  console.log(
-    `Installed ${result.installed.length} dependencies${
-      result.skipped.length > 0 ? ` (${result.skipped.length} already fresh)` : ""
-    }.`,
-  );
+  });
 }
 
 /** Factory for the `pluggy install` commander command. */
@@ -443,7 +480,6 @@ export function installCommand(): Command {
         beta: options.beta,
         workspace: options.workspace,
         workspaces: options.workspaces,
-        json: globalOpts.json,
         project: globalOpts.project,
       });
     });
