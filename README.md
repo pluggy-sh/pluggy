@@ -9,11 +9,21 @@
 
 # pluggy
 
-pluggy is a Minecraft plugin toolchain that fits in one binary. Scaffold a project, install plugins from Modrinth, pull Maven artifacts with their full transitive closure, and run a live Paper, Spigot, or Velocity server that rebuilds on save.
+Make a Minecraft plugin without setting up Java, Maven, or Gradle first. pluggy is a single small program that scaffolds your project, installs plugin libraries from [Modrinth](https://modrinth.com) and Maven, builds your jar, and runs a live server that restarts every time you save a file.
+
+If you have never written a Minecraft plugin before, start with the [getting-started guide](./docs/getting-started.md). It walks you from an empty folder to a running server.
+
+## Who pluggy is for
+
+- New Java developers who want to skip the long toolchain setup.
+- Younger coders writing their first plugin and learning by doing.
+- Experienced developers who want one binary instead of a build-system zoo.
+
+You don't need a JDK, a build tool, or an IDE installed up front. pluggy provisions a Java toolchain matching your Minecraft version on the first build.
 
 ## Install
 
-Install pluggy with the script for your platform. Both scripts drop the binary on your `PATH` without root or administrator rights.
+Pick the script for your operating system. Both scripts drop the binary on your `PATH` without asking for an admin password.
 
 On macOS and Linux:
 
@@ -37,16 +47,17 @@ To upgrade in place later, run `pluggy upgrade`.
 
 ## Quick start
 
-Go from an empty directory to a running server in three commands:
+Three commands take you from an empty directory to a running server.
 
 ```text
 $ pluggy init --yes --name shop --main com.example.shop.Main
+✓ Project "shop" initialized
 
 $ pluggy install worldedit
-Installed worldedit into shop (1 resolved).
+✓ Installed worldedit into shop (1 resolved)
 
 $ pluggy dev
-dev: starting shop
+[server output streams here]
 ```
 
 That gives you this layout:
@@ -80,26 +91,27 @@ And this `project.json`:
 }
 ```
 
-Save a `.java` file and pluggy rebuilds the jar, restarts the server, and lands you back at the Paper console, typically inside a second. Ship a release jar with one more command:
+Save a `.java` file and pluggy rebuilds the jar, restarts the server, and lands you back at the Paper console, usually inside a second. Ship a release jar with one more command:
 
 ```text
 $ pluggy build
-✔ shop: bin/shop-1.0.0.jar (142.4 KB, 3821ms)
+Building shop
+✓ shop → bin/shop-1.0.0.jar (142.4 KB, 3821ms)
 ```
 
-## Why pluggy
+## What pluggy does for you
 
-pluggy collapses every step of plugin development into one binary: scaffold, dependency resolution, build, dev loop, and IDE setup. The list below covers what that buys you, with the command that demonstrates each.
+pluggy folds every step of plugin development into one binary: scaffolding, dependency resolution, build, dev loop, and IDE setup. The list below covers what that buys you, with the command that demonstrates each.
 
-- **JDK provisioning, no setup.** `pluggy build` derives the required Java major from your MC version and downloads a matching Temurin JDK from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions). Set `JAVA_HOME` to keep your existing toolchain instead, or `PLUGGY_NO_AUTO_INSTALL=1` for CI.
-- **Modrinth in one line.** `pluggy install worldedit` resolves the latest stable, downloads it, and locks the SHA-256. No registry config, no version pinning required up front.
-- **Maven without XML.** `pluggy install maven:net.kyori:adventure-api@4.17.0` parses the POM, folds in `<dependencyManagement>` BOM imports, and lands the full transitive closure on the classpath. SNAPSHOT versions resolve through per-version metadata.
-- **Live server in one command.** `pluggy dev` downloads the matching Paper, Spigot, or Velocity jar, accepts the EULA, hardlinks your plugin and runtime deps into `plugins/`, and boots the server. File saves trigger a debounced rebuild and restart.
-- **Seven server platforms.** paper, folia, spigot, bukkit, velocity, waterfall, and travertine, each with its own descriptor format and Maven API coordinate. Switch by editing `compatibility.platforms` in `project.json`.
-- **Cross-platform, identically.** The same binary runs on macOS, Linux, and Windows. Paths normalize to forward slashes, generated files use LF line endings, and shutdown handling works the same on every OS.
-- **Reproducible by default.** Every resolved dep is recorded in `pluggy.lock` with a SHA-256 hash. The lockfile is sorted, LF-terminated, and written atomically. Diffs stay small and merges stay sane.
-- **IDE-aware.** List editors in `"ide": ["vscode", "eclipse", "intellij"]` and `pluggy build` scaffolds the right project files for every entry.
-- **Workspaces.** Monorepo layouts with inheritance, topological build order, and a `workspace:` source kind for sibling dependencies.
+- **No JDK setup.** `pluggy build` works out which Java version your Minecraft version needs and downloads a matching one from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions). Set `JAVA_HOME` to keep your existing toolchain instead, or set `PLUGGY_NO_AUTO_INSTALL=1` for CI.
+- **Modrinth in one line.** `pluggy install worldedit` resolves the latest stable version, downloads it, and locks the integrity hash. No registry config, no version pinning required up front.
+- **Maven without XML.** `pluggy install maven:net.kyori:adventure-api@4.17.0` reads the published POM, follows imports, and lands every required jar (the [transitive dependencies](./docs/glossary.md#transitive-dependency)) on the classpath. SNAPSHOT versions resolve through Maven's per-version metadata.
+- **Live server in one command.** `pluggy dev` downloads the matching Paper, Spigot, Velocity, or Sponge jar, accepts the EULA, links your plugin and runtime deps into `plugins/`, and boots the server. File saves trigger a debounced rebuild and restart.
+- **Eight server platforms.** paper, folia, spigot, bukkit, velocity, waterfall, travertine, and sponge, each with its own descriptor and Maven coordinate. Switch by editing `compatibility.platforms` in `project.json`.
+- **Cross-platform, identically.** The same binary runs on macOS, Linux, and Windows. Paths normalise to forward slashes, generated files use LF line endings, and shutdown handling works the same on every OS.
+- **Reproducible by default.** Every resolved dependency is recorded in `pluggy.lock` with a SHA-256 hash. The lockfile is sorted, LF-terminated, and written atomically. Diffs stay small and merges stay sane.
+- **IDE-aware.** List editors in `"ide": ["vscode", "eclipse", "intellij"]` and `pluggy build` writes the right project files for every entry.
+- **Workspaces.** Monorepo layouts with inheritance, topological build order, and a `workspace:` source for sibling dependencies.
 
 ## Commands
 
@@ -111,14 +123,18 @@ pluggy exposes a small set of commands. Every command supports `--json` for stru
 | `pluggy install [plugin]`    | Add a dependency or reconcile the lockfile.        |
 | `pluggy remove <plugin>`     | Drop a dependency and its cached jar.              |
 | `pluggy info <plugin>`       | Inspect a source.                                  |
-| `pluggy search <query>`      | Query Modrinth.                                    |
+| `pluggy search <query>`      | Search Modrinth.                                   |
 | `pluggy list`                | Show declared deps, resolved versions, registries. |
+| `pluggy why <name>`          | Trace which top-level dep pulled in a transitive.  |
+| `pluggy outdated`            | List locked deps with a newer upstream version.    |
+| `pluggy audit`               | Verify cached jars against the lockfile hashes.    |
 | `pluggy build`               | Compile, package resources, and produce a jar.     |
 | `pluggy test`                | Compile and run JUnit tests under `test/`.         |
 | `pluggy docs`                | Generate Javadoc HTML for the project.             |
 | `pluggy dev`                 | Run a live server that rebuilds on save.           |
 | `pluggy sdk`                 | Manage the JDKs pluggy provisions for builds.      |
-| `pluggy doctor`              | Validate the environment and every workspace.      |
+| `pluggy cache`               | Inspect and prune the download cache.              |
+| `pluggy doctor`              | Check the environment and every workspace.         |
 | `pluggy upgrade`             | Replace the binary with the latest release.        |
 | `pluggy completions <shell>` | Print a shell completion script.                   |
 
@@ -129,7 +145,8 @@ For per-command flags, JSON envelopes, and sample output, see the [command refer
 The full documentation lives under [`docs/`](./docs/). Start with the getting-started guide; the rest is reference.
 
 - [Getting started](./docs/getting-started.md): install, scaffold, build, run a dev server.
-- [project.json reference](./docs/project-json.md): every field and validation rule.
+- [Glossary](./docs/glossary.md): plain-English definitions for every term in these docs.
+- [`project.json` reference](./docs/project-json.md): every field and validation rule.
 - [Dependency sources](./docs/dependencies.md): the Modrinth, Maven, file, and workspace grammar.
 - [Build pipeline](./docs/build-pipeline.md): what happens between `pluggy build` and the jar.
 - [Dev server](./docs/dev-server.md): staging directory, EULA, reload semantics, shutdown.

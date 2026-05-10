@@ -1,7 +1,6 @@
 # `pluggy list`
 
-Print declared dependencies, their resolved versions, and the registries
-in scope.
+Print declared dependencies, their resolved versions, and the registries in scope.
 
 ## Usage
 
@@ -34,12 +33,7 @@ name and the `declaredBy` field lists every workspace that declared them.
 
 ### `--outdated`
 
-For each Modrinth-sourced dep, pluggy fetches the latest stable version
-and compares it against the locked `resolvedVersion`. Results are filtered
-down to only the outdated entries. Non-Modrinth deps (Maven, file,
-workspace) have `latestVersion: null` and never appear in the filtered
-list. Network failures degrade to "un-annotated" — the dep doesn't become
-a false positive.
+For each Modrinth-sourced dep, pluggy fetches the latest stable version and compares it against the locked `resolvedVersion`. Results are filtered down to only the outdated entries. Non-Modrinth deps (Maven, file, workspace) have `latestVersion: null` and never appear in the filtered list. Network failures degrade to "un-annotated" so the dep doesn't become a false positive.
 
 ## Human output
 
@@ -71,8 +65,7 @@ registries:
   └── https://repo.papermc.io/repository/maven-public/
 ```
 
-Transitives are sourced from the lockfile — they're only populated for
-Maven dependencies (other kinds have no transitive closure).
+Transitives are sourced from the lockfile. They're only populated for Maven dependencies (other kinds have no transitive closure).
 
 ### `--outdated`
 
@@ -117,10 +110,8 @@ is signalled by the `authenticated` boolean.
 
 Under `--outdated`, each `deps[]` entry additionally carries:
 
-- `latestVersion` — the newest Modrinth stable version, or `null` for
-  non-Modrinth / query failures.
-- `outdated` — `true` only for entries where `latestVersion` is known
-  and differs from `resolvedVersion`.
+- `latestVersion`: the newest Modrinth stable version, or `null` for non-Modrinth deps and query failures.
+- `outdated`: `true` only for entries where `latestVersion` is known and differs from `resolvedVersion`.
 
 ## Error cases
 
@@ -131,6 +122,6 @@ Under `--outdated`, each `deps[]` entry additionally carries:
 
 ## See also
 
-- [Dependencies](../dependencies.md#lockfile) — what the lockfile fields mean.
-- [`pluggy install`](./install.md) — add or refresh entries.
-- [`pluggy info`](./info.md) — richer metadata for one slug.
+- [Dependencies](../dependencies.md#lockfile): what the lockfile fields mean.
+- [`pluggy install`](./install.md): add or refresh entries.
+- [`pluggy info`](./info.md): richer metadata for one slug.

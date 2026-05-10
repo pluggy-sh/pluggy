@@ -1,7 +1,6 @@
 # `pluggy build`
 
-Compile Java sources, stage resources, generate the platform descriptor,
-apply shading, and zip the result into a plugin jar.
+Compile Java sources, stage resources, generate the platform [descriptor](../glossary.md#descriptor), apply [shading](../glossary.md#shade), and zip the result into a plugin jar.
 
 ## Usage
 
@@ -28,51 +27,25 @@ pluggy b     [options]
 | Inside workspace `X`           | none                    | `X`.                                    |
 | Repo root, workspaces declared | none                    | Every workspace, topologically ordered. |
 | Repo root, workspaces declared | `--workspace A`         | Just `A`.                               |
-| Inside workspace `X`           | `--workspaces`          | **Error** — only valid at the root.     |
-| Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error** — run from the root.          |
+| Inside workspace `X`           | `--workspaces`          | **Error**. Only valid at the root.      |
+| Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error**. Run from the root.           |
 
-Topological order is driven by `workspace:` dependencies. A sibling's
-built jar must exist before a workspace that shades it builds — running
-from the root handles this for you.
+[Topological order](../glossary.md#topological-order) is driven by `workspace:` dependencies. A sibling's built jar must exist before a workspace that shades it builds. Running from the root handles this for you.
 
 ## Pipeline
 
-For each target workspace:
+For each target workspace, pluggy runs the steps below in order. Every step lives in its own module under `src/build/`.
 
-1. **Pick the descriptor.** Checks that every declared platform shares
-   the same descriptor family; errors "Split them into separate
-   workspaces — one per family." if they don't.
-2. **Stage directory.** Under `<workspace>/.pluggy-build/<hash>/`, where
-   `<hash>` is the first 12 hex chars of `sha256(name \0 version \0 rootDir)`.
-   `--clean` wipes this first.
-3. **Resolve dependencies.** Every declared dep, plus the primary
-   platform's `api()` Maven coordinate. Registries are the platform's
-   own repos (first) followed by `project.registries` (after), order-
-   preserving dedup.
-4. **Write IDE files.** If `project.ide` is set. Failures are logged at
-   debug but don't abort the build.
-5. **Stage resources.** Copy `project.resources` into the staging dir;
-   run `.yml` / `.yaml` / `.json` / `.properties` / `.txt` / `.md` files
-   through the `${project.x}` templater.
-6. **Generate the descriptor.** Unless a resource entry already claims
-   the descriptor path (`plugin.yml` etc.). pluggy writes the generated
-   one to the staging dir.
-7. **Compile.** `javac -encoding UTF-8 -d <staging> -cp <classpath>
-<sources>`. Classpath separator is `:` on POSIX, `;` on Windows —
-   handled by Node's `path.delimiter`.
-8. **Shade.** For each entry in `project.shading`, unzip the matching
-   `include` entries from the dep jar and write them into the staging
-   dir. `exclude` is subtracted after.
-9. **Zip.** Walk the staging dir, sort entries lexicographically, write
-   a zip with forward-slashed entry paths.
-10. **Platform compile-check.** For every non-primary platform declared
-    in `compatibility.platforms` (i.e. `platforms[1..]`), pluggy runs
-    `checkPlatformCompile` — a javac invocation against that platform's
-    API jar with no artifacts emitted. The primary platform was already
-    compiled in step 7, so this exists solely to catch cases where your
-    source is Paper-clean but references a symbol missing on Spigot,
-    Folia, or a Bungee-family platform. A failing check logs a `warn` and
-    flips `exitCode` to `1`, but the primary jar still ships.
+1. **Pick the descriptor.** Check that every declared platform shares the same [descriptor family](../glossary.md#descriptor-family). Errors with "Split them into separate workspaces, one per family." if they don't.
+2. **Stage directory.** Under `<workspace>/.pluggy-build/<hash>/`, where `<hash>` is the first 12 hex chars of `sha256(name \0 version \0 rootDir)`. `--clean` wipes this first.
+3. **Resolve dependencies.** Every declared dep, plus the primary platform's `api()` Maven coordinate. Registries are the platform's own repos first, followed by `project.registries`, with order-preserving dedup.
+4. **Write IDE files.** Only if `project.ide` is set. Failures are logged at debug but don't abort the build.
+5. **Stage resources.** Copy `project.resources` into the staging dir, and run `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, and `.md` files through the `${project.x}` template substitution.
+6. **Generate the descriptor.** Unless a resource entry already claims the descriptor path (`plugin.yml` and friends), pluggy writes the generated one to the staging dir.
+7. **Compile.** `javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`. The classpath separator is `:` on POSIX and `;` on Windows, handled by Node's `path.delimiter`.
+8. **Shade.** For each entry in `project.shading`, unzip the matching `include` entries from the dep jar and write them into the staging dir. `exclude` is subtracted after.
+9. **Zip.** Walk the staging dir, sort entries lexicographically, write a zip with forward-slashed entry paths.
+10. **Platform compile-check.** For every non-primary platform declared in `compatibility.platforms` (`platforms[1..]`), pluggy runs `checkPlatformCompile`: a `javac` invocation against that platform's API jar with no artifacts emitted. The primary platform was already compiled in step 7, so this catches cases where your source is Paper-clean but references a symbol missing on Spigot, Folia, or a Bungee-family platform. A failing check logs a warning and sets the exit code to `1`, but the primary jar still ships.
 
 The output jar is written to `<output>` after the staging dir is zipped.
 
@@ -81,21 +54,21 @@ The output jar is written to `<output>` after the staging dir is zipped.
 Human, single workspace:
 
 ```text
-build my_plugin
-✔ my_plugin: /repo/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
+Building my_plugin
+✓ my_plugin → /repo/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
 ```
 
 Human, multi-workspace:
 
 ```text
-build api
-✔ api: /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
-build impl
-✔ impl: /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
+Building api
+✓ api → /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
+Building impl
+✓ impl → /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
 
-summary
-  api: /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
-  impl: /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
+Summary
+  api → /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
+  impl → /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
 ```
 
 ## JSON output
@@ -147,26 +120,23 @@ Exit code is `0` when everything succeeds, `1` otherwise.
 
 ## Single-workspace vs multi-workspace failure
 
-Single-workspace builds rethrow the first exception — the CLI's top-level
-handler prints it. Multi-workspace builds continue past a failed
-workspace, report everyone's status in the summary, and exit `1` if
-anything failed.
+Single-workspace builds rethrow the first exception. The CLI's top-level handler prints it. Multi-workspace builds continue past a failed workspace, report everyone's status in the summary, and exit `1` if anything failed.
 
 ## Error cases
 
 Common failure modes (see [Troubleshooting](../troubleshooting.md) for
 the full list):
 
-| Stage      | Message pattern                                                                                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Descriptor | `build: project "<name>" declares platforms from different descriptor families ...`                                                                                             |
-| Compile    | `compile: javac exited with code <n> for project "<name>" (last 40 lines):\n...`                                                                                                |
-| Compile    | `compile: no .java sources found under "<dir>" for project "<name>"`                                                                                                            |
-| Shade      | `shade: workspace dependency "<name>" has not been built yet — expected jar at "<path>". Build the sibling workspace first (topological order is the caller's responsibility).` |
-| Resource   | `resources: source path "<rel>" (key "<k>") does not exist at "<abs>"`                                                                                                          |
+| Stage      | Message pattern                                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Descriptor | `build: project "<name>" declares platforms from different descriptor families ...`                                                                                            |
+| Compile    | `compile: javac exited with code <n> for project "<name>" (last 40 lines):\n...`                                                                                               |
+| Compile    | `compile: no .java sources found under "<dir>" for project "<name>"`                                                                                                           |
+| Shade      | `shade: workspace dependency "<name>" has not been built yet, expected jar at "<path>". Build the sibling workspace first (topological order is the caller's responsibility).` |
+| Resource   | `resources: source path "<rel>" (key "<k>") does not exist at "<abs>"`                                                                                                         |
 
 ## See also
 
-- [Build pipeline](../build-pipeline.md) — the same steps with more depth.
-- [IDE integration](../ide.md) — what the `ide` field generates.
-- [Workspaces](../workspaces.md) — topological build order.
+- [Build pipeline](../build-pipeline.md): the same steps with more depth.
+- [IDE integration](../ide.md): what the `ide` field generates.
+- [Workspaces](../workspaces.md): topological build order.

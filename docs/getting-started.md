@@ -1,56 +1,56 @@
 # Getting started
 
-Install pluggy, scaffold a Paper plugin, add a dependency, and run it on a
-live server. Eight minutes start to finish.
+By the end of this guide you'll have a working Minecraft plugin running on a live server, with one extra plugin (WorldEdit) installed. The whole walkthrough takes about eight minutes and assumes nothing about Java, Maven, or Gradle.
 
-## Prerequisites
+If a word here feels unfamiliar, check the [glossary](./glossary.md).
 
-- An internet connection for the first run. pluggy provisions the right
-  JDK for your project from the [Foojay Disco API](https://api.foojay.io/disco/v3.0/distributions)
-  on first build, and caches it under `~/Library/Caches/pluggy` on macOS,
-  `$XDG_CACHE_HOME/pluggy` on Linux, and `%LOCALAPPDATA%\pluggy\cache` on
-  Windows.
+## Before you start
 
-You don't need a pre-installed JDK. Set `JAVA_HOME` if you want pluggy to
-reuse an existing toolchain (asdf, mise, hand-installed Temurin) when its
-major matches the project. See [`pluggy sdk`](./commands/sdk.md) for cache
-management and CI patterns.
+You need:
 
-pluggy ships as a native binary. Bun is only required if you want to build
-pluggy itself from source.
+- An internet connection for the first run. pluggy downloads the right Java version for your project the first time you build, and caches it for next time.
+- About 200 MB of disk space for that cache.
+- A code editor. Anything works, but VS Code, IntelliJ, and Eclipse get extra integration from pluggy.
 
-## Install
+You do not need a [JDK](./glossary.md#jdk) installed. If you already have one, set `JAVA_HOME` and pluggy will reuse it when its major version matches your project. The cache lives at:
+
+| OS      | Path                                                   |
+| ------- | ------------------------------------------------------ |
+| macOS   | `~/Library/Caches/pluggy/`                             |
+| Linux   | `$XDG_CACHE_HOME/pluggy/` (default `~/.cache/pluggy/`) |
+| Windows | `%LOCALAPPDATA%\pluggy\cache\`                         |
+
+Manage it later with [`pluggy cache`](./commands/cache.md) or [`pluggy sdk`](./commands/sdk.md).
+
+## Install pluggy
 
 ### macOS and Linux
+
+Run the install script:
 
 ```bash
 curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
 ```
 
-The script downloads the binary for your OS and architecture into
-`~/.pluggy/bin/pluggy` and adds that directory to your `PATH` via your
-shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`,
-`~/.profile`, `~/.config/fish/config.fish`, whichever exist). No
-`sudo` required.
+The script downloads the binary for your operating system into `~/.pluggy/bin/pluggy` and adds that directory to your `PATH` by appending an `export` line to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, `~/.profile`, or `~/.config/fish/config.fish`, whichever exist). It does not need `sudo`.
 
-Override the install location with `PLUGGY_HOME`:
+To put pluggy somewhere else, set `PLUGGY_HOME`:
 
 ```bash
 PLUGGY_HOME=/opt/pluggy curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
 ```
 
-Open a new shell or `source` the updated profile to pick up the new
-`PATH` in your current session.
+Open a new terminal, or run `source` on the profile that was updated, to pick up the new `PATH` in your current session.
 
 ### Windows
+
+Open PowerShell and run:
 
 ```powershell
 irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
 ```
 
-The script installs `pluggy.exe` to `%LOCALAPPDATA%\Programs\pluggy` and
-appends that directory to your user `PATH`. No administrator privileges
-required. Restart your terminal before using the command.
+The script puts `pluggy.exe` at `%LOCALAPPDATA%\Programs\pluggy` and appends that directory to your user `PATH`. It does not need administrator rights. Restart your terminal before using `pluggy`.
 
 ### Verify
 
@@ -59,7 +59,11 @@ $ pluggy -V
 0.1.0
 ```
 
-## Scaffold a project
+If the version prints, you're set. If the command isn't found, your terminal is probably still using the old `PATH`. Open a fresh terminal and try again.
+
+## Scaffold your first plugin
+
+Pick an empty directory and run `init`:
 
 ```bash
 mkdir my-plugin && cd my-plugin
@@ -69,19 +73,17 @@ pluggy init --yes --name my_plugin --main com.example.myplugin.Main
 `init` writes three files:
 
 - `project.json`: the only config file pluggy reads.
-- `src/com/example/myplugin/Main.java`: a Bukkit `JavaPlugin` with stubbed
-  `onEnable` / `onDisable` methods.
-- `src/config.yml`: a resources file with `${project.name}` placeholders
-  rendered at build time.
+- `src/com/example/myplugin/Main.java`: a starter [main class](./glossary.md#main-class) with empty `onEnable` and `onDisable` methods.
+- `src/config.yml`: a starter resources file. The `${project.name}` placeholders inside are replaced when pluggy builds.
 
-The project name must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores,
-and hyphens). The `--main` value must be a dotted Java class path,
-minimum package + class.
+Two rules on the names you pass:
 
-Without `--yes` pluggy prompts interactively; confirmations are skipped when
-the target directory is empty or when `--json` is set.
+- `--name` must match `[a-zA-Z0-9_-]+`. Letters, numbers, underscores, and hyphens, nothing else.
+- `--main` must be a dotted Java class path with at least a package and a class (`com.example.myplugin.Main`).
 
-Inspect what you got:
+Without `--yes` pluggy prompts you interactively. Prompts are skipped automatically when the target directory is empty or when `--json` is set.
+
+Take a look at what you got:
 
 ```text
 $ cat project.json
@@ -97,28 +99,20 @@ $ cat project.json
 }
 ```
 
-The `compatibility.versions[0]` entry is picked up from the Paper upstream
-at init time. It's the highest release available on every selected
-platform. Pin this by passing `--mc-version 1.21.8` to `init` if you
-need a specific version. (`--version` sets the plugin's own
-`project.version`. They're separate knobs.)
+The Minecraft version comes from Paper's published list. pluggy picks the highest version every selected platform supports. Pin a different one with `--mc-version 1.21.8` at `init` time. (`--version` sets the plugin's own `project.version`, which is a separate field.)
 
-The first `pluggy build` derives the required Java major from this version
-(Java 21 for 1.20.5+, Java 17 for 1.18-1.20.4, and so on) and downloads a
-matching Temurin JDK if one isn't already on `JAVA_HOME` or in the cache.
-Override the choice with [`pluggy sdk use`](./commands/sdk.md#use) or by
-adding a [`jdk` block](./project-json.md#jdk-optional) to `project.json`.
+The first `pluggy build` derives the right Java major from this Minecraft version (Java 21 for 1.20.5 and later, Java 17 for 1.18 to 1.20.4, and so on) and downloads a matching Temurin JDK if one isn't already on `JAVA_HOME` or in the cache. Override the choice with [`pluggy sdk use`](./commands/sdk.md#use), or by adding a [`jdk` block](./project-json.md#jdk-optional) to `project.json`.
 
 ## Add a dependency
 
-Install a plugin from Modrinth.
+Install a plugin from [Modrinth](./glossary.md#modrinth):
 
 ```text
 $ pluggy install worldedit
-Installed worldedit into my_plugin (1 resolved).
+✓ Installed worldedit into my_plugin (1 resolved)
 ```
 
-pluggy rewrites `project.json` to add the dep in long form:
+pluggy rewrites `project.json` to record the dependency:
 
 ```json
 "dependencies": {
@@ -129,80 +123,74 @@ pluggy rewrites `project.json` to add the dep in long form:
 }
 ```
 
-It also writes `pluggy.lock` at the project root with the resolved version,
-its SHA-256 integrity, and the full transitive closure (empty for Modrinth
-plugins; populated for Maven artifacts).
+It also writes `pluggy.lock` at the project root with the resolved version, its [SHA-256 integrity hash](./glossary.md#integrity-hash), and the full chain of [transitive dependencies](./glossary.md#transitive-dependency) (empty for Modrinth plugins; populated for Maven artifacts).
 
-The dep identifier grammar is documented in
-[Dependency sources](./dependencies.md). In short:
+You can install dependencies in four shapes. The full grammar is documented in [Dependency sources](./dependencies.md), but the short version is:
 
-- `worldedit`: latest stable from Modrinth.
+- `worldedit`: latest stable version from Modrinth.
 - `worldedit@7.3.15`: a specific Modrinth version.
-- `./libs/my-lib.jar`: a local file. pluggy content-addresses it.
-- `maven:net.kyori:adventure-api@4.17.0`: a Maven artifact. Requires at
-  least one entry in `registries` (see below).
+- `./libs/my-lib.jar`: a local jar. pluggy identifies it by its content hash.
+- `maven:net.kyori:adventure-api@4.17.0`: a Maven artifact. Needs at least one entry in `registries` if it isn't on Maven Central.
 
 ## Run the dev server
 
+Start a live server with `dev`:
+
 ```text
 $ pluggy dev
-dev: starting my_plugin
+[server output streams here]
 ```
 
-`pluggy dev` runs a full build, downloads the Paper server jar for the
-version in `compatibility.versions[0]`, stages a `dev/` directory next to
-your project, writes `eula.txt` accepting Mojang's EULA on your behalf
-(suppressed with `PLUGGY_DEV_NO_EULA=1`), and spawns `java -jar server.jar`
-with your plugin and any runtime plugin deps hardlinked into `dev/plugins/`.
+`pluggy dev` runs a full build, downloads the matching Paper server jar, sets up a `dev/` directory next to your project, writes `eula.txt` accepting Mojang's [EULA](./glossary.md#eula) on your behalf (suppress with `PLUGGY_DEV_NO_EULA=1`), and runs `java -jar server.jar` with your plugin and any runtime plugin dependencies linked into `dev/plugins/`.
 
-When you save a `.java` file, pluggy debounces the event for 200ms,
-rebuilds, sends `stop\n` to the server's stdin, waits for it to exit, swaps
-in the new jar, and spawns a fresh server. Pass `--reload` to use Bukkit's
-`/reload confirm` instead of a full restart (faster, but Bukkit's own docs
-warn that `/reload` is unreliable for stateful plugins).
+When you save a `.java` file, pluggy waits 200 milliseconds (so saving multiple files at once still triggers one rebuild), rebuilds the jar, sends `stop` to the server, swaps in the new jar, and starts a fresh server. Pass `--reload` to use Bukkit's `/reload confirm` instead of a full restart. It's faster, but Bukkit's own docs warn that `/reload` is unreliable for plugins that hold state between reloads.
 
-Press Ctrl+C once for graceful shutdown (30 seconds grace). A second Ctrl+C
-within 2 seconds sends SIGKILL.
+Press Ctrl+C once for a graceful shutdown (30 seconds of grace). A second Ctrl+C within 2 seconds force-kills the server.
 
 ## Build for release
 
+When you're ready to ship a jar, run:
+
 ```text
 $ pluggy build
-build my_plugin
-✔ my_plugin: /Users/you/my-plugin/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
+Building my_plugin
+✓ my_plugin → /Users/you/my-plugin/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
 ```
 
-The output jar lives at `<workspace>/bin/<name>-<version>.jar` by default.
-Override with `--output path/to/out.jar`.
+The output jar lives at `<workspace>/bin/<name>-<version>.jar` by default. Override with `--output path/to/out.jar`.
 
 ## What pluggy did under the hood
 
-- Resolved `compatibility.platforms[0]` (`paper`) against the platform
-  registry. Each platform exposes a Maven API spec. For Paper, that's
-  `io.papermc.paper:paper-api` from the PaperMC maven repo.
-- Downloaded the `paper-api` jar and put it on the compile classpath.
-- Resolved every `dependencies[]` entry, downloading jars into
-  `~/Library/Caches/pluggy/dependencies/<kind>/...`. Maven deps also had
-  their POM parsed for transitives.
-- Provisioned a JDK matching `compatibility.versions[0]`'s Java
-  requirement (Java 21 for 1.21.8) into
-  `~/Library/Caches/pluggy/jdk/temurin-21-...`. Subsequent builds skip the
-  download.
+If you're curious about what `pluggy build` actually does, here's the short version. The full walkthrough lives in the [build pipeline](./build-pipeline.md) page.
+
+- Looked up the platform `paper` in pluggy's platform registry. Each platform exposes a Maven coordinate for its API. For Paper, that's `io.papermc.paper:paper-api` from the PaperMC Maven repo.
+- Downloaded the `paper-api` jar and put it on the compile [classpath](./glossary.md#classpath).
+- Resolved every entry in `dependencies`, downloading jars into the cache. Maven dependencies also had their POMs parsed for transitives.
+- Provisioned a JDK matching `compatibility.versions[0]`'s Java requirement (Java 21 for 1.21.8) into `~/Library/Caches/pluggy/jdk/temurin-21-...`. Later builds skip the download.
 - Ran `<cached-jdk>/bin/javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`.
-- Copied `src/config.yml` through the `${project.x}` templater and wrote
-  it to `config.yml` inside the staging dir.
-- Generated `plugin.yml` from `project.name`, `version`, `main`,
-  `description`, and the derived `api-version` (`"1.21"` for `1.21.8`).
-- Zipped the staging dir into the output jar.
+- Ran `src/config.yml` through the `${project.x}` template substitution and wrote it into the staging directory.
+- Generated `plugin.yml` from `project.name`, `version`, `main`, `description`, and the derived `api-version` (`"1.21"` for `1.21.8`).
+- Zipped the staging directory into the output jar.
 
-Each step lives in a dedicated module under `src/build/`. See
-[Build pipeline](./build-pipeline.md) for the full walkthrough.
+Each step lives in its own module under `src/build/`.
 
-## Where to go next
+## What you just learned
 
-- Make the dev loop faster: [`pluggy dev`](./commands/dev.md).
+You now know how to:
+
+- Install pluggy and verify it.
+- Scaffold a new plugin with `pluggy init`.
+- Add a dependency with `pluggy install`.
+- Run a live server with `pluggy dev`.
+- Ship a jar with `pluggy build`.
+
+That covers most days of plugin development.
+
+## Next steps
+
+- Speed up the dev loop: [`pluggy dev`](./commands/dev.md) reference.
 - Add JUnit tests: [`pluggy test`](./commands/test.md).
-- Split into a monorepo: [Workspaces](./workspaces.md).
-- Ship a jar that bundles a third-party library: [Shading](./project-json.md#shading).
-- Set up IDE integration: [IDE integration](./ide.md).
+- Split into multiple plugins: [Workspaces](./workspaces.md).
+- Bundle a third-party library into your jar: [Shading](./project-json.md#shading-optional).
+- Set up your editor: [IDE integration](./ide.md).
 - Wire up CI without installing pluggy globally: [CI recipe](./recipes/ci-without-global-pluggy.md).

@@ -62,4 +62,26 @@ Close with what's next when applicable. End how-to and tutorial pages with a sho
 Bad: a tutorial that ends with "That's it!"
 Good: a tutorial that ends with "Next steps" linking to the deployment guide.
 
-These rules together produce documentation that stays useful as the project evolves. When a doc feels hard to read, the answer is almost always one of: buried point, passive voice, hidden requirement, vague verb, abstract instead of demonstrated, placeholder-shaped example, em-dash clutter, missing context paragraph, mismatched list, conditions after actions, inconsistent formatting, undescriptive link, stale fact, duplicated fact, or missing follow-up. Check in that order.
+## Writing for beginners
+
+Pluggy's audience includes children and first-time programmers making their first Minecraft plugin. Most readers have never touched Java, Maven, or a build tool before. Tutorial and entry-point pages must work for them; reference and "deep topic" pages may stay technical, but every jargon word still has to be defined or linked.
+
+Define jargon the first time it appears on a page, and link to `docs/glossary.md` for terms used across many pages. A reader who hits an unexplained word is gone. The first mention is the place to spend a clause on it; later mentions can stay terse.
+Bad: "pluggy resolves the full transitive closure on the classpath."
+Good: "pluggy works out which extra libraries your plugin needs (its [dependencies](./glossary.md#dependency)) and adds them to the build."
+
+Prefer a worked example over an explanation. A real `project.json`, terminal session, or directory tree teaches more than a paragraph of theory, and beginners learn by recognising patterns. Keep the prose around the example short.
+
+Lead beginner pages with a one-sentence "what you'll have when you finish." Beginners need to know the payoff before they invest. End with a "Next steps" block that names the next file to open.
+
+Match difficulty to the page's role. A page is one of three kinds:
+
+- **Tutorial** (getting-started, recipes): walks the reader from zero to a working result. Define every term on first use, no assumed knowledge, plenty of example output.
+- **How-to** (most command pages): assumes the reader has finished the tutorial. Defines new terms, links the rest to the glossary.
+- **Reference** (`project.json` reference, build-pipeline, dependencies, troubleshooting): assumes a working developer. Stays precise and technical. Links jargon to the glossary on first mention so a curious beginner can still follow.
+
+Be encouraging without being childish. Say "you can do this" with a clear next step, not with exclamation points or emoji. The reader is learning a real skill, not playing a game.
+Bad: "Awesome! Now let's make a plugin! 🎉"
+Good: "You're ready to build your first plugin. Run `pluggy init` and follow the prompts."
+
+These rules together produce documentation that stays useful as the project evolves. When a doc feels hard to read, the answer is almost always one of: buried point, passive voice, hidden requirement, vague verb, abstract instead of demonstrated, placeholder-shaped example, em-dash clutter, missing context paragraph, mismatched list, conditions after actions, inconsistent formatting, undescriptive link, stale fact, duplicated fact, missing follow-up, or unexplained jargon. Check in that order.

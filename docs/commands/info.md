@@ -1,7 +1,6 @@
 # `pluggy info`
 
-Inspect a dependency identifier. Works for every source kind, online and
-offline.
+Inspect a dependency identifier. Works for every [source kind](../glossary.md#source-kind), online and offline.
 
 ## Usage
 
@@ -10,8 +9,7 @@ pluggy info <plugin>
 pluggy show <plugin>
 ```
 
-`<plugin>` is any identifier accepted by `install` — Modrinth slug, Maven
-coord, local jar path, or `workspace:<name>`.
+`<plugin>` is any identifier accepted by `install`: a Modrinth slug, a Maven coordinate, a local jar path, or `workspace:<name>`.
 
 ## Flags
 
@@ -21,12 +19,7 @@ None beyond the global `--json`.
 
 ### Modrinth
 
-Hits `GET /v2/project/<slug>` and `GET /v2/project/<slug>/version`.
-Returns title, description, homepage, license, every published version
-with its release type and date. Inside a pluggy project, each version is
-annotated with a compatibility hint against
-`compatibility.versions` — `"ok"` if any `game_versions` overlap, `"warn"`
-otherwise.
+Hits `GET /v2/project/<slug>` and `GET /v2/project/<slug>/version`. Returns title, description, homepage, license, and every published version with its release type and date. Inside a pluggy project, each version is annotated with a compatibility hint against `compatibility.versions`: `"ok"` if any `game_versions` overlap, `"warn"` otherwise.
 
 Human output:
 
@@ -45,9 +38,7 @@ versions:
 
 ### Maven
 
-No registry index lookup — pluggy doesn't know how to list Maven
-artifacts. Returns the coordinate and the requested version as a
-passthrough.
+No registry index lookup. pluggy doesn't know how to list Maven artifacts. Returns the coordinate and the requested version as a passthrough.
 
 ```text
 maven:net.kyori:adventure-api
@@ -129,6 +120,5 @@ kind-specific payload. The `source` field is always the tagged-union from
 
 ## See also
 
-- [`pluggy search`](./search.md) — keyword search on Modrinth.
-- [`pluggy list --outdated`](./list.md#--outdated) — compare the lockfile
-  against Modrinth's latest.
+- [`pluggy search`](./search.md): keyword search on Modrinth.
+- [`pluggy list --outdated`](./list.md#--outdated): compare the lockfile against Modrinth's latest.

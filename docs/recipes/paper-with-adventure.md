@@ -1,9 +1,6 @@
 # Adding a Paper plugin that uses adventure-api
 
-Paper bundles Kyori Adventure's API (the modern text + chat primitive)
-at runtime, but you still need it on the compile classpath. This recipe
-walks through adding it to a pluggy project without shading it — Paper
-provides it, so you just need it for compile-time.
+Paper bundles Kyori Adventure's API (the modern text and chat library) at runtime, but you still need it on the compile [classpath](../glossary.md#classpath). This recipe walks through adding it to a pluggy project without [shading](../glossary.md#shade) it. Paper provides Adventure at runtime, so you just need it at compile time.
 
 ## Start with a fresh Paper project
 
@@ -12,11 +9,9 @@ mkdir chat-plugin && cd chat-plugin
 pluggy init --yes --name chat_plugin --main com.example.chat.ChatPlugin --platform paper
 ```
 
-## Pin the MC version
+## Pin the Minecraft version
 
-Open `project.json` and confirm `compatibility.versions[0]`. pluggy
-pulled the latest from Paper's upstream, but you might want to pin
-something older:
+Open `project.json` and confirm `compatibility.versions[0]`. pluggy pulled the latest from Paper's upstream, but you might want to pin something older.
 
 ```json
 {
@@ -32,8 +27,7 @@ something older:
 
 ## Add a registry for Maven Central
 
-`adventure-api` is on Maven Central. pluggy doesn't assume Maven Central
-— declare it in `registries`:
+`adventure-api` is on Maven Central. Maven Central is appended automatically by pluggy, but if you want to make the dependency on it explicit, declare it in `registries`:
 
 ```json
 {
@@ -42,8 +36,7 @@ something older:
 }
 ```
 
-You don't need to declare the PaperMC Maven repo — pluggy prepends that
-automatically when it resolves `paper-api`.
+You don't need to declare the PaperMC Maven repo. pluggy prepends that automatically when it resolves `paper-api`.
 
 ## Install adventure-api
 
@@ -62,9 +55,7 @@ pluggy install maven:net.kyori:adventure-api@4.17.0
 }
 ```
 
-`pluggy.lock` records `adventure-api` plus its transitive closure
-(primarily `adventure-key`, `examination-api`, and a JSR-305 annotations
-jar). pluggy resolves all of them from Maven Central.
+`pluggy.lock` records `adventure-api` plus its [transitive dependencies](../glossary.md#transitive-dependency) (mostly `adventure-key`, `examination-api`, and a JSR-305 annotations jar). pluggy resolves all of them from Maven Central.
 
 ## Use it in your code
 
@@ -92,17 +83,14 @@ public class ChatPlugin extends JavaPlugin {
 ```text
 $ pluggy build
 build chat_plugin
-✔ chat_plugin: /.../bin/chat_plugin-1.0.0.jar (4.2 KB, 1923ms)
+✓ chat_plugin: /.../bin/chat_plugin-1.0.0.jar (4.2 KB, 1923ms)
 ```
 
-Notice the output jar is small (kilobytes, not megabytes). That's
-because pluggy didn't shade Adventure — Paper already ships it. Your jar
-contains just your compiled classes plus `plugin.yml` and `config.yml`.
+Notice the output jar is small (kilobytes, not megabytes). That's because pluggy didn't shade Adventure. Paper already ships it. Your jar contains just your compiled classes plus `plugin.yml` and `config.yml`.
 
 ## About shading
 
-If you were targeting a server that doesn't ship Adventure (plain
-Bukkit, for example), you'd bundle it:
+If you were targeting a server that doesn't ship Adventure (plain Bukkit, for example), you'd bundle it:
 
 ```json
 {
@@ -117,9 +105,7 @@ Bukkit, for example), you'd bundle it:
 }
 ```
 
-That's not what you want for Paper — two copies of Adventure on the
-classpath (yours and Paper's) will load classes unpredictably. For Paper,
-never shade Adventure.
+That's not what you want for Paper. Two copies of Adventure on the classpath (yours and Paper's) will load classes unpredictably. For Paper, never shade Adventure.
 
 ## Run the dev server
 
@@ -134,7 +120,7 @@ and watch your plugin announce itself in chat.
 
 ## What's on the classpath
 
-Use `pluggy list --tree` to see the full closure pluggy resolved:
+Use `pluggy list --tree` to see the full chain of dependencies pluggy resolved:
 
 ```text
 $ pluggy list --tree
@@ -150,13 +136,10 @@ registries:
   └── https://repo1.maven.org/maven2/
 ```
 
-Paper's `paper-api` jar is also on the compile classpath at build time
-but doesn't appear in `pluggy list` because it's not in `project.json` —
-pluggy adds it from the platform registry during `build`.
+Paper's `paper-api` jar is also on the compile classpath at build time but doesn't appear in `pluggy list` because it's not in `project.json`. pluggy adds it from the platform registry during `build`.
 
 ## See also
 
-- [Dependencies](../dependencies.md) — the source-string grammar.
-- [project.json shading](../project-json.md#shading) — the shading
-  options in detail.
-- [Dev server](../dev-server.md) — what `pluggy dev` does.
+- [Dependencies](../dependencies.md): the source-string grammar.
+- [project.json shading](../project-json.md#shading-optional): the shading options in detail.
+- [Dev server](../dev-server.md): what `pluggy dev` does.

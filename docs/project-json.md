@@ -1,9 +1,8 @@
 # `project.json` reference
 
-The one file pluggy reads. Lives at the repo root, or at the root of each
-workspace in a monorepo. pluggy walks up from the current directory until
-it finds one, then (if workspaces are declared) walks back down to classify
-which workspace you're sitting in.
+This is the one file pluggy reads. It lives at the repo root, or at the root of each [workspace](./glossary.md#workspace) in a monorepo. pluggy walks up from the current directory until it finds one, then walks back down (if workspaces are declared) to classify which workspace you're sitting in.
+
+Every field is documented below. If a term is unfamiliar, check the [glossary](./glossary.md).
 
 ## Shape
 
@@ -60,24 +59,23 @@ which workspace you're sitting in.
       "view-distance": 6,
       "spawn-protection": 0
     },
-    "extraPlugins": ["./plugins/helper.jar"]
+    "extraPlugins": ["./plugins/helper.jar"],
+    "hotswap": {
+      "jdk": "jbr",
+      "fallback": "reload"
+    }
   },
   "workspaces": []
 }
 ```
 
-No field in this example is unique to that structure; you'll see them one
-at a time below.
+No field in this example is unique to that structure. You'll see them one at a time below.
 
 ## Fields
 
 ### `name` (required)
 
-String matching `^[a-zA-Z0-9_]+$`. Becomes the plugin's name in the
-generated descriptor (`plugin.yml` / `bungee.yml` / `velocity-plugin.json` /
-`META-INF/sponge_plugins.json`) and the output jar stem
-(`<name>-<version>.jar`). `doctor` enforces the regex; `init` rejects other
-characters.
+String matching `^[a-zA-Z0-9_]+$`. Becomes the plugin's name in the generated [descriptor](./glossary.md#descriptor) (`plugin.yml`, `bungee.yml`, `velocity-plugin.json`, or `META-INF/sponge_plugins.json`) and the output jar stem (`<name>-<version>.jar`). `doctor` enforces the regex; `init` rejects other characters.
 
 ### `version` (required)
 
@@ -87,36 +85,25 @@ output filename.
 
 ### `description` (optional)
 
-Free-form string. Rendered into the descriptor when non-empty and inherited
-from the workspace root when a workspace omits it.
+Free-form string. Rendered into the descriptor when non-empty, and inherited from the workspace root when a workspace omits it.
 
 ### `authors` (optional)
 
-Array of strings. In the Bukkit descriptor family each name becomes a
-YAML list entry under `authors:`; BungeeCord uses a single `author:` field
-joined with `", "`.
+Array of strings. In the Bukkit descriptor family each name becomes a YAML list entry under `authors:`. BungeeCord uses a single `author:` field joined with `", "`.
 
 ### `main` (required for plugin workspaces)
 
-Fully-qualified Java class name, at least `package.Class`. pluggy uses this
-for three things:
+Fully-qualified Java class name, at least `package.Class`. pluggy uses this for three things:
 
 1. The descriptor's `main` field.
-2. `${project.className}` / `${project.packageName}` template substitution
-   in resource files and the initial Java class.
-3. The output directory layout inside `src/` during `init`
-   (`src/com/example/myplugin/Main.java`).
+2. `${project.className}` and `${project.packageName}` template substitution in resource files and the initial Java class.
+3. The output directory layout inside `src/` during `init` (`src/com/example/myplugin/Main.java`).
 
-Required for every buildable workspace. A workspace-less root that declares
-`workspaces` is not buildable itself and can omit `main`.
+Required for every buildable workspace. A workspace-less root that declares `workspaces` is not buildable itself and can omit `main`.
 
 ### `ide` (optional)
 
-Array of `"vscode"`, `"eclipse"`, `"intellij"`. Controls which editor
-scaffolding `build` writes. pluggy walks the array and generates files
-for every listed IDE, so a mixed-editor team can commit one
-`project.json` that covers everyone. Unset or empty means no scaffolding.
-See [IDE integration](./ide.md) for what each value produces.
+Array of `"vscode"`, `"eclipse"`, `"intellij"`. Controls which editor scaffolding `build` writes. pluggy walks the array and generates files for every listed IDE, so a mixed-editor team can commit one `project.json` that covers everyone. Unset or empty means no scaffolding. See [IDE integration](./ide.md) for what each value produces.
 
 ```json
 "ide": ["vscode", "intellij"]
@@ -134,50 +121,27 @@ the array by hand to add or remove editors later.
 }
 ```
 
-- `versions`: non-empty array of Minecraft versions. Both the legacy
-  `1.21.8` shape and Mojang's 2026 calendar scheme (`26.1.2`) are accepted.
-  The first entry is the primary version; it drives the platform API
-  download, `api-version` in the Bukkit descriptor, and the JDK picker for
-  IntelliJ. For `velocity`, this still reads as an MC version. pluggy
-  resolves the actual `velocity-api` Maven coordinate internally to the
-  latest stable Velocity release.
-- `platforms`: non-empty array. The first entry is the primary platform.
-  Every platform in the array must share the same descriptor family (same
-  `plugin.yml` vs `bungee.yml` vs `velocity-plugin.json` vs
-  `META-INF/sponge_plugins.json` target). Mixing families fails early with
-  "Split them into separate workspaces — one per family."
+- `versions`: non-empty array of Minecraft versions. Both the legacy `1.21.8` shape and Mojang's 2026 calendar scheme (`26.1.2`) are accepted. The first entry is the primary version. It drives the platform API download, `api-version` in the Bukkit descriptor, and the JDK picker for IntelliJ. For `velocity` and `sponge`, this still reads as a Minecraft version. pluggy resolves the actual `velocity-api` or `spongeapi` Maven coordinate internally to the latest stable release.
+- `platforms`: non-empty array. The first entry is the primary platform. Every platform in the array must share the same [descriptor family](./glossary.md#descriptor-family) (same `plugin.yml`, `bungee.yml`, `velocity-plugin.json`, or `META-INF/sponge_plugins.json` target). Mixing families fails early with "Split them into separate workspaces, one per family.".
 
 The full platform roster ships with the binary:
 
-| id           | descriptor                     | Maven coordinate                          |
-| ------------ | ------------------------------ | ----------------------------------------- |
-| `paper`      | `plugin.yml`                   | `io.papermc.paper:paper-api`              |
-| `folia`      | `plugin.yml`                   | `dev.folia:folia-api`                     |
-| `spigot`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)      |
-| `bukkit`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)      |
-| `velocity`   | `velocity-plugin.json`         | `com.velocitypowered:velocity-api`        |
-| `waterfall`  | `bungee.yml`                   | `io.github.waterfallmc:waterfall-api`     |
-| `travertine` | `bungee.yml`                   | (no Maven API; compile against waterfall) |
-| `sponge`     | `META-INF/sponge_plugins.json` | `org.spongepowered:spongeapi`             |
+| id           | descriptor                     | Maven coordinate                           |
+| ------------ | ------------------------------ | ------------------------------------------ |
+| `paper`      | `plugin.yml`                   | `io.papermc.paper:paper-api`               |
+| `folia`      | `plugin.yml`                   | `dev.folia:folia-api`                      |
+| `spigot`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)       |
+| `bukkit`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)       |
+| `velocity`   | `velocity-plugin.json`         | `com.velocitypowered:velocity-api`         |
+| `waterfall`  | `bungee.yml`                   | `io.github.waterfallmc:waterfall-api`      |
+| `travertine` | `bungee.yml`                   | (no Maven API — compile against waterfall) |
+| `sponge`     | `META-INF/sponge_plugins.json` | `org.spongepowered:spongeapi`              |
 
-Paper handles version strings in two formats. For 1.17 – 1.21.x the artifact
-is `<version>-R0.1-SNAPSHOT`; for 26.x and later (Mojang's calendar scheme:
-26.1, 26.1.1, 26.1.2) it's `<version>.build.<N>-alpha`. pluggy fetches
-PaperMC's `maven-metadata.xml` and picks the highest matching entry, so you
-write the plain MC version and pluggy works out the rest.
+Paper handles version strings in two formats. For 1.17 to 1.21.x the artifact is `<version>-R0.1-SNAPSHOT`. For 26.x and later (Mojang's calendar scheme: 26.1, 26.1.1, 26.1.2) it's `<version>.build.<N>-alpha`. pluggy fetches PaperMC's `maven-metadata.xml` and picks the highest matching entry, so you write the plain Minecraft version and pluggy works out the rest.
 
-Spigot and Bukkit go through BuildTools, which decompiles the Mojang
-server jar using a JDK from pluggy's cache. Different Minecraft releases
-require different Java versions (MC 1.21.x allows Java 21 – 26; MC
-26.1.x requires Java 25 – 26). pluggy provisions a matching JDK from the
-[Foojay Disco API](./commands/sdk.md) on first build, so the version
-you pick at `init` time isn't constrained by your host Java.
+Spigot and Bukkit go through [BuildTools](./glossary.md#buildtools), which decompiles the Mojang server jar using a JDK from pluggy's cache. Different Minecraft releases require different Java versions (Minecraft 1.21.x allows Java 21 to 26; Minecraft 26.1.x requires Java 25 to 26). pluggy provisions a matching JDK from the [Foojay Disco API](./commands/sdk.md) on first build, so the version you pick at `init` time isn't constrained by your host Java.
 
-Sponge surfaces Minecraft versions in the same shape as `velocity`. pluggy
-fetches the SpongeVanilla artifact list and resolves the matching SpongeAPI
-Maven coordinate internally. Modding-specific variants (SpongeForge,
-SpongeNeo) aren't modelled; only the standalone SpongeVanilla server is
-supported.
+Sponge surfaces Minecraft versions in the same shape as `velocity`. pluggy fetches the SpongeVanilla artifact list and resolves the matching SpongeAPI Maven coordinate internally. Modding-specific variants (SpongeForge, SpongeNeo) aren't modelled. Only the standalone SpongeVanilla server is supported.
 
 ### `registries` (optional)
 
@@ -186,25 +150,17 @@ Array of entries. Each entry is either:
 - a bare URL string, or
 - an object `{ "url": "...", "credentials": { "username": "...", "password": "..." } }`.
 
-The URL field accepts an alias as a shorthand: `github:owner/repo`
-expands to `https://maven.pkg.github.com/owner/repo`.
+The URL field accepts an alias as a shorthand: `github:owner/repo` expands to `https://maven.pkg.github.com/owner/repo`.
 
-Registries apply to Maven dependencies. Maven Central
-(`https://repo1.maven.org/maven2/`) is appended automatically, so artifacts
-hosted there resolve without any explicit `registries` entry. The Modrinth
-API is implicit and doesn't need declaring either. When credentials are set,
-`list` prints `[authenticated]` next to the URL but never surfaces the
-values themselves: they're read when the Maven resolver needs them.
+Registries apply to Maven dependencies. Maven Central (`https://repo1.maven.org/maven2/`) is appended automatically, so artifacts hosted there resolve without any explicit `registries` entry. The Modrinth API is implicit and doesn't need declaring either. When credentials are set, `list` prints `[authenticated]` next to the URL but never surfaces the values themselves. They're read when the Maven resolver needs them.
 
-The list is deduplicated by URL (trailing-slash variants count as the
-same). In a monorepo, the root's registries are unioned with each
-workspace's registries; duplicates drop.
+The list is deduplicated by URL (trailing-slash variants count as the same). In a monorepo, the root's registries are unioned with each workspace's registries. Duplicates drop.
 
 ### `dependencies` (optional)
 
-Object keyed by dependency name. Each value is one of two shapes:
+Object keyed by dependency name. Each value is one of two shapes.
 
-Short form, Modrinth slug shorthand:
+Short form: Modrinth slug shorthand.
 
 ```json
 "dependencies": {
@@ -214,7 +170,7 @@ Short form, Modrinth slug shorthand:
 
 Expands to `modrinth:worldedit@7.3.15`. The key is the slug.
 
-Long form, explicit source:
+Long form: explicit source.
 
 ```json
 "dependencies": {
@@ -243,9 +199,7 @@ The `version` field shape depends on the scheme:
 
 ### `testDependencies` (optional)
 
-Same shape and grammar as `dependencies`: short or long form, every
-source kind. These are added to the test classpath only and never end
-up in the built jar.
+Same shape and grammar as `dependencies`: short or long form, every source kind. These are added to the test classpath only and never end up in the built jar.
 
 ```json
 "testDependencies": {
@@ -256,16 +210,13 @@ up in the built jar.
 }
 ```
 
-Resolved against `registries` plus an implicit Maven Central, so JUnit
-itself can always be fetched. JUnit Platform Console Standalone is
-auto-injected by `pluggy test`: you never declare it.
+Resolved against `registries` plus an implicit Maven Central, so JUnit itself can always be fetched. JUnit Platform Console Standalone is auto-injected by `pluggy test`. You never declare it.
 
 `testDependencies` is read by `pluggy test`. Other commands ignore it.
 
 ### `shading` (optional)
 
-Object keyed by dependency name, the same key you used in `dependencies`.
-Each entry configures class-level inclusion into the final jar.
+Object keyed by dependency name (the same key you used in `dependencies`). Each entry configures class-level inclusion into the final jar.
 
 ```json
 "shading": {
@@ -278,21 +229,14 @@ Each entry configures class-level inclusion into the final jar.
 
 - Omitting `include` is the same as `["**"]` (everything).
 - `exclude` is subtracted after `include` matches.
-- Patterns are forward-slashed jar-entry paths. `*` matches one segment;
-  `**` matches any depth, including zero segments.
-- Dependencies without a shading entry are not shaded. They're still on the
-  compile classpath, they just don't end up inside your jar.
+- Patterns are forward-slashed jar-entry paths. `*` matches one segment. `**` matches any depth, including zero segments.
+- Dependencies without a shading entry are not shaded. They're still on the compile classpath, but don't end up inside your jar.
 
-For `workspace:` sibling deps, `shading` uses the sibling's `name`, and the
-build expects the sibling to have been built already. Running `pluggy build`
-from the repo root orders workspaces topologically; running it from inside
-a workspace doesn't, and the shade step errors with "has not been built
-yet, expected jar at ...".
+For `workspace:` sibling deps, `shading` uses the sibling's `name`, and the build expects the sibling to have been built already. Running `pluggy build` from the repo root orders workspaces topologically. Running it from inside a workspace doesn't, and the shade step errors with "has not been built yet, expected jar at ...".
 
 ### `resources` (optional)
 
-Object keyed by the output path inside the jar. Values are paths relative
-to the project root.
+Object keyed by the output path inside the jar. Values are paths relative to the project root.
 
 ```json
 "resources": {
@@ -301,25 +245,16 @@ to the project root.
 }
 ```
 
-Trailing `/` on a key means "copy the directory recursively". Files under
-these extensions are run through `${project.x}` substitution before landing
-in the jar: `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, `.md`. Binary
-files are hardlinked if possible, copied otherwise.
+Trailing `/` on a key means "copy the directory recursively". Files under these extensions are run through `${project.x}` substitution before landing in the jar: `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, `.md`. Binary files are hardlinked if possible, copied otherwise.
 
-A `resources` entry that targets the descriptor path (`plugin.yml`,
-`bungee.yml`, or `velocity-plugin.json`) takes precedence over pluggy's
-auto-generated descriptor: useful when you need fields pluggy doesn't
-model yet (`commands:`, `permissions:`, `softdepend:`, and so on).
+A `resources` entry that targets the descriptor path (`plugin.yml`, `bungee.yml`, `velocity-plugin.json`, or `META-INF/sponge_plugins.json`) takes precedence over pluggy's auto-generated descriptor. Useful when you need fields pluggy doesn't model yet (`commands:`, `permissions:`, `softdepend:`, and so on).
 
 On output-path collisions, the first-declared entry wins and subsequent
 ones are skipped with a warning.
 
 ### `jdk` (optional)
 
-Pin the JDK pluggy installs for `build`, `test`, and `dev`. When omitted,
-pluggy derives the required Java major from `compatibility.versions[0]`
-(Java 21 for 1.20.5+, Java 17 for 1.18-1.20.4, and so on) and downloads
-the default distribution (Temurin) on first use.
+Pin the [JDK](./glossary.md#jdk) pluggy installs for `build`, `test`, and `dev`. When omitted, pluggy derives the required Java major from `compatibility.versions[0]` (Java 21 for 1.20.5 and later, Java 17 for 1.18 to 1.20.4, and so on) and downloads the default distribution (Temurin) on first use.
 
 ```json
 "jdk": {
@@ -362,26 +297,37 @@ Knobs for `pluggy dev`.
 | `onlineMode`       | `false` | `--offline` on the command line forces `false` and beats the config.                             |
 | `jvmArgs`          | `[]`    | Inserted between `-Xmx...` and `-jar server.jar`.                                                |
 | `serverProperties` | `{}`    | Merged with pluggy's defaults (`motd`, `online-mode`, `server-port`). User keys win on conflict. |
-| `extraPlugins`     | `[]`    | Jar paths relative to the workspace root; hardlinked into `dev/plugins/` at start.               |
+| `extraPlugins`     | `[]`    | Jar paths relative to the workspace root, hardlinked into `dev/plugins/` at start.               |
+| `hotswap`          | `true`  | Hotswap configuration. See below. Set to `false` to disable.                                     |
 
-`extraPlugins` is how you inject a runtime prerequisite that isn't in
-`dependencies` (such as a locally-patched EssentialsX).
+`extraPlugins` is how you inject a runtime prerequisite that isn't in `dependencies` (for example a locally-patched EssentialsX).
+
+#### `dev.hotswap`
+
+Controls whether `pluggy dev` swaps changed classes in place via JetBrains Runtime + HotswapAgent. Default behaviour is on, which is equivalent to `"hotswap": true`.
+
+Three accepted shapes:
+
+- `true` (default): hotswap on with default settings (JetBrains Runtime as the JDK, fall back to `/reload` when a change can't be hotswapped).
+- `false`: disable hotswap entirely. `pluggy dev` falls back to `/reload` (with `--reload`) or full restart.
+- An object with these keys:
+
+| Field      | Default    | Notes                                                                                             |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `jdk`      | `"jbr"`    | `"jbr"` downloads JetBrains Runtime to the cache. `"system"` uses `java` from `PATH` instead.     |
+| `fallback` | `"reload"` | Action when a class change can't be hotswapped. `"reload"` sends `/reload`. `"restart"` restarts. |
+
+`--no-hotswap` on the CLI overrides this block to `false`. See [Dev server](./dev-server.md#hotswap) for what hotswap does at runtime.
 
 ### `workspaces` (optional)
 
-Array of paths (relative or absolute, forward-slashed) to sibling
-`project.json` files. Each entry must point at a directory that contains a
-`project.json`. See [Workspaces](./workspaces.md).
+Array of paths (relative or absolute, forward-slashed) to sibling `project.json` files. Each entry must point at a directory that contains a `project.json`. See [Workspaces](./workspaces.md).
 
-A project that declares `workspaces` is a root: it doesn't have to declare
-`main`, it doesn't build a jar itself, and its `compatibility`, `authors`,
-`description`, and `registries` are inherited by workspaces that don't
-declare their own.
+A project that declares `workspaces` is a root. It doesn't have to declare `main`, it doesn't build a jar itself, and its `compatibility`, `authors`, `description`, and `registries` are inherited by workspaces that don't declare their own.
 
 ## Template variables
 
-Several fields are substituted into files at build time. Syntax is
-`${dotted.key}`; every scalar on the project object is available.
+Several fields are substituted into files at build time. Syntax is `${dotted.key}`. Every scalar on the project object is available.
 
 | Variable                              | Value                                        |
 | ------------------------------------- | -------------------------------------------- |
@@ -393,11 +339,9 @@ Several fields are substituted into files at build time. Syntax is
 | `${project.packageName}`              | Everything in `main` before the last segment |
 | `${project.compatibility.versions.0}` | First entry of the versions array            |
 
-Arrays expand to numerically-suffixed keys
-(`${project.authors.0}`, `${project.authors.1}`, etc.).
+Arrays expand to numerically-suffixed keys (`${project.authors.0}`, `${project.authors.1}`, and so on).
 
-Substitution runs on resources with the allowlisted extensions above and on
-the `src/config.yml` + main-class templates produced by `init`.
+Substitution runs on resources with the allowlisted extensions above, and on the `src/config.yml` and main-class templates produced by `init`.
 
 ## Validation
 
@@ -410,14 +354,10 @@ The primary validator is `pluggy doctor`, which checks:
 - All workspaces share a descriptor family when they share a primary platform.
 - Workspaces form a DAG (no cycles via `workspace:` deps).
 
-Errors that would prevent a build show up here; warnings are advisory
-(for example a JDK outside the 8 – 21 band when the primary platform is
-`spigot`/`bukkit`).
+Errors that would prevent a build show up here. Warnings are advisory (for example a JDK outside the 8 to 21 band when the primary platform is `spigot` or `bukkit`).
 
 ## What pluggy does not read
 
 - `package.json`, `pom.xml`, `build.gradle*`: ignored even if present.
-- `settings.json`, `.idea/`, `.classpath`: pluggy writes these when
-  `ide` is set, but never reads them.
-- `pluggy.lock` is not `project.json`; it's a separate file produced by
-  `install` and `build` and documented in [Dependencies](./dependencies.md#lockfile).
+- `settings.json`, `.idea/`, `.classpath`: pluggy writes these when `ide` is set, but never reads them.
+- `pluggy.lock` is not `project.json`. It's a separate file produced by `install` and `build`, documented in [Dependencies](./dependencies.md#lockfile).

@@ -1,8 +1,6 @@
 # CI builds without pluggy installed globally
 
-CI runners usually don't have pluggy installed. You have two options:
-install it per job (simple, slightly slower) or check the binary into
-your CI image (fastest).
+CI runners usually don't have pluggy installed. You have two options: install it per job (simple, slightly slower) or check the binary into your CI image (fastest).
 
 ## Option 1: Install per job (recommended)
 
@@ -54,16 +52,10 @@ jobs:
 
 Notes:
 
-- The install script runs `sudo mv` to place the binary. On GitHub
-  Actions' default `ubuntu-latest`, the `runner` user has password-less
-  sudo, so this works unattended.
-- Caching `~/.cache/pluggy` speeds up subsequent runs by skipping
-  dependency downloads. Key it on `pluggy.lock` so cache hits are
-  reproducible.
-- `pluggy doctor` catches config drift in a PR before the build attempts
-  it and fails with a longer error.
-- `pluggy build --json` emits one envelope per workspace; failure exits
-  `1` without terminating the step from an unrelated error.
+- The install script drops the binary in `~/.pluggy/bin/`, no `sudo` required.
+- Caching `~/.cache/pluggy` speeds up subsequent runs by skipping dependency downloads. Key it on `pluggy.lock` so cache hits are reproducible.
+- `pluggy doctor` catches config drift in a PR before the build attempts it and fails with a longer error.
+- `pluggy build --json` emits one envelope per workspace. A failed build exits `1` without terminating the step from an unrelated error.
 
 ## Option 2: Pin a specific pluggy version
 
@@ -72,9 +64,10 @@ a tag:
 
 ```bash
 VERSION=v0.2.0
-curl -fsSL "https://github.com/pluggy-sh/pluggy/releases/download/${VERSION}/pluggy-linux-amd64" -o /tmp/pluggy
-chmod +x /tmp/pluggy
-sudo mv /tmp/pluggy /usr/local/bin/pluggy
+mkdir -p ~/.pluggy/bin
+curl -fsSL "https://github.com/pluggy-sh/pluggy/releases/download/${VERSION}/pluggy-linux-amd64" -o ~/.pluggy/bin/pluggy
+chmod +x ~/.pluggy/bin/pluggy
+echo "$HOME/.pluggy/bin" >> $GITHUB_PATH
 ```
 
 Bump `VERSION` when you want to move to a newer pluggy.
@@ -95,9 +88,7 @@ For ARM runners, swap `-linux-amd64` for `-linux-arm64`.
 
 ## Windows runners
 
-The PowerShell install script adds the binary to your user `PATH`, which
-doesn't propagate to the same job step. Either fully qualify the path or
-add the directory to `$env:PATH` explicitly:
+The PowerShell install script adds the binary to your user `PATH`, which doesn't propagate to the same job step. Either fully qualify the path or add the directory to `$env:PATH` explicitly:
 
 ```yaml
 - name: Install pluggy
@@ -110,9 +101,7 @@ add the directory to `$env:PATH` explicitly:
 
 ## JSON output in CI
 
-`--json` is the preferred mode for CI. Every command emits a JSON
-envelope on stdout (success) or stderr (failure), and exits with `0`
-for success or non-zero for failure. Use `jq` to pull specific fields:
+`--json` is the preferred mode for CI. Every command emits a JSON envelope on stdout (success) or stderr (failure), and exits with `0` for success or non-zero for failure. Use `jq` to pull specific fields:
 
 ```bash
 pluggy build --json | jq -r '.results[0].outputPath'
@@ -138,13 +127,9 @@ For `build`, partial failures in a multi-workspace project produce:
 
 ## Reproducible builds
 
-- Check `pluggy.lock` into git. Lock drift breaks reproducibility; the
-  lockfile locks concrete versions and integrity hashes.
-- Pin `compatibility.versions[0]` to a specific MC version. Don't let
-  `init` pick "latest" and then forget to pin it.
-- Use `pluggy install` without `--force` on CI. `--force` re-resolves
-  from upstream even when the lockfile is fresh, which defeats the
-  caching.
+- Check `pluggy.lock` into git. Lock drift breaks reproducibility. The lockfile locks concrete versions and integrity hashes.
+- Pin `compatibility.versions[0]` to a specific Minecraft version. Don't let `init` pick "latest" and then forget to pin it.
+- Use `pluggy install` without `--force` on CI. `--force` re-resolves from upstream even when the lockfile is fresh, which defeats the caching.
 
 ## Caching effectively
 
@@ -152,16 +137,15 @@ pluggy's cache is split into stable and drift-y parts:
 
 | Path                            | Stable?                                                                    |
 | ------------------------------- | -------------------------------------------------------------------------- |
-| `~/.cache/pluggy/dependencies/` | Very stable — content-addressed. Cache with gusto.                         |
+| `~/.cache/pluggy/dependencies/` | Very stable. Content-addressed. Cache with gusto.                          |
 | `~/.cache/pluggy/versions/`     | Platform jars, one per (platform, version, build). Stable once downloaded. |
-| `~/.cache/pluggy/BuildTools/`   | Spigot/Bukkit build output. Expensive to regenerate.                       |
+| `~/.cache/pluggy/BuildTools/`   | Spigot and Bukkit build output. Expensive to regenerate.                   |
 
-A single cache entry keyed on `pluggy.lock` covers dependencies. Add a
-fallback restore key (`pluggy-${{ runner.os }}-`) so a lockfile bump
-still benefits from partial cache hits.
+A single cache entry keyed on `pluggy.lock` covers dependencies. Add a fallback restore key (`pluggy-${{ runner.os }}-`) so a lockfile bump still benefits from partial cache hits.
 
 ## See also
 
-- [`pluggy doctor`](../commands/doctor.md) — pre-build validation.
-- [`pluggy build`](../commands/build.md) — JSON output shape.
-- [Cross-platform notes](../cross-platform.md) — cache paths per OS.
+- [`pluggy doctor`](../commands/doctor.md): pre-build validation.
+- [`pluggy build`](../commands/build.md): JSON output shape.
+- [`pluggy cache`](../commands/cache.md): inspect and prune the cache from CI.
+- [Cross-platform notes](../cross-platform.md): cache paths per OS.
