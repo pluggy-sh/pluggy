@@ -13,7 +13,6 @@ Every field is documented below. If a term is unfamiliar, check the [glossary](.
   "description": "A small Paper plugin",
   "authors": ["Alice", "Bob"],
   "main": "com.example.myplugin.Main",
-  "ide": ["vscode"],
   "compatibility": {
     "versions": ["1.21.8"],
     "platforms": ["paper"]
@@ -100,17 +99,6 @@ Fully-qualified Java class name, at least `package.Class`. pluggy uses this for 
 3. The output directory layout inside `src/` during `init` (`src/com/example/myplugin/Main.java`).
 
 Required for every buildable workspace. A workspace-less root that declares `workspaces` is not buildable itself and can omit `main`.
-
-### `ide` (optional)
-
-Array of `"vscode"`, `"eclipse"`, `"intellij"`. Controls which editor scaffolding `build` writes. pluggy walks the array and generates files for every listed IDE, so a mixed-editor team can commit one `project.json` that covers everyone. Unset or empty means no scaffolding. See [IDE integration](./ide.md) for what each value produces.
-
-```json
-"ide": ["vscode", "intellij"]
-```
-
-`pluggy init` writes this field from the interactive IDE checkbox; edit
-the array by hand to add or remove editors later.
 
 ### `compatibility` (required)
 
@@ -359,5 +347,5 @@ Errors that would prevent a build show up here. Warnings are advisory (for examp
 ## What pluggy does not read
 
 - `package.json`, `pom.xml`, `build.gradle*`: ignored even if present.
-- `settings.json`, `.idea/`, `.classpath`: pluggy writes these when `ide` is set, but never reads them.
+- `.classpath`, `.project`, `.idea/`: pluggy writes these automatically (see [IDE integration](./ide.md)) but never reads them.
 - `pluggy.lock` is not `project.json`. It's a separate file produced by `install` and `build`, documented in [Dependencies](./dependencies.md#lockfile).

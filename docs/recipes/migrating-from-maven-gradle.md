@@ -4,18 +4,18 @@ If you already have a plugin project built with Maven or Gradle, pluggy can take
 
 ## What pluggy replaces
 
-| Old world                                 | pluggy equivalent                                     |
-| ----------------------------------------- | ----------------------------------------------------- |
-| `pom.xml` or `build.gradle`               | `project.json`                                        |
-| `<dependencies>` or `implementation(...)` | `project.json:dependencies`                           |
-| `<repositories>` or `repositories { }`    | `project.json:registries` (Maven only)                |
-| `maven-shade-plugin` config               | `project.json:shading`                                |
-| `mvn package` or `./gradlew shadowJar`    | `pluggy build`                                        |
-| `mvn test` or `./gradlew test`            | `pluggy test` (JUnit Platform via `testDependencies`) |
-| `plugin.yml` (hand-written)               | pluggy-generated, or staged via `resources`           |
-| `src/main/java/`                          | `src/`                                                |
-| `src/main/resources/`                     | `project.json:resources` mapping                      |
-| IntelliJ/Eclipse import                   | `project.json:ide` (see [IDE integration](../ide.md)) |
+| Old world                                 | pluggy equivalent                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `pom.xml` or `build.gradle`               | `project.json`                                                                                                            |
+| `<dependencies>` or `implementation(...)` | `project.json:dependencies`                                                                                               |
+| `<repositories>` or `repositories { }`    | `project.json:registries` (Maven only)                                                                                    |
+| `maven-shade-plugin` config               | `project.json:shading`                                                                                                    |
+| `mvn package` or `./gradlew shadowJar`    | `pluggy build`                                                                                                            |
+| `mvn test` or `./gradlew test`            | `pluggy test` (JUnit Platform via `testDependencies`)                                                                     |
+| `plugin.yml` (hand-written)               | pluggy-generated, or staged via `resources`                                                                               |
+| `src/main/java/`                          | `src/`                                                                                                                    |
+| `src/main/resources/`                     | `project.json:resources` mapping                                                                                          |
+| IntelliJ/Eclipse import                   | Automatic — `pluggy init` writes the IntelliJ stub, `pluggy build` writes `.classpath`. See [IDE integration](../ide.md). |
 
 ## What pluggy does not do
 
@@ -262,7 +262,7 @@ unzip -l bin/myplugin-1.0.0.jar
 
 - **README.** Replace `mvn package` and `./gradlew build` with `pluggy build`. Replace `mvn clean` with `pluggy build --clean`. Replace `mvn test` with `pluggy test`.
 - **CI.** See [CI without global pluggy](./ci-without-global-pluggy.md).
-- **IDE import.** Set `"ide"` in `project.json`, run `pluggy build`, and open the repo in the target editor. No Maven or Gradle import flow.
+- **IDE import.** Just open the repo in your editor — `pluggy init` already wrote the IntelliJ stub and `pluggy build` writes `.classpath` for Eclipse and VS Code. No Maven or Gradle import flow.
 
 ## See also
 

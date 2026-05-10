@@ -1,107 +1,61 @@
 # IDE integration
 
-Set `"ide"` in `project.json` to an array of editor kinds, and `pluggy build` writes scaffolding so each IDE sees pluggy's resolved [classpath](./glossary.md#classpath). Three values are supported:
+IDE setup is automatic. There is no `pluggy ide` command and nothing
+to configure in `project.json`. This page documents what gets written,
+why, and how to opt out.
 
-| Value        | Produces                  | Consumer                           |
-| ------------ | ------------------------- | ---------------------------------- |
-| `"vscode"`   | `.vscode/settings.json`   | Red Hat's `vscode-java` extension  |
-| `"eclipse"`  | `.classpath` + `.project` | Eclipse IDE / Spring Tools / Theia |
-| `"intellij"` | `.idea/` + `<name>.iml`   | IntelliJ IDEA, CLion (Java plugin) |
+## What pluggy writes
 
-Any subset is valid. List every editor your team uses:
+| When           | Files                                    | Lifetime                                                      |
+| -------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| `pluggy init`  | `.idea/` + `<name>.iml`                  | Written once. pluggy never rewrites these after init.         |
+| `pluggy build` | `.classpath` + `.project` (project root) | Regenerated on every build to reflect the resolved classpath. |
 
-```json
-"ide": ["vscode", "intellij"]
+Pluggy never touches `.vscode/`. The `.classpath` is the single source
+of truth — the same file feeds Eclipse, VS Code, and IntelliJ.
+
+## How each IDE reads it
+
+| IDE      | Mechanism                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------- |
+| Eclipse  | Reads `.classpath` natively.                                                                                  |
+| VS Code  | Reads `.classpath` via Red Hat's `vscode-java` extension (the "Extension Pack for Java" is the easy install). |
+| IntelliJ | Reads `.classpath` because the `.idea/` stub `init` writes opens the project in linked-Eclipse mode.          |
+
+That's why opening the project folder in any of the three "just works"
+without an import wizard. After the first build, every IDE sees the
+same dependency set.
+
+## Opting out for a single build
+
+```bash
+pluggy build --skip-classpath
 ```
 
-Unset or empty `ide` means no scaffolding. `pluggy init` asks for this
-interactively via a checkbox prompt.
+Skips the `.classpath` + `.project` write for one invocation. Useful in
+CI when the IDE files would only churn the diff. There is no permanent
+opt-out flag — the cost is a few microseconds and two small XML files.
 
-## When the files are written
+## Version control
 
-IDE scaffolding runs during `pluggy build`, right after dependencies are resolved and right before resources are staged. Pass `--skip-classpath` to suppress it for a single build without changing `project.json`.
-
-If scaffolding fails (disk full, permissions), pluggy logs at `--verbose`:
+Don't check these into git:
 
 ```text
-◌ build: IDE scaffolding failed (non-fatal): EACCES: permission denied, open '.classpath'
+/.classpath
+/.project
+/.idea/
+/*.iml
 ```
 
-The build continues — IDE files are advisory, not required.
+`.classpath` contains absolute paths into your local cache (under
+`~/.cache/pluggy/` or the platform equivalent), which won't match
+anyone else's machine. `pluggy init` adds these patterns to `.gitignore`
+automatically.
 
-## `"vscode"`
+## JDK picker (IntelliJ)
 
-Writes `.vscode/settings.json`:
-
-```json
-{
-  "java.project.referencedLibraries": [
-    "/Users/you/Library/Caches/pluggy/dependencies/maven/net/kyori/adventure-api/4.17.0.jar",
-    "/Users/you/Library/Caches/pluggy/dependencies/maven/net/kyori/adventure-key/4.17.0.jar",
-    "..."
-  ],
-  "java.project.sourcePaths": ["src"],
-  "java.project.outputPath": ".pluggy-build/classes"
-}
-```
-
-Install the Red Hat `vscode-java` extension (the "Extension Pack for Java" is the one-click option). On first open, VS Code indexes the referenced libraries and you get completion, navigation, and inline errors.
-
-VS Code's Java tools use the cache paths directly. There's no project-local `lib/` copy. That's intentional: if you bump a dep with `pluggy install`, the next `pluggy build` rewrites `settings.json` and VS Code picks up the new jars automatically.
-
-**Verifying:** open the Java Project view in VS Code and expand
-"Referenced Libraries". You should see one entry per resolved jar.
-
-## `"eclipse"`
-
-Writes two files at the project root:
-
-- `.classpath`: every cache jar as a `<classpathentry kind="lib">`, plus a `<classpathentry kind="src" path="src"/>` and a JDT output path pointing at `.pluggy-build`.
-- `.project`: minimal Eclipse project descriptor with the JDT nature ("nature" is Eclipse's term for "this project is a Java project").
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<classpath>
-  <classpathentry kind="src" path="src"/>
-  <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-  <classpathentry kind="lib" path="/Users/you/Library/Caches/pluggy/dependencies/maven/net/kyori/adventure-api/4.17.0.jar"/>
-  ...
-  <classpathentry kind="output" path=".pluggy-build"/>
-</classpath>
-```
-
-**Verifying:** `File > Import > Existing Projects into Workspace` and
-pick the repo root.
-
-## `"intellij"`
-
-Writes a minimal working IntelliJ project at the root:
-
-```text
-.idea/
-├── .gitignore
-├── modules.xml
-├── misc.xml
-└── libraries/
-    ├── maven__net_kyori__adventure-api__4_17_0.xml
-    ├── maven__net_kyori__adventure-key__4_17_0.xml
-    └── ...
-<name>.iml
-```
-
-The naming rule for library files:
-
-- Jars under the pluggy Maven cache become `maven__<groupId>__<artifactId>__<version>.xml` with dots replaced by underscores.
-- Other jars fall back to the basename without `.jar`.
-- Names are sanitised to `[A-Za-z0-9_.-]` only.
-- Collisions get `__2`, `__3`, and so on suffixes in classpath order.
-
-The `.iml` lists every library as an `orderEntry`, plus a single `inheritedJdk` entry (which tells IntelliJ to use the project-level JDK).
-
-### JDK picker
-
-`misc.xml` sets `project-jdk-name` and `languageLevel` from
-`compatibility.versions[0]`:
+The `.idea/misc.xml` written at init names the project JDK by Java
+major version, derived from `compatibility.versions[0]`:
 
 | MC version       | JDK |
 | ---------------- | --- |
@@ -111,46 +65,26 @@ The `.iml` lists every library as an `orderEntry`, plus a single `inheritedJdk` 
 | 1.17.x           | 16  |
 | 1.16 and earlier | 8   |
 
-Unparseable versions default to 21 (current Paper baseline). IntelliJ honors `project-jdk-name="21"` if you have a JDK registered under that name in `File > Project Structure > SDKs`.
-
-pluggy provisions a matching JDK on the first build into `<cachePath>/jdk/temurin-<major>-<os>-<arch>/`. Run `pluggy sdk path 21` to print the absolute `JAVA_HOME` and register that path in IntelliJ if no SDK is set up yet. See [`pluggy sdk`](./commands/sdk.md).
-
-**Verifying:** `File > Open...` and point at the repo root. IntelliJ
-should recognize it as an existing project and load the module without
-any Gradle or Maven import flow.
-
-## How the classpath stays fresh
-
-IDE files are regenerated on every `pluggy build`. To refresh the IDE view after running `install` for a new dep, run `pluggy build`.
-
-If you're using the dev loop (`pluggy dev`), every rebuild updates the IDE files in passing. You usually don't need to think about this.
-
-## Version-control guidance
-
-- `.vscode/settings.json`: check in. It only contains pluggy-managed classpath paths.
-- `.classpath` and `.project`: don't check in. They contain absolute paths into your user cache, which won't match anyone else's machine.
-- `.idea/`: don't check in. Same reason.
-- `<name>.iml`: don't check in.
-
-A sensible `.gitignore`:
-
-```text
-/.classpath
-/.project
-/.idea/
-/*.iml
-```
-
-`.vscode/settings.json` is the only file in this set that stays portable if your team is on the same platform and pluggy version. Worth checking in for team consistency. If your team is multi-OS, add it to `.gitignore` too.
+IntelliJ honours `project-jdk-name="21"` if you have a JDK registered
+under that name in `File > Project Structure > SDKs`. pluggy provisions
+a matching JDK on the first build into `<cachePath>/jdk/temurin-<major>-<os>-<arch>/`;
+run `pluggy sdk path 21` to print its absolute `JAVA_HOME` for IntelliJ
+to pick up.
 
 ## Common failures
 
-- **"Classpath seems to match but I see red underlines"**: restart the Java language server in your editor. In VS Code: `Java: Clean Java Language Server Workspace`. In IntelliJ: `File > Invalidate Caches`.
-- **"My sibling workspace isn't on the classpath"**: workspace dependencies point at `<sibling>/bin/<name>-<version>.jar`. If the sibling hasn't been built, the jar doesn't exist and the IDE sees an orphan entry. Build the sibling first.
-- **"My IDE wants a JDK I don't have installed"**: the IntelliJ integration names the JDK by major version (`"21"`). Install a matching JDK or edit `.idea/misc.xml` manually.
+- **Red underlines despite a matching classpath.** Restart the Java
+  language server. VS Code: `Java: Clean Java Language Server Workspace`.
+  IntelliJ: `File > Invalidate Caches`.
+- **Sibling workspace not on the classpath.** Workspace dependencies
+  point at `<sibling>/bin/<name>-<version>.jar`. If the sibling hasn't
+  been built, the jar doesn't exist. Build siblings first (running
+  `pluggy build` from the repo root handles topological order for you).
+- **IntelliJ wants a JDK you don't have.** `misc.xml` names the JDK by
+  major version. Either install a matching JDK or edit `.idea/misc.xml`
+  to point at one you have.
 
 ## See also
 
-- [project.json `ide` field](./project-json.md#ide-optional): value reference.
-- [`pluggy build --skip-classpath`](./commands/build.md): temporarily disable scaffolding.
-- [Build pipeline](./build-pipeline.md): where IDE scaffolding sits.
+- [Build pipeline](./build-pipeline.md): where IDE scaffolding sits in the build.
+- [`pluggy build --skip-classpath`](./commands/build.md): single-build opt-out.
