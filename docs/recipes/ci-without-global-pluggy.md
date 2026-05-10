@@ -47,7 +47,7 @@ Pin an exact pluggy version for reproducible builds:
 ```yaml
 - uses: pluggy-sh/setup-pluggy@v1
   with:
-    pluggy-version: '0.2.3'
+    pluggy-version: "0.2.3"
 ```
 
 The action's full input and output surface (cache toggling, cache key prefix, `pluggy-version` and `pluggy-path` outputs) is documented in the [setup-pluggy README](https://github.com/pluggy-sh/setup-pluggy#readme). It works on `ubuntu-*`, `macos-*`, and `windows-*` runners without per-OS workarounds.
