@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { initLogging } from "../logging.ts";
 import { doList } from "./list.ts";
 
 const origLog = console.log;
@@ -13,14 +14,16 @@ const origWarn = console.warn;
 beforeEach(() => {
   console.log = () => {};
   console.warn = () => {};
+  initLogging({ json: false, verbose: false, noColor: true });
 });
 afterEach(() => {
   console.log = origLog;
   console.warn = origWarn;
   vi.unstubAllGlobals();
+  initLogging({ json: false, verbose: false, noColor: true });
 });
 
-describe("doList — standalone", () => {
+describe("doList: standalone", () => {
   let rootDir: string;
 
   beforeEach(async () => {
@@ -54,7 +57,7 @@ describe("doList — standalone", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           worldedit: {
             source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -66,7 +69,7 @@ describe("doList — standalone", () => {
       }),
     );
 
-    const result = await doList({ cwd: rootDir, json: true });
+    const result = await doList({ cwd: rootDir });
     expect(result.scope).toBe("standalone");
     expect(result.deps).toHaveLength(2);
 
@@ -79,7 +82,7 @@ describe("doList — standalone", () => {
     expect(result.registries).toHaveLength(2);
     const authRegistry = result.registries.find((r) => r.url.includes("private"))!;
     expect(authRegistry.authenticated).toBe(true);
-    // Credentials must be elided — JSON output feeds CI logs.
+    // Credentials must be elided; JSON output feeds CI logs.
     expect(JSON.stringify(result.registries)).not.toContain("password");
     expect(JSON.stringify(result.registries)).not.toContain("secret");
   });
@@ -94,12 +97,12 @@ describe("doList — standalone", () => {
         compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
       }),
     );
-    const result = await doList({ cwd: rootDir, json: true });
+    const result = await doList({ cwd: rootDir });
     expect(result.deps).toEqual([]);
   });
 });
 
-describe("doList — root with workspaces", () => {
+describe("doList: root with workspaces", () => {
   let rootDir: string;
 
   beforeEach(async () => {
@@ -139,7 +142,7 @@ describe("doList — root with workspaces", () => {
   });
 
   test("at root: aggregates across all workspaces and tracks declaredBy", async () => {
-    const result = await doList({ cwd: rootDir, json: true });
+    const result = await doList({ cwd: rootDir });
     expect(result.scope).toBe("root");
     expect(result.deps.map((d) => d.name).sort()).toEqual(["placeholderapi", "worldedit"]);
 
@@ -150,20 +153,20 @@ describe("doList — root with workspaces", () => {
   });
 
   test("--workspace <name> narrows to a single workspace", async () => {
-    const result = await doList({ cwd: rootDir, workspace: "suite-api", json: true });
+    const result = await doList({ cwd: rootDir, workspace: "suite-api" });
     expect(result.scope).toBe("workspace");
     expect(result.deps.map((d) => d.name)).toEqual(["placeholderapi"]);
   });
 
   test("inside a workspace, defaults to that workspace's deps only", async () => {
     const insideCwd = join(rootDir, "modules", "impl");
-    const result = await doList({ cwd: insideCwd, json: true });
+    const result = await doList({ cwd: insideCwd });
     expect(result.scope).toBe("workspace");
     expect(result.deps.map((d) => d.name).sort()).toEqual(["placeholderapi", "worldedit"]);
   });
 });
 
-describe("doList — flag placeholders", () => {
+describe("doList: flag placeholders", () => {
   let rootDir: string;
 
   beforeEach(async () => {
@@ -184,17 +187,17 @@ describe("doList — flag placeholders", () => {
   });
 
   test("--outdated does not crash and returns the same deps", async () => {
-    const result = await doList({ cwd: rootDir, outdated: true, json: true });
+    const result = await doList({ cwd: rootDir, outdated: true });
     expect(result.deps).toHaveLength(1);
   });
 
   test("--tree does not crash and returns the same deps", async () => {
-    const result = await doList({ cwd: rootDir, tree: true, json: true });
+    const result = await doList({ cwd: rootDir, tree: true });
     expect(result.deps).toHaveLength(1);
   });
 });
 
-describe("doList — tree surfaces lockfile transitives", () => {
+describe("doList: tree surfaces lockfile transitives", () => {
   let rootDir: string;
 
   beforeEach(async () => {
@@ -223,7 +226,7 @@ describe("doList — tree surfaces lockfile transitives", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "paper-api": {
             source: {
@@ -235,46 +238,47 @@ describe("doList — tree surfaces lockfile transitives", () => {
             resolvedVersion: "1.21.8-R0.1-SNAPSHOT",
             integrity: "sha256-paper",
             declaredBy: ["my_plugin"],
-            transitives: [
-              {
-                source: {
-                  kind: "maven",
-                  groupId: "net.kyori",
-                  artifactId: "adventure-api",
-                  version: "4.14.0",
-                },
-                resolvedVersion: "4.14.0",
-                integrity: "sha256-adv",
-                transitives: [
-                  {
-                    source: {
-                      kind: "maven",
-                      groupId: "net.kyori",
-                      artifactId: "examination-api",
-                      version: "1.3.0",
-                    },
-                    resolvedVersion: "1.3.0",
-                    integrity: "sha256-exam",
-                  },
-                ],
-              },
-              {
-                source: {
-                  kind: "maven",
-                  groupId: "com.google.guava",
-                  artifactId: "guava",
-                  version: "32.1.2",
-                },
-                resolvedVersion: "32.1.2",
-                integrity: "sha256-guava",
-              },
-            ],
+            transitives: ["net.kyori:adventure-api", "com.google.guava:guava"],
+          },
+          "net.kyori:adventure-api": {
+            source: {
+              kind: "maven",
+              groupId: "net.kyori",
+              artifactId: "adventure-api",
+              version: "4.14.0",
+            },
+            resolvedVersion: "4.14.0",
+            integrity: "sha256-adv",
+            declaredBy: [],
+            transitives: ["net.kyori:examination-api"],
+          },
+          "net.kyori:examination-api": {
+            source: {
+              kind: "maven",
+              groupId: "net.kyori",
+              artifactId: "examination-api",
+              version: "1.3.0",
+            },
+            resolvedVersion: "1.3.0",
+            integrity: "sha256-exam",
+            declaredBy: [],
+          },
+          "com.google.guava:guava": {
+            source: {
+              kind: "maven",
+              groupId: "com.google.guava",
+              artifactId: "guava",
+              version: "32.1.2",
+            },
+            resolvedVersion: "32.1.2",
+            integrity: "sha256-guava",
+            declaredBy: [],
           },
         },
       }),
     );
 
-    const result = await doList({ cwd: rootDir, tree: true, json: true });
+    const result = await doList({ cwd: rootDir, tree: true });
     expect(result.deps).toHaveLength(1);
 
     const top = result.deps[0];
@@ -311,7 +315,7 @@ describe("doList — tree surfaces lockfile transitives", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           worldedit: {
             source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -323,7 +327,7 @@ describe("doList — tree surfaces lockfile transitives", () => {
       }),
     );
 
-    const result = await doList({ cwd: rootDir, tree: true, json: true });
+    const result = await doList({ cwd: rootDir, tree: true });
     expect(result.deps).toHaveLength(1);
     expect(result.deps[0].children).toBeUndefined();
   });

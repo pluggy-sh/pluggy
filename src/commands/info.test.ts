@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { initLogging } from "../logging.ts";
 import { doInfo } from "./info.ts";
 
 function okJson(body: unknown): Response {
@@ -23,13 +24,15 @@ function errorResponse(status: number, statusText: string): Response {
 const origLog = console.log;
 beforeEach(() => {
   console.log = () => {};
+  initLogging({ json: false, verbose: false, noColor: true });
 });
 afterEach(() => {
   console.log = origLog;
   vi.unstubAllGlobals();
+  initLogging({ json: false, verbose: false, noColor: true });
 });
 
-describe("doInfo — modrinth", () => {
+describe("doInfo: modrinth", () => {
   test("fetches project + versions and returns metadata", async () => {
     const project = {
       slug: "worldedit",
@@ -65,7 +68,7 @@ describe("doInfo — modrinth", () => {
       }),
     );
 
-    const result = await doInfo("worldedit", { json: true });
+    const result = await doInfo("worldedit");
     expect(result.kind).toBe("modrinth");
     expect(result.slug).toBe("worldedit");
     expect(result.title).toBe("WorldEdit");
@@ -83,13 +86,11 @@ describe("doInfo — modrinth", () => {
       "fetch",
       vi.fn(async () => errorResponse(404, "Not Found")),
     );
-    await expect(doInfo("does-not-exist", { json: true })).rejects.toThrow(
-      /does-not-exist.*not found/,
-    );
+    await expect(doInfo("does-not-exist")).rejects.toThrow(/does-not-exist.*not found/);
   });
 });
 
-describe("doInfo — file", () => {
+describe("doInfo: file", () => {
   let tmp: string;
 
   beforeEach(async () => {
@@ -104,7 +105,7 @@ describe("doInfo — file", () => {
     const jarPath = join(tmp, "example.jar");
     await writeFile(jarPath, bytes);
 
-    const result = await doInfo(jarPath, { json: true });
+    const result = await doInfo(jarPath);
     expect(result.kind).toBe("file");
     expect(result.path).toBe(jarPath);
     expect(result.size).toBe(5);
@@ -114,11 +115,11 @@ describe("doInfo — file", () => {
 
   test("throws when the file does not exist", async () => {
     const missing = join(tmp, "nope.jar");
-    await expect(doInfo(missing, { json: true })).rejects.toThrow(/file not found/);
+    await expect(doInfo(missing)).rejects.toThrow(/file not found/);
   });
 });
 
-describe("doInfo — workspace", () => {
+describe("doInfo: workspace", () => {
   let rootDir: string;
   let origCwd: string;
 
@@ -153,7 +154,7 @@ describe("doInfo — workspace", () => {
     );
 
     process.chdir(rootDir);
-    const result = await doInfo("workspace:suite-api", { json: true });
+    const result = await doInfo("workspace:suite-api");
     expect(result.kind).toBe("workspace");
     expect(result.name).toBe("suite-api");
     expect(result.version).toBe("0.1.0");
@@ -171,15 +172,13 @@ describe("doInfo — workspace", () => {
       }),
     );
     process.chdir(rootDir);
-    await expect(doInfo("workspace:ghost", { json: true })).rejects.toThrow(
-      /workspace not found.*ghost/,
-    );
+    await expect(doInfo("workspace:ghost")).rejects.toThrow(/workspace not found.*ghost/);
   });
 });
 
-describe("doInfo — maven", () => {
+describe("doInfo: maven", () => {
   test("documents that a version list is unavailable", async () => {
-    const result = await doInfo("maven:net.kyori:adventure-api@4.22.0", { json: true });
+    const result = await doInfo("maven:net.kyori:adventure-api@4.22.0");
     expect(result.kind).toBe("maven");
     expect(result.coordinate).toBe("net.kyori:adventure-api");
     expect(result.version).toBe("4.22.0");

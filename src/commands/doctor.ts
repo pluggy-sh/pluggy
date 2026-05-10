@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { arch, platform, release } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
@@ -10,10 +11,16 @@ import { pickDescriptor } from "../build/descriptor.ts";
 import { HOTSWAP_AGENT_VERSION } from "../dev/hotswap.ts";
 import { JBR_VERSION, jbrCacheKey, jbrJavaPath, jbrTarget } from "../dev/jbr.ts";
 import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
-import { type LockfileEntry, type TransitiveEntry, readLock } from "../lockfile.ts";
-import { bold, green, log, red, yellow } from "../logging.ts";
-import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
-import { getCachePath, type ResolvedProject } from "../project.ts";
+import { type LockfileEntry, pruneOrphans, readLock } from "../lockfile.ts";
+import { bold, emit, emitErr, green, isJsonMode, log, red, yellow } from "../logging.ts";
+import { platforms } from "../platform/index.ts";
+import {
+  getCachePath,
+  getStatePath,
+  primaryPlatform,
+  primaryVersion,
+  type ResolvedProject,
+} from "../project.ts";
 import { registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { getCachedJdk } from "../sdk/index.ts";
@@ -30,13 +37,40 @@ export interface CheckResult {
   detail?: string;
 }
 
+export interface EnvironmentInfo {
+  pluggy: { version: string };
+  os: { platform: NodeJS.Platform; release: string; arch: string };
+  runtime: { name: "bun" | "node"; version: string };
+  terminal: { isTTY: boolean; columns?: number };
+  locale?: string;
+  envVarsSet: string[];
+  paths: { cache: string; state: string };
+  project?: {
+    name: string;
+    version: string;
+    primaryPlatform?: string;
+    primaryVersion?: string;
+    workspaces: number;
+    dependencies: number;
+  };
+  lockfile?: {
+    version: number;
+    entries: number;
+    topLevel: number;
+    transitive: number;
+    orphans: number;
+    lastModifiedAt?: string;
+  };
+}
+
 export interface DoctorCommandOptions {
-  json?: boolean;
   cwd?: string;
   /** Current pluggy CLI version (without leading `v`). Used by the `pluggy-version` check. */
   pluggyVersion?: string;
   /** GitHub `owner/repo` slug used by the `pluggy-version` check. */
   repository?: string;
+  /** When true, render the paste-friendly markdown report instead of the human banner. */
+  report?: boolean;
   /** Per-check overrides used by tests to avoid spawning a JVM or hitting the network. */
   checks?: {
     java?: () => Promise<CheckResult>;
@@ -56,21 +90,54 @@ export interface DoctorCommandOptions {
 export interface DoctorCommandResult {
   ok: boolean;
   exitCode: 0 | 1;
+  environment: EnvironmentInfo;
   checks: CheckResult[];
+  summary: { passed: number; warned: number; failed: number };
 }
+
+/** Env var names that influence pluggy's behaviour. Names only — never values. */
+const TRACKED_ENV_VARS = [
+  "APPDATA",
+  "CI",
+  "DEBUG",
+  "JAVA_HOME",
+  "LOCALAPPDATA",
+  "NO_COLOR",
+  "PLUGGY_NO_AUTO_INSTALL",
+  "PLUGGY_NO_UPDATE_CHECK",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+] as const;
 
 /**
  * Run every environment and project-validation check, returning the
- * aggregated verdict. `exitCode` is 1 iff any check has `status: "fail"` —
+ * aggregated verdict. `exitCode` is 1 iff any check has `status: "fail"`;
  * warns are informational only.
+ *
+ * When invoked outside a pluggy project, `runDoctorCommand` still produces
+ * a partial `EnvironmentInfo` and a single `project-found` failed check
+ * rather than throwing. That way `pluggy doctor` is useful even when the
+ * user is debugging "no project found" issues.
  */
 export async function runDoctorCommand(
   opts: DoctorCommandOptions = {},
 ): Promise<DoctorCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
+
   if (context === undefined) {
-    throw new Error("No pluggy project found — run doctor from inside a project directory.");
+    const environment = collectEnvironmentInfo(opts.pluggyVersion);
+    const noProjectCheck: CheckResult = {
+      id: "project-found",
+      label: "Project found",
+      status: "fail",
+      detail: "no pluggy project found from this directory; run `pluggy init` to create one",
+    };
+    return finalizeAndEmit({
+      opts,
+      environment,
+      checks: [noProjectCheck],
+    });
   }
 
   const hooks = opts.checks ?? {};
@@ -125,37 +192,267 @@ export async function runDoctorCommand(
     all.push(await checkPluggyVersion(opts.pluggyVersion, opts.repository));
   }
 
-  const hardFailures = all.filter((c) => c.status === "fail");
-  const ok = hardFailures.length === 0;
-  const exitCode: 0 | 1 = ok ? 0 : 1;
-
-  if (opts.json === true) {
-    const payload = {
-      status: ok ? "success" : "error",
-      ok,
-      checks: all,
-      failures: hardFailures,
-    };
-    if (ok) {
-      console.log(JSON.stringify(payload, null, 2));
-    } else {
-      console.error(JSON.stringify(payload, null, 2));
-    }
-  } else {
-    log.info(bold("pluggy doctor"));
-    for (const c of all) {
-      printCheck(c);
-    }
-    log.info("");
-    if (ok) {
-      log.success("all required checks passed");
-    } else {
-      log.error(`${hardFailures.length} check(s) failed`);
-    }
+  // The lockfile check only makes sense when at least one workspace has
+  // declared deps; otherwise there's nothing to lock and the check is noise.
+  const hasDeclaredDeps = projectsForValidation(context).some(
+    (p) => Object.keys(p.dependencies ?? {}).length > 0,
+  );
+  if (hasDeclaredDeps) {
+    all.push(checkLockfile(context));
   }
 
-  return { ok, exitCode, checks: all };
+  const environment = await collectEnvironmentInfoForContext(context, opts.pluggyVersion);
+
+  return finalizeAndEmit({ opts, environment, checks: all });
 }
+
+interface FinalizeArgs {
+  opts: DoctorCommandOptions;
+  environment: EnvironmentInfo;
+  checks: CheckResult[];
+}
+
+function finalizeAndEmit(args: FinalizeArgs): DoctorCommandResult {
+  const { opts, environment, checks } = args;
+  const summary = summarize(checks);
+  const ok = summary.failed === 0;
+  const exitCode: 0 | 1 = ok ? 0 : 1;
+
+  const failures = checks.filter((c) => c.status === "fail");
+  const result: DoctorCommandResult = { ok, exitCode, environment, checks, summary };
+
+  // `--report` short-circuits the human renderer, but `--json` still wins.
+  if (opts.report === true && !isJsonMode()) {
+    console.log(renderReport(result));
+    return result;
+  }
+
+  const payload = {
+    status: ok ? "success" : "error",
+    ok,
+    environment,
+    checks,
+    summary,
+    failures,
+  };
+  const printHuman = (): void => printHumanReport(result);
+  if (ok) emit(payload, printHuman);
+  else emitErr(payload, printHuman);
+
+  return result;
+}
+
+function summarize(checks: CheckResult[]): { passed: number; warned: number; failed: number } {
+  let passed = 0;
+  let warned = 0;
+  let failed = 0;
+  for (const c of checks) {
+    if (c.status === "pass") passed++;
+    else if (c.status === "warn") warned++;
+    else failed++;
+  }
+  return { passed, warned, failed };
+}
+
+// ---------------------------------------------------------------------------
+// Environment collection
+// ---------------------------------------------------------------------------
+
+/** Detect the JS runtime. Bun exposes `process.versions.bun`; Node does not. */
+function detectRuntime(): { name: "bun" | "node"; version: string } {
+  const bunVersion = process.versions.bun;
+  if (typeof bunVersion === "string" && bunVersion.length > 0) {
+    return { name: "bun", version: bunVersion };
+  }
+  return { name: "node", version: process.versions.node };
+}
+
+/** Pick the most specific locale env var that's set. */
+function detectLocale(): string | undefined {
+  const order = ["LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"];
+  for (const name of order) {
+    const value = process.env[name];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+/** Collect names (never values) of pluggy-relevant env vars that are set. */
+function collectEnvVarsSet(): string[] {
+  const out: string[] = [];
+  for (const name of TRACKED_ENV_VARS) {
+    if (process.env[name] !== undefined) out.push(name);
+  }
+  // Caller-visible alphabetical order. The tracked list is already sorted,
+  // but sorting again keeps the contract explicit if the source list moves.
+  out.sort();
+  return out;
+}
+
+/**
+ * Build the environment block without project-specific data. Used when
+ * doctor runs outside a pluggy project, so we still surface OS / runtime
+ * context for the bug report.
+ */
+function collectEnvironmentInfo(pluggyVersion?: string): EnvironmentInfo {
+  const env: EnvironmentInfo = {
+    pluggy: { version: pluggyVersion ?? "0.0.0" },
+    os: { platform: platform(), release: release(), arch: arch() },
+    runtime: detectRuntime(),
+    terminal: { isTTY: process.stdout.isTTY === true },
+    envVarsSet: collectEnvVarsSet(),
+    paths: { cache: getCachePath(), state: getStatePath() },
+  };
+  if (typeof process.stdout.columns === "number" && process.stdout.columns > 0) {
+    env.terminal.columns = process.stdout.columns;
+  }
+  const locale = detectLocale();
+  if (locale !== undefined) env.locale = locale;
+  return env;
+}
+
+/** Build the full environment block, populating project + lockfile sections. */
+async function collectEnvironmentInfoForContext(
+  context: WorkspaceContext,
+  pluggyVersion?: string,
+): Promise<EnvironmentInfo> {
+  const env = collectEnvironmentInfo(pluggyVersion);
+
+  const target = context.current?.project ?? context.root;
+  let primaryPlatformName: string | undefined;
+  let primaryVersionName: string | undefined;
+  try {
+    primaryPlatformName = primaryPlatform(target);
+  } catch {
+    primaryPlatformName = undefined;
+  }
+  try {
+    primaryVersionName = primaryVersion(target);
+  } catch {
+    primaryVersionName = undefined;
+  }
+
+  const dependencyNames = new Set<string>();
+  for (const project of projectsForValidation(context)) {
+    for (const name of Object.keys(project.dependencies ?? {})) dependencyNames.add(name);
+  }
+
+  env.project = {
+    name: target.name,
+    version: target.version,
+    primaryPlatform: primaryPlatformName,
+    primaryVersion: primaryVersionName,
+    workspaces: context.workspaces.length,
+    dependencies: dependencyNames.size,
+  };
+
+  const lockSummary = await collectLockfileInfo(context.root.rootDir);
+  if (lockSummary !== undefined) env.lockfile = lockSummary;
+
+  return env;
+}
+
+/** Stat + summarize `pluggy.lock`. Returns `undefined` when the lockfile is absent. */
+async function collectLockfileInfo(rootDir: string): Promise<EnvironmentInfo["lockfile"]> {
+  let lock;
+  try {
+    lock = readLock(rootDir);
+  } catch {
+    // A malformed lockfile is reported by other checks; don't crash environment collection.
+    return undefined;
+  }
+  if (lock === null) return undefined;
+
+  const total = Object.keys(lock.entries).length;
+  let topLevel = 0;
+  for (const entry of Object.values(lock.entries)) {
+    if (entry.declaredBy.length > 0) topLevel++;
+  }
+  const transitive = total - topLevel;
+
+  // Clone the entries map so pruneOrphans doesn't mutate the live lockfile.
+  const cloned: Record<string, LockfileEntry> = {};
+  for (const [name, entry] of Object.entries(lock.entries)) {
+    cloned[name] = entry;
+  }
+  pruneOrphans(cloned);
+  const orphans = total - Object.keys(cloned).length;
+
+  let lastModifiedAt: string | undefined;
+  try {
+    const s = await stat(join(rootDir, "pluggy.lock"));
+    lastModifiedAt = s.mtime.toISOString();
+  } catch {
+    // mtime is best-effort; missing it is not a hard failure.
+  }
+
+  const summary: NonNullable<EnvironmentInfo["lockfile"]> = {
+    version: lock.version,
+    entries: total,
+    topLevel,
+    transitive,
+    orphans,
+  };
+  if (lastModifiedAt !== undefined) summary.lastModifiedAt = lastModifiedAt;
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
+// Lockfile orphan check
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-read the lockfile, prune orphans, and warn when any transitive entries
+ * are no longer reachable from the declared top-level set. `pluggy install`
+ * cleans these up; doctor surfaces them so users notice without having to
+ * scan the file manually.
+ */
+export function checkLockfile(context: WorkspaceContext): CheckResult {
+  const id = "lockfile";
+  const label = "Lockfile";
+  let lock;
+  try {
+    lock = readLock(context.root.rootDir);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { id, label, status: "fail", detail: message };
+  }
+  if (lock === null) {
+    return { id, label, status: "pass", detail: "no lockfile (run pluggy install)" };
+  }
+
+  const total = Object.keys(lock.entries).length;
+  if (total === 0) {
+    return { id, label, status: "pass", detail: "lockfile empty" };
+  }
+
+  const cloned: Record<string, LockfileEntry> = {};
+  for (const [name, entry] of Object.entries(lock.entries)) {
+    cloned[name] = entry;
+  }
+  pruneOrphans(cloned);
+  const orphans = total - Object.keys(cloned).length;
+
+  if (orphans > 0) {
+    return {
+      id,
+      label,
+      status: "warn",
+      detail: `${orphans} orphan transitive${orphans === 1 ? "" : "s"}; run pluggy install to clean up`,
+    };
+  }
+
+  return {
+    id,
+    label,
+    status: "pass",
+    detail: `${total} entr${total === 1 ? "y" : "ies"}, no orphans`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Java
+// ---------------------------------------------------------------------------
 
 /**
  * Spawn `java -version` and return the parsed major version number.
@@ -204,9 +501,9 @@ export async function checkJava(
 
   const detail = `Java ${userJava}`;
   const target = context.current?.project ?? context.root;
-  const primaryPlatform = target.compatibility?.platforms?.[0];
+  const platformName = target.compatibility?.platforms?.[0];
 
-  if (primaryPlatform === "spigot" || primaryPlatform === "bukkit") {
+  if (platformName === "spigot" || platformName === "bukkit") {
     const buildToolsPath = join(getCachePath(), "BuildTools.jar");
     const jdkSpec = await readManifestAttribute(buildToolsPath, "Build-Jdk-Spec");
     const minJava = jdkSpec !== undefined ? Number.parseInt(jdkSpec, 10) : 8;
@@ -215,7 +512,7 @@ export async function checkJava(
         id: "java",
         label: "Java toolchain",
         status: "warn",
-        detail: `${detail} — BuildTools requires Java ${minJava}+`,
+        detail: `${detail}; BuildTools requires Java ${minJava}+`,
       };
     }
   }
@@ -246,11 +543,11 @@ async function runJavaVersion(): Promise<{ stdout: string; stderr: string }> {
  * Verify the JDK pluggy needs for this project is provisioned (or auto-installable).
  *
  * Three states:
- *   pass — the slot is cached or JAVA_HOME points at the right major.
- *   warn — the slot is missing but auto-install is enabled, so the next
- *          build will fetch it. Still actionable for users on slow networks.
- *   fail — the slot is missing and `PLUGGY_NO_AUTO_INSTALL=1` is set, so
- *          the next build would fail. Includes the remediation command.
+ *   pass: the slot is cached or JAVA_HOME points at the right major.
+ *   warn: the slot is missing but auto-install is enabled, so the next
+ *         build will fetch it. Still actionable for users on slow networks.
+ *   fail: the slot is missing and `PLUGGY_NO_AUTO_INSTALL=1` is set, so
+ *         the next build would fail. Includes the remediation command.
  */
 export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
   const selection = await selectJdkForProject(project);
@@ -272,7 +569,7 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
       id: "sdk",
       label: "Project JDK",
       status: "fail",
-      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1 — run: ${remedy}`,
+      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1. Run: ${remedy}`,
     };
   }
 
@@ -280,7 +577,7 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
     id: "sdk",
     label: "Project JDK",
     status: "warn",
-    detail: `${selection.distribution} ${selection.major} not yet installed — pluggy will fetch on first build. Pre-install: ${remedy}`,
+    detail: `${selection.distribution} ${selection.major} not yet installed; pluggy will fetch on first build. Pre-install: ${remedy}`,
   };
 }
 
@@ -342,7 +639,7 @@ export async function checkCache(): Promise<CheckResult> {
 /**
  * Report whether HotswapAgent + JBR are present in the user cache. Both
  * download on first `pluggy dev` run, so a missing cache is informational
- * rather than a failure — we surface it so users know what the first dev
+ * rather than a failure. We surface it so users know what the first dev
  * launch will do.
  */
 export function checkHotswap(): CheckResult {
@@ -401,7 +698,7 @@ async function dirSize(path: string): Promise<number> {
           const s = await stat(full);
           total += s.size;
         } catch {
-          // unreadable entry
+          // ignore unreadable entries
         }
       }
     }
@@ -497,12 +794,12 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
     };
   }
   for (const p of compat.platforms) {
-    if (!getRegisteredPlatforms().includes(p)) {
+    if (!platforms.list().includes(p)) {
       return {
         id: "project",
         label,
         status: "fail",
-        detail: `unknown platform "${p}" (known: ${getRegisteredPlatforms().join(", ")})`,
+        detail: `unknown platform "${p}" (known: ${platforms.list().join(", ")})`,
       };
     }
   }
@@ -520,20 +817,20 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
  * being listed for Spigot (which hasn't published that version).
  */
 export async function checkVersionCompatibility(project: ResolvedProject): Promise<CheckResult[]> {
-  const { versions, platforms } = project.compatibility ?? {};
-  if (!versions?.length || !platforms?.length) return [];
+  const { versions, platforms: declaredPlatforms } = project.compatibility ?? {};
+  if (!versions?.length || !declaredPlatforms?.length) return [];
 
   const out: CheckResult[] = [];
-  for (const platform of platforms) {
+  for (const platformName of declaredPlatforms) {
     let available: string[];
     try {
-      available = await getPlatform(platform).getVersions();
+      available = await platforms.get(platformName).versions();
     } catch {
       out.push({
         id: "version-compat",
-        label: `Version compatibility (${platform})`,
+        label: `Version compatibility (${platformName})`,
         status: "warn",
-        detail: `could not fetch version list for ${platform}`,
+        detail: `could not fetch version list for ${platformName}`,
       });
       continue;
     }
@@ -542,14 +839,14 @@ export async function checkVersionCompatibility(project: ResolvedProject): Promi
     if (missing.length > 0) {
       out.push({
         id: "version-compat",
-        label: `Version compatibility (${platform})`,
+        label: `Version compatibility (${platformName})`,
         status: "fail",
-        detail: `${platform} does not publish version${missing.length > 1 ? "s" : ""} ${missing.join(", ")}`,
+        detail: `${platformName} does not publish version${missing.length > 1 ? "s" : ""} ${missing.join(", ")}`,
       });
     } else {
       out.push({
         id: "version-compat",
-        label: `Version compatibility (${platform})`,
+        label: `Version compatibility (${platformName})`,
         status: "pass",
         detail: `${versions.join(", ")}`,
       });
@@ -598,7 +895,7 @@ export function checkDescriptors(context: WorkspaceContext): CheckResult[] {
         id: "descriptor",
         label,
         status: "pass",
-        detail: `${project.compatibility.platforms[0]} → ${desc.path}`,
+        detail: `${primaryPlatform(project)} → ${desc.path}`,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -706,22 +1003,11 @@ export async function checkDependencyJars(
     };
   }
 
-  type FlatEntry = { name: string; entry: LockfileEntry | TransitiveEntry };
-  const flat: FlatEntry[] = [];
-
-  function collect(name: string, entry: LockfileEntry | TransitiveEntry): void {
-    flat.push({ name, entry });
-    for (const t of entry.transitives ?? []) {
-      const tName =
-        t.source.kind === "maven"
-          ? `${t.source.groupId}:${t.source.artifactId}`
-          : t.source.kind === "modrinth"
-            ? t.source.slug
-            : "unknown";
-      collect(tName, t);
-    }
-  }
-  for (const [name, entry] of Object.entries(lock.entries)) collect(name, entry);
+  type FlatEntry = { name: string; entry: LockfileEntry };
+  const flat: FlatEntry[] = Object.entries(lock.entries).map(([name, entry]) => ({
+    name,
+    entry,
+  }));
 
   function jarPath(e: FlatEntry): string | undefined {
     const { source, resolvedVersion } = e.entry;
@@ -826,7 +1112,7 @@ export async function checkPluggyVersion(
         clearTimeout(timer);
       }
     } catch {
-      // Network failure — surface as a soft warn so the user knows we couldn't check.
+      // Network failure: surface as a soft warn so the user knows we couldn't check.
       return {
         id: "pluggy-version",
         label: "Pluggy version",
@@ -850,7 +1136,7 @@ export async function checkPluggyVersion(
       id: "pluggy-version",
       label: "Pluggy version",
       status: "warn",
-      detail: `running ${currentVersion}; ${latest} is available — run 'pluggy upgrade'`,
+      detail: `running ${currentVersion}; ${latest} is available. Run 'pluggy upgrade'`,
     };
   }
 
@@ -879,20 +1165,154 @@ function formatBytes(n: number): string {
 
 function printCheck(c: CheckResult): void {
   const marker = c.status === "pass" ? green("✔") : c.status === "warn" ? yellow("!") : red("✖");
-  const detail = c.detail === undefined || c.detail.length === 0 ? "" : ` — ${c.detail}`;
+  const detail = c.detail === undefined || c.detail.length === 0 ? "" : `: ${c.detail}`;
   log.info(`  ${marker} ${c.label}${detail}`);
+}
+
+// ---------------------------------------------------------------------------
+// Human / report rendering
+// ---------------------------------------------------------------------------
+
+function printHumanReport(result: DoctorCommandResult): void {
+  log.info(bold("pluggy doctor"));
+
+  const env = result.environment;
+  log.heading("Environment");
+  log.step(`pluggy ${env.pluggy.version}`);
+  log.step(`os: ${env.os.platform} ${env.os.release} (${env.os.arch})`);
+  log.step(`runtime: ${env.runtime.name} ${env.runtime.version}`);
+  log.step(
+    `terminal: TTY=${env.terminal.isTTY ? "yes" : "no"}${
+      env.terminal.columns !== undefined ? `, ${env.terminal.columns} cols` : ""
+    }`,
+  );
+  if (env.locale !== undefined) log.step(`locale: ${env.locale}`);
+  log.step(
+    `env vars set: ${env.envVarsSet.length === 0 ? "(none of interest)" : env.envVarsSet.join(", ")}`,
+  );
+  log.step(`cache: ${env.paths.cache}`);
+  log.step(`state: ${env.paths.state}`);
+
+  if (env.project !== undefined) {
+    log.heading("Project");
+    log.step(`name: ${env.project.name}@${env.project.version}`);
+    if (env.project.primaryPlatform !== undefined) {
+      log.step(
+        `primary: ${env.project.primaryPlatform}${
+          env.project.primaryVersion !== undefined ? ` ${env.project.primaryVersion}` : ""
+        }`,
+      );
+    }
+    log.step(`workspaces: ${env.project.workspaces}`);
+    log.step(`declared dependencies: ${env.project.dependencies}`);
+  }
+
+  if (env.lockfile !== undefined) {
+    const lf = env.lockfile;
+    log.heading("Lockfile");
+    log.step(`version: ${lf.version}`);
+    log.step(`entries: ${lf.entries} (${lf.topLevel} top-level, ${lf.transitive} transitive)`);
+    log.step(`orphans: ${lf.orphans}`);
+    if (lf.lastModifiedAt !== undefined) log.step(`last modified: ${lf.lastModifiedAt}`);
+  }
+
+  log.heading("Checks");
+  for (const c of result.checks) {
+    printCheck(c);
+  }
+
+  log.info("");
+  const { passed, warned, failed } = result.summary;
+  const summaryLine = `${passed} passed, ${warned} warned, ${failed} failed`;
+  if (failed > 0) {
+    log.info(`${red("✗")} ${summaryLine}`);
+  } else {
+    log.info(`${green("✓")} ${summaryLine}`);
+  }
+}
+
+/** Build a paste-friendly markdown report for issue filing. */
+function renderReport(result: DoctorCommandResult): string {
+  const env = result.environment;
+  const lines: string[] = [];
+  lines.push("<details><summary>pluggy doctor report</summary>");
+  lines.push("");
+
+  lines.push("### Environment");
+  lines.push("");
+  lines.push(`- pluggy: ${env.pluggy.version}`);
+  lines.push(`- os: ${env.os.platform} ${env.os.release} (${env.os.arch})`);
+  lines.push(`- runtime: ${env.runtime.name} ${env.runtime.version}`);
+  const term = `TTY=${env.terminal.isTTY ? "yes" : "no"}${
+    env.terminal.columns !== undefined ? `, ${env.terminal.columns} cols` : ""
+  }`;
+  lines.push(`- terminal: ${term}`);
+  if (env.locale !== undefined) lines.push(`- locale: ${env.locale}`);
+  lines.push(
+    `- env vars set: ${env.envVarsSet.length === 0 ? "(none)" : env.envVarsSet.join(", ")}`,
+  );
+  lines.push(`- cache: ${env.paths.cache}`);
+  lines.push(`- state: ${env.paths.state}`);
+  lines.push("");
+
+  if (env.project !== undefined) {
+    const p = env.project;
+    lines.push("### Project");
+    lines.push("");
+    lines.push(`- name: ${p.name}`);
+    lines.push(`- version: ${p.version}`);
+    if (p.primaryPlatform !== undefined) lines.push(`- primary platform: ${p.primaryPlatform}`);
+    if (p.primaryVersion !== undefined) lines.push(`- primary version: ${p.primaryVersion}`);
+    lines.push(`- workspaces: ${p.workspaces}`);
+    lines.push(`- dependencies: ${p.dependencies}`);
+    lines.push("");
+  }
+
+  if (env.lockfile !== undefined) {
+    const lf = env.lockfile;
+    lines.push("### Lockfile");
+    lines.push("");
+    lines.push(`- version: ${lf.version}`);
+    lines.push(`- entries: ${lf.entries}`);
+    lines.push(`- top-level: ${lf.topLevel}`);
+    lines.push(`- transitive: ${lf.transitive}`);
+    lines.push(`- orphans: ${lf.orphans}`);
+    if (lf.lastModifiedAt !== undefined) lines.push(`- last modified: ${lf.lastModifiedAt}`);
+    lines.push("");
+  }
+
+  lines.push("### Checks");
+  lines.push("");
+  lines.push("| Status | Check | Detail |");
+  lines.push("| --- | --- | --- |");
+  for (const c of result.checks) {
+    const tag = c.status === "pass" ? "[ok]" : c.status === "warn" ? "[warn]" : "[fail]";
+    lines.push(`| ${tag} | ${escapeCell(c.label)} | ${escapeCell(c.detail ?? "")} |`);
+  }
+  lines.push("");
+
+  const { passed, warned, failed } = result.summary;
+  lines.push(`Summary: ${passed} passed, ${warned} warned, ${failed} failed`);
+  lines.push("");
+  lines.push("</details>");
+  return lines.join("\n");
+}
+
+/** Escape a value so it survives a markdown table cell intact. */
+function escapeCell(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
 /** Factory for the `pluggy doctor` commander command. */
 export function doctorCommand(options: { pluggyVersion: string; repository: string }): Command {
   return new Command("doctor")
     .description("Check your environment and project for common issues.")
-    .action(async function action(this: Command) {
-      const globalOpts = this.optsWithGlobals();
+    .option("--report", "Print a paste-friendly markdown report for issue filing.")
+    .action(async function action(this: Command, cmdOptions: { report?: boolean }) {
       const result = await runDoctorCommand({
-        json: globalOpts.json === true,
         pluggyVersion: options.pluggyVersion,
         repository: options.repository,
+        report: cmdOptions.report === true,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

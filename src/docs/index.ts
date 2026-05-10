@@ -1,5 +1,5 @@
 /**
- * Docs pipeline — resolve classpath → discover sources → run javadoc.
+ * Docs pipeline: resolve classpath → discover sources → run javadoc.
  * Workspace orchestration is the caller's job; `generateDocs` handles
  * exactly one workspace per call.
  */
@@ -34,7 +34,7 @@ export interface DocsResult {
   fileCount: number;
   /** Total bytes written under `outputPath`. */
   sizeBytes: number;
-  /** Warning lines emitted by javadoc — not fatal, but worth surfacing. */
+  /** Warning lines emitted by javadoc; not fatal, but worth surfacing. */
   warnings: number;
   /** Wall-clock duration in milliseconds. */
   durationMs: number;
@@ -42,7 +42,7 @@ export interface DocsResult {
 
 /**
  * Generate javadoc for one project. Throws on resolver, JDK, or javadoc
- * failure — partial output is left in `outputPath` for inspection.
+ * failure; partial output is left in `outputPath` for inspection.
  *
  * Output layout: `<rootDir>/docs/<name>-<version>/index.html`. The directory
  * is keyed by version so two side-by-side runs for the same project at
@@ -80,7 +80,7 @@ export async function generateDocs(
   const titleSuffix = project.description ?? "";
   const docTitle =
     titleSuffix.length > 0
-      ? `${project.name} ${project.version} — ${titleSuffix}`
+      ? `${project.name} ${project.version}: ${titleSuffix}`
       : `${project.name} ${project.version}`;
 
   const { warnings } = await runJavadoc(project, {
@@ -162,7 +162,7 @@ async function measureTree(root: string): Promise<{ fileCount: number; sizeBytes
           const info = await stat(full);
           sizeBytes += info.size;
         } catch {
-          // File vanished between readdir and stat — ignore.
+          // File vanished between readdir and stat; ignore.
         }
       }
     }

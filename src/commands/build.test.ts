@@ -15,6 +15,7 @@ vi.mock("../build/index.ts", () => ({
 
 import { buildProject } from "../build/index.ts";
 
+import { initLogging } from "../logging.ts";
 import { runBuildCommand, selectBuildTargets } from "./build.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
@@ -28,6 +29,7 @@ describe("runBuildCommand", () => {
     stdoutSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(buildProject).mockReset();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   afterEach(async () => {
@@ -35,6 +37,7 @@ describe("runBuildCommand", () => {
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
     vi.restoreAllMocks();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   async function writeStandalone(): Promise<void> {
@@ -160,6 +163,7 @@ describe("runBuildCommand", () => {
 
   test("--json success → single JSON object on stdout", async () => {
     await writeStandalone();
+    initLogging({ json: true });
     vi.mocked(buildProject).mockResolvedValueOnce({
       outputPath: "/tmp/out.jar",
       sizeBytes: 512,
@@ -167,7 +171,7 @@ describe("runBuildCommand", () => {
       stagingDir: "/tmp/staging",
     });
 
-    await runBuildCommand({ cwd: rootDir, json: true });
+    await runBuildCommand({ cwd: rootDir });
 
     expect(stdoutSpy).toHaveBeenCalledTimes(1);
     const printed = stdoutSpy.mock.calls[0][0] as string;
@@ -181,6 +185,7 @@ describe("runBuildCommand", () => {
 
   test("--json with partial failure → JSON on stderr, exit 1", async () => {
     await writeMultiWorkspace();
+    initLogging({ json: true });
     vi.mocked(buildProject).mockRejectedValueOnce(new Error("nope")).mockResolvedValueOnce({
       outputPath: "/tmp/impl.jar",
       sizeBytes: 1,
@@ -188,7 +193,7 @@ describe("runBuildCommand", () => {
       stagingDir: "/tmp/staging",
     });
 
-    const res = await runBuildCommand({ cwd: rootDir, json: true });
+    const res = await runBuildCommand({ cwd: rootDir });
 
     expect(res.exitCode).toBe(1);
     expect(stderrSpy).toHaveBeenCalledTimes(1);

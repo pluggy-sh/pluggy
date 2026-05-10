@@ -43,7 +43,7 @@ export async function resolveFile(
 
   if (ctx.expectedIntegrity !== undefined && integrity !== ctx.expectedIntegrity) {
     throw new Error(
-      `file: integrity check failed for "${path}" — ` +
+      `file: integrity check failed for "${path}": ` +
         `lockfile expects ${ctx.expectedIntegrity} but the file's bytes hash to ${integrity}. ` +
         `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
     );
@@ -53,7 +53,7 @@ export async function resolveFile(
   await mkdir(cacheDir, { recursive: true });
   const jarPath = join(cacheDir, `${hex}.jar`);
 
-  // linkOrCopy — cache entry stays valid even if the source later moves;
+  // linkOrCopy: cache entry stays valid even if the source later moves;
   // same hex means same bytes, so overwrite is a cheap refresh, not a hazard.
   await linkOrCopy(absSource, jarPath);
 

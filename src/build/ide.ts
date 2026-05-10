@@ -1,5 +1,5 @@
 /**
- * IDE integration — emits the Java common baseline (`.classpath` + `.project`)
+ * IDE integration. Emits the Java common baseline (`.classpath` + `.project`)
  * on every build. That's the entire surface.
  *
  * Every supported IDE consumes those files directly:

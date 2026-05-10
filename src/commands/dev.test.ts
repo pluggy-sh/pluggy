@@ -1,4 +1,4 @@
-/** Tests for src/commands/dev.ts. `runDev` is mocked — no real server spawned. */
+/** Tests for src/commands/dev.ts. `runDev` is mocked: no real server spawned. */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ vi.mock("../dev/index.ts", () => ({
 
 import { runDev } from "../dev/index.ts";
 
+import { initLogging } from "../logging.ts";
 import { runDevCommand, selectDevTarget } from "./dev.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
@@ -24,12 +25,14 @@ describe("runDevCommand", () => {
     stdoutSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.mocked(runDev).mockReset();
     vi.mocked(runDev).mockResolvedValue();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   afterEach(async () => {
     await rm(rootDir, { recursive: true, force: true });
     stdoutSpy.mockRestore();
     vi.restoreAllMocks();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   async function writeStandalone(): Promise<void> {
@@ -107,7 +110,7 @@ describe("runDevCommand", () => {
     expect(vi.mocked(runDev).mock.calls[0][1].watch).toBe(false);
   });
 
-  test("default watch (undefined) is also passed through — runDev treats !== false as watch-on", async () => {
+  test("default watch (undefined) is also passed through: runDev treats !== false as watch-on", async () => {
     await writeStandalone();
     await runDevCommand({ cwd: rootDir });
     expect(vi.mocked(runDev).mock.calls[0][1].watch).toBeUndefined();
@@ -115,7 +118,8 @@ describe("runDevCommand", () => {
 
   test("--json emits a single startup line on stdout", async () => {
     await writeStandalone();
-    await runDevCommand({ cwd: rootDir, json: true });
+    initLogging({ json: true });
+    await runDevCommand({ cwd: rootDir });
 
     const jsonCalls = stdoutSpy.mock.calls.filter((c: unknown[]) => {
       try {

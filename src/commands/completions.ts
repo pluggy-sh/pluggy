@@ -33,7 +33,7 @@ function parseShell(value: string): Shell {
 /**
  * Factory for the `pluggy completions` commander command. Takes the program
  * by reference so the `.action` can walk the live command tree at invocation
- * time — users see the same commands they'd see from `pluggy --help`.
+ * time. Users see the same commands they'd see from `pluggy --help`.
  */
 export function completionsCommand(program: Command): Command {
   return new CommanderCommand("completions")

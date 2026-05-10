@@ -26,10 +26,6 @@ Use meaningful names in examples. Placeholders like `foo` and `bar` strip the ex
 Bad: `function foo(bar) { return bar.baz; }`
 Good: `function balance(account) { return account.deposits; }`
 
-Spell out Latin abbreviations. "For example" and "that is" read more naturally than "e.g." and "i.e." and translate cleanly for non-native speakers.
-Bad: "Pass any flag (e.g., `--json`) to the command."
-Good: "Pass any flag, for example `--json`, to the command."
-
 Rarely use em-dashes. They fragment sentences and read as a tic when overused. Reach first for a period when the thought is complete, a comma when the aside is short, parentheses when it is genuinely parenthetical, or a colon when the second clause explains the first. Reserve em-dashes for the rare interruption that none of those carry.
 Bad: "Run `vp check` — it formats, lints, and type-checks — before committing."
 Good: "Run `vp check` before committing. It formats, lints, and type-checks."
@@ -66,4 +62,4 @@ Close with what's next when applicable. End how-to and tutorial pages with a sho
 Bad: a tutorial that ends with "That's it!"
 Good: a tutorial that ends with "Next steps" linking to the deployment guide.
 
-These rules together produce documentation that stays useful as the project evolves. When a doc feels hard to read, the answer is almost always one of: buried point, passive voice, hidden requirement, vague verb, abstract instead of demonstrated, placeholder-shaped example, Latin abbreviation, em-dash clutter, missing context paragraph, mismatched list, conditions after actions, inconsistent formatting, undescriptive link, stale fact, duplicated fact, or missing follow-up. Check in that order.
+These rules together produce documentation that stays useful as the project evolves. When a doc feels hard to read, the answer is almost always one of: buried point, passive voice, hidden requirement, vague verb, abstract instead of demonstrated, placeholder-shaped example, em-dash clutter, missing context paragraph, mismatched list, conditions after actions, inconsistent formatting, undescriptive link, stale fact, duplicated fact, or missing follow-up. Check in that order.

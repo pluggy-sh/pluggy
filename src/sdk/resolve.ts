@@ -2,11 +2,11 @@
  * Map a project's MC version + platform to the Java major release pluggy
  * should provision. Two sources, in order:
  *
- *   1. `project.jdk.major` — explicit user pin, highest priority.
- *   2. Spigot's per-version manifest (`getJavaRange`) — keyed by MC version,
+ *   1. `project.jdk.major`: explicit user pin, highest priority.
+ *   2. Spigot's per-version manifest (`getJavaRange`): keyed by MC version,
  *      authoritative for any platform targeting that MC version since the
  *      runtime requirement is set by the server, not the API flavor.
- *   3. Hardcoded heuristic — fallback when Spigot's hub is unreachable or
+ *   3. Hardcoded heuristic: fallback when Spigot's hub is unreachable or
  *      the version is too new/snapshot to be indexed.
  *
  * We pick the **minimum** Java in the manifest range. Compiling against a
@@ -24,7 +24,7 @@ import {
 } from "./distributions.ts";
 
 /**
- * Hardcoded floor by MC release line. Values are conservative — older JDKs
+ * Hardcoded floor by MC release line. Values are conservative; older JDKs
  * still in LTS are preferred over the absolute minimum so users get a
  * runtime with current security fixes.
  */
@@ -33,7 +33,7 @@ const MC_VERSION_TO_JAVA_FALLBACK: { prefix: string; major: number }[] = [
   { prefix: "1.21", major: 21 },
   // 1.20.5+ moved to Java 21; 1.20.0–1.20.4 is Java 17. We can't tell the
   // patch level from the prefix alone, so default the whole 1.20 line to
-  // 21 — it's a strict superset and the 1.20.4-or-earlier user can pin
+  // 21; it's a strict superset and the 1.20.4-or-earlier user can pin
   // explicitly via project.json.
   { prefix: "1.20", major: 21 },
   // 1.18, 1.19 → Java 17.
@@ -43,7 +43,7 @@ const MC_VERSION_TO_JAVA_FALLBACK: { prefix: string; major: number }[] = [
   // a no-op for users already on 1.18+.
   { prefix: "1.17", major: 17 },
   // 1.16 and earlier → Java 8 was the floor; Paper actually requires 11+ on
-  // 1.16. Pick 11 — it's still in long-term support tooling and runs the
+  // 1.16. Pick 11; it's still in long-term support tooling and runs the
   // class files Mojang ships.
   { prefix: "1.16", major: 11 },
   { prefix: "1.15", major: 8 },
@@ -61,13 +61,13 @@ export interface ProjectJdkSelection {
   major: number;
   /** Disco distribution slug, e.g. "temurin". */
   distribution: string;
-  /** Where the value came from — for diagnostic logging. */
+  /** Where the value came from; for diagnostic logging. */
   source: "project-pin" | "spigot-manifest" | "fallback-table" | "fallback-default";
 }
 
 /**
  * Resolve which JDK to install for a specific MC version of a project. Pure
- * compute — no FS or network beyond `getJavaRange`'s 5s probe (which silently
+ * compute, no FS or network beyond `getJavaRange`'s 5s probe (which silently
  * falls through to the heuristic on failure).
  *
  * `mcVersion` is taken explicitly so matrix-style callers (the test command
@@ -91,7 +91,7 @@ export async function selectJdkForVersion(
     return { major: 21, distribution, source: "fallback-default" };
   }
 
-  // Spigot's manifest is keyed by MC version, not by API flavor — it's the
+  // Spigot's manifest is keyed by MC version, not by API flavor; it's the
   // canonical answer for any platform targeting that MC version.
   const range = await getJavaRange(mcVersion);
   if (range !== undefined) {
@@ -104,7 +104,7 @@ export async function selectJdkForVersion(
     }
   }
 
-  // No prefix match — current latest LTS as the default. Better to over-install
+  // No prefix match; current latest LTS as the default. Better to over-install
   // than to refuse to build; user can pin if this is wrong.
   return { major: 21, distribution, source: "fallback-default" };
 }

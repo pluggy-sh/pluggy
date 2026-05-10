@@ -28,7 +28,7 @@ export interface StageDevOptions {
    * Whether the platform runtime expects vanilla MC server files. When
    * `true` (paper/folia/spigot/bukkit/sponge) `eula.txt` and
    * `server.properties` are written; when `false` (velocity/bungee) both
-   * are skipped — proxies don't read them.
+   * are skipped; proxies don't read them.
    */
   vanillaServerFiles: boolean;
 }

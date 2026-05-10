@@ -18,7 +18,7 @@ export interface SpawnServerOptions {
   jvmArgs: string[];
   /**
    * Args appended after `-jar <serverJar>`. Comes from the platform's
-   * `runtime.serverArgs` — `["nogui"]` for bukkit-family, `["--nogui"]`
+   * `runtime.serverArgs`. `["nogui"]` for bukkit-family, `["--nogui"]`
    * for sponge (ModLauncher), `[]` for velocity/bungee proxies.
    */
   serverArgs: string[];
@@ -50,7 +50,7 @@ export function spawnServer(opts: SpawnServerOptions): ChildProcess {
   });
 
   // Forward server output to the parent terminal. The hotswap watcher can
-  // attach additional `data` listeners — Node streams broadcast to all
+  // attach additional `data` listeners; Node streams broadcast to all
   // listeners, so taps and the forward coexist.
   child.stdout?.pipe(process.stdout, { end: false });
   child.stderr?.pipe(process.stderr, { end: false });

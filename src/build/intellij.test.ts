@@ -65,7 +65,7 @@ describe("writeIntellijStub", () => {
 
     const misc = await readFile(join(dir, ".idea", "misc.xml"), "utf8");
     expect(misc).toContain('languageLevel="JDK_21"');
-    // No `project-jdk-name` — IntelliJ prompts the user to pick one once.
+    // No `project-jdk-name`; IntelliJ prompts the user to pick one once.
     expect(misc).not.toContain("project-jdk-name");
 
     const ignore = await readFile(join(dir, ".idea", ".gitignore"), "utf8");

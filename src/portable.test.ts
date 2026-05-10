@@ -78,7 +78,7 @@ describe("linkOrCopy", () => {
     const payload = "cross-volume-fallback";
     await writeFile(source, payload);
 
-    // vi.doMock — ESM named-export bindings aren't configurable, so vi.spyOn
+    // vi.doMock: ESM named-export bindings aren't configurable, so vi.spyOn
     // fails on node:fs/promises. Dynamic re-import stubs `link` with EXDEV
     // while leaving `copyFile` real.
     vi.resetModules();
@@ -312,7 +312,7 @@ describe("installShutdownHandler", () => {
     const elapsed = Date.now() - start;
 
     // Unix surfaces this as signal=SIGTERM; on Windows signal may be null and
-    // code varies — either channel counts as evidence kill() fired.
+    // code varies; either channel counts as evidence kill() fired.
     const wasKilled = result.signal !== null || result.code !== 0;
     expect(wasKilled).toBe(true);
     expect(elapsed).toBeGreaterThanOrEqual(250);

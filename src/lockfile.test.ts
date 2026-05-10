@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 
-import { type Lockfile, readLock, verifyLock, writeLock } from "./lockfile.ts";
+import { type Lockfile, pulledInBy, readLock, verifyLock, writeLock } from "./lockfile.ts";
 
 describe("lockfile I/O", () => {
   let rootDir: string;
@@ -25,7 +25,7 @@ describe("lockfile I/O", () => {
 
   test("writeLock then readLock round-trips", async () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         worldedit: {
           source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -41,7 +41,7 @@ describe("lockfile I/O", () => {
   });
 
   test("lockfile is valid JSON on disk", async () => {
-    const lock: Lockfile = { version: 1, entries: {} };
+    const lock: Lockfile = { version: 2, entries: {} };
     await writeLock(rootDir, lock);
     const raw = await readFile(join(rootDir, "pluggy.lock"), "utf8");
     expect(() => JSON.parse(raw)).not.toThrow();
@@ -49,7 +49,7 @@ describe("lockfile I/O", () => {
 
   test("writeLock emits 2-space-indented JSON with trailing LF", async () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         worldedit: {
           source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -69,7 +69,7 @@ describe("lockfile I/O", () => {
 
   test("writeLock sorts entries alphabetically regardless of input order", async () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         zzz: {
           source: { kind: "modrinth", slug: "zzz", version: "1.0.0" },
@@ -102,7 +102,7 @@ describe("lockfile I/O", () => {
   });
 
   test("writeLock leaves no temp files behind on the happy path", async () => {
-    const lock: Lockfile = { version: 1, entries: {} };
+    const lock: Lockfile = { version: 2, entries: {} };
     await writeLock(rootDir, lock);
     const files = await readdir(rootDir);
     expect(files).toEqual(["pluggy.lock"]);
@@ -117,16 +117,16 @@ describe("lockfile I/O", () => {
   test("readLock throws on an unsupported version field", async () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
-      JSON.stringify({ version: 2, entries: {} }),
+      JSON.stringify({ version: 1, entries: {} }),
       "utf8",
     );
-    expect(() => readLock(rootDir)).toThrow(/Unsupported lockfile version: 2/);
+    expect(() => readLock(rootDir)).toThrow(/Unsupported lockfile version: 1/);
   });
 
   test("readLock throws when entries is not an object", async () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
-      JSON.stringify({ version: 1, entries: [] }),
+      JSON.stringify({ version: 2, entries: [] }),
       "utf8",
     );
     expect(() => readLock(rootDir)).toThrow(/"entries" must be an object/);
@@ -136,7 +136,7 @@ describe("lockfile I/O", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           worldedit: {
             source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -151,9 +151,9 @@ describe("lockfile I/O", () => {
     expect(() => readLock(rootDir)).toThrow(/integrity/);
   });
 
-  test("writeLock then readLock round-trips a nested transitives tree", async () => {
+  test("writeLock then readLock round-trips a flat transitives graph", async () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         "paper-api": {
           source: {
@@ -165,40 +165,41 @@ describe("lockfile I/O", () => {
           resolvedVersion: "1.21.8-R0.1-SNAPSHOT",
           integrity: "sha256-paper",
           declaredBy: ["my-plugin"],
-          transitives: [
-            {
-              source: {
-                kind: "maven",
-                groupId: "net.kyori",
-                artifactId: "adventure-api",
-                version: "4.14.0",
-              },
-              resolvedVersion: "4.14.0",
-              integrity: "sha256-adv",
-              transitives: [
-                {
-                  source: {
-                    kind: "maven",
-                    groupId: "net.kyori",
-                    artifactId: "examination-api",
-                    version: "1.3.0",
-                  },
-                  resolvedVersion: "1.3.0",
-                  integrity: "sha256-exam",
-                },
-              ],
-            },
-            {
-              source: {
-                kind: "maven",
-                groupId: "com.google.guava",
-                artifactId: "guava",
-                version: "32.1.2",
-              },
-              resolvedVersion: "32.1.2",
-              integrity: "sha256-guava",
-            },
-          ],
+          transitives: ["net.kyori:adventure-api", "com.google.guava:guava"],
+        },
+        "net.kyori:adventure-api": {
+          source: {
+            kind: "maven",
+            groupId: "net.kyori",
+            artifactId: "adventure-api",
+            version: "4.14.0",
+          },
+          resolvedVersion: "4.14.0",
+          integrity: "sha256-adv",
+          declaredBy: [],
+          transitives: ["net.kyori:examination-api"],
+        },
+        "net.kyori:examination-api": {
+          source: {
+            kind: "maven",
+            groupId: "net.kyori",
+            artifactId: "examination-api",
+            version: "1.3.0",
+          },
+          resolvedVersion: "1.3.0",
+          integrity: "sha256-exam",
+          declaredBy: [],
+        },
+        "com.google.guava:guava": {
+          source: {
+            kind: "maven",
+            groupId: "com.google.guava",
+            artifactId: "guava",
+            version: "32.1.2",
+          },
+          resolvedVersion: "32.1.2",
+          integrity: "sha256-guava",
+          declaredBy: [],
         },
       },
     };
@@ -207,37 +208,11 @@ describe("lockfile I/O", () => {
     expect(read).toEqual(lock);
   });
 
-  test("readLock rejects a transitives entry missing its source", async () => {
-    await writeFile(
-      join(rootDir, "pluggy.lock"),
-      JSON.stringify({
-        version: 1,
-        entries: {
-          "paper-api": {
-            source: {
-              kind: "maven",
-              groupId: "io.papermc.paper",
-              artifactId: "paper-api",
-              version: "1.21.8",
-            },
-            resolvedVersion: "1.21.8",
-            integrity: "sha256-paper",
-            declaredBy: ["my-plugin"],
-            transitives: [{ resolvedVersion: "1.2.3", integrity: "sha256-x" }],
-          },
-        },
-      }),
-      "utf8",
-    );
-    expect(() => readLock(rootDir)).toThrow(/transitives\[0\]/);
-    expect(() => readLock(rootDir)).toThrow(/missing "source"/);
-  });
-
   test("readLock rejects a non-array transitives field", async () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           foo: {
             source: { kind: "modrinth", slug: "foo", version: "1.0.0" },
@@ -253,11 +228,31 @@ describe("lockfile I/O", () => {
     expect(() => readLock(rootDir)).toThrow(/"transitives" must be an array/);
   });
 
+  test("readLock rejects a transitives array with non-string entries", async () => {
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 2,
+        entries: {
+          foo: {
+            source: { kind: "modrinth", slug: "foo", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-a",
+            declaredBy: ["root"],
+            transitives: [{ name: "bar" }],
+          },
+        },
+      }),
+      "utf8",
+    );
+    expect(() => readLock(rootDir)).toThrow(/"transitives" must be an array of strings/);
+  });
+
   test("readLock rejects an unknown source kind", async () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           bogus: {
             source: { kind: "github", repo: "foo/bar", version: "1.0.0" },
@@ -275,7 +270,7 @@ describe("lockfile I/O", () => {
 
 describe("verifyLock", () => {
   test("reports declared deps that are missing from the lock", () => {
-    const lock: Lockfile = { version: 1, entries: {} };
+    const lock: Lockfile = { version: 2, entries: {} };
     const missing = verifyLock(lock, {
       worldedit: { source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" } },
     });
@@ -284,7 +279,7 @@ describe("verifyLock", () => {
 
   test("returns empty when every declared dep is locked", () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         worldedit: {
           source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -302,7 +297,7 @@ describe("verifyLock", () => {
 
   test("reports stale entries when the source kind has drifted", () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         foo: {
           source: {
@@ -325,7 +320,7 @@ describe("verifyLock", () => {
 
   test("reports stale entries when only the version has drifted", () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         worldedit: {
           source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -343,7 +338,7 @@ describe("verifyLock", () => {
 
   test("ignores extra lockfile entries that aren't declared (orphans are not stale)", () => {
     const lock: Lockfile = {
-      version: 1,
+      version: 2,
       entries: {
         worldedit: {
           source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -363,5 +358,55 @@ describe("verifyLock", () => {
       worldedit: { source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" } },
     });
     expect(drift).toEqual([]);
+  });
+});
+
+describe("pulledInBy", () => {
+  test("maps every entry to its parent set", () => {
+    const lock: Lockfile = {
+      version: 2,
+      entries: {
+        a: {
+          source: { kind: "modrinth", slug: "a", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-a",
+          declaredBy: ["root"],
+          transitives: ["b", "c"],
+        },
+        b: {
+          source: { kind: "modrinth", slug: "b", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-b",
+          declaredBy: [],
+          transitives: ["c"],
+        },
+        c: {
+          source: { kind: "modrinth", slug: "c", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-c",
+          declaredBy: [],
+        },
+      },
+    };
+    const reverse = pulledInBy(lock);
+    expect(reverse.a).toEqual([]);
+    expect(reverse.b.sort()).toEqual(["a"]);
+    expect(reverse.c.sort()).toEqual(["a", "b"]);
+  });
+
+  test("returns empty arrays for entries that nothing pulls in", () => {
+    const lock: Lockfile = {
+      version: 2,
+      entries: {
+        only: {
+          source: { kind: "modrinth", slug: "only", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-x",
+          declaredBy: ["root"],
+        },
+      },
+    };
+    const reverse = pulledInBy(lock);
+    expect(reverse.only).toEqual([]);
   });
 });

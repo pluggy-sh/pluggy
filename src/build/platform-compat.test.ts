@@ -7,9 +7,9 @@
  *
  * Three fixtures cover the interesting cases:
  *
- *   basic-plugin      — only Bukkit API         → paper ✔  spigot ✔
- *   paper-plugin      — uses Paper-specific API  → paper ✔  spigot ✖
- *   reflection-plugin — reaches Paper via        → paper ✔  spigot ✔
+ *   basic-plugin      : only Bukkit API         → paper ✔  spigot ✔
+ *   paper-plugin      : uses Paper-specific API  → paper ✔  spigot ✖
+ *   reflection-plugin : reaches Paper via        → paper ✔  spigot ✔
  *                       Class.forName (no import)
  */
 
@@ -54,7 +54,7 @@ public class PaperPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onChat(AsyncChatEvent event) {
-        // Paper-specific event — not available in spigot-api
+        // Paper-specific event, not available in spigot-api
     }
 }
 `.trimStart();
@@ -107,7 +107,7 @@ async function makeFixture(
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("checkPlatformCompile — basic plugin (Bukkit-only API)", { timeout: 120_000 }, () => {
+describe("checkPlatformCompile: basic plugin (Bukkit-only API)", { timeout: 120_000 }, () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -128,7 +128,7 @@ describe("checkPlatformCompile — basic plugin (Bukkit-only API)", { timeout: 1
   });
 });
 
-describe("checkPlatformCompile — paper plugin (Paper-specific API)", { timeout: 120_000 }, () => {
+describe("checkPlatformCompile: paper plugin (Paper-specific API)", { timeout: 120_000 }, () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -149,29 +149,23 @@ describe("checkPlatformCompile — paper plugin (Paper-specific API)", { timeout
   });
 });
 
-describe(
-  "checkPlatformCompile — reflection plugin (runtime-agnostic)",
-  { timeout: 120_000 },
-  () => {
-    let dir: string;
+describe("checkPlatformCompile: reflection plugin (runtime-agnostic)", { timeout: 120_000 }, () => {
+  let dir: string;
 
-    beforeEach(async () => {
-      dir = await mkdtemp(join(tmpdir(), "pluggy-compat-reflect-"));
-    });
-    afterEach(async () => {
-      await rm(dir, { recursive: true, force: true });
-    });
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "pluggy-compat-reflect-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
 
-    test("compiles against paper", async () => {
-      const project = await makeFixture(dir, REFLECTION_PLUGIN_JAVA, "ReflectionPlugin", ["paper"]);
-      await expect(checkPlatformCompile(project, "paper")).resolves.toBeUndefined();
-    });
+  test("compiles against paper", async () => {
+    const project = await makeFixture(dir, REFLECTION_PLUGIN_JAVA, "ReflectionPlugin", ["paper"]);
+    await expect(checkPlatformCompile(project, "paper")).resolves.toBeUndefined();
+  });
 
-    test("compiles against spigot (no hard import — reflection only)", async () => {
-      const project = await makeFixture(dir, REFLECTION_PLUGIN_JAVA, "ReflectionPlugin", [
-        "spigot",
-      ]);
-      await expect(checkPlatformCompile(project, "spigot")).resolves.toBeUndefined();
-    });
-  },
-);
+  test("compiles against spigot (no hard import; reflection only)", async () => {
+    const project = await makeFixture(dir, REFLECTION_PLUGIN_JAVA, "ReflectionPlugin", ["spigot"]);
+    await expect(checkPlatformCompile(project, "spigot")).resolves.toBeUndefined();
+  });
+});

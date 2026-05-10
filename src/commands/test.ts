@@ -3,8 +3,8 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { runTests, type TestRunOutcome } from "../test/index.ts";
-import { bold, dim, green, log, red, yellow } from "../logging.ts";
-import { assertSamePlatformFamily } from "../platform/index.ts";
+import { bold, dim, emit, emitErr, green, log, red, yellow } from "../logging.ts";
+import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import type { TestCase } from "../test/runner.ts";
 import {
@@ -20,7 +20,6 @@ export interface TestCommandOptions {
   clean?: boolean;
   workspace?: string;
   workspaces?: boolean;
-  json?: boolean;
   cwd?: string;
   /** Narrow the matrix to one or more MC versions. Empty = no filter. */
   mcVersions?: string[];
@@ -80,7 +79,7 @@ export interface TestCommandResult {
 /**
  * Run `pluggy test` across the resolved target set.
  *
- * Each project expands into a matrix of `(mcVersion × platformId)` cells —
+ * Each project expands into a matrix of `(mcVersion × platformId)` cells:
  * every entry of `compatibility.versions` paired with every entry of
  * `compatibility.platforms`. All platforms must share one family (bukkit,
  * velocity, bungee); mixing families fails matrix expansion before any
@@ -90,14 +89,14 @@ export interface TestCommandResult {
  * Compile errors and launcher failures rethrow only when there is exactly
  * one cell across the entire run so the top-level handler formats them;
  * otherwise the error is captured into the per-cell result and the next
- * cell continues. Test *failures* (asserts) never throw — they surface
+ * cell continues. Test *failures* (asserts) never throw; they surface
  * via `ok: false` + `failures[]` on the cell.
  */
 export async function runTestCommand(opts: TestCommandOptions): Promise<TestCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found — run this from inside a project directory.");
+    throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
 
   const targets = selectTestTargets(context, opts);
@@ -141,9 +140,7 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
         cells: [],
         error: error.message,
       });
-      if (opts.json !== true) {
-        log.error(`${label}: ${error.message}`);
-      }
+      log.error(`${label}: ${error.message}`);
       if (targets.length === 1) {
         throw error.original;
       }
@@ -151,11 +148,11 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
     }
 
     if (cells.length === 0) {
-      // Matrix filters excluded everything — surface a clear error rather
+      // Matrix filters excluded everything: surface a clear error rather
       // than silently passing.
       anyFailed = true;
       const message =
-        "no matrix cells matched — check --mc-version / --platform against compatibility.";
+        "no matrix cells matched. Check --mc-version / --platform against compatibility.";
       results.push({
         workspace: label,
         rootDir,
@@ -164,15 +161,13 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
         cells: [],
         error: message,
       });
-      if (opts.json !== true) log.error(`${label}: ${message}`);
+      log.error(`${label}: ${message}`);
       continue;
     }
 
-    if (opts.json !== true) {
-      log.info(
-        `${bold("test")} ${label} ${dim(`(${cells.length} cell${cells.length === 1 ? "" : "s"})`)}`,
-      );
-    }
+    log.info(
+      `${bold("test")} ${label} ${dim(`(${cells.length} cell${cells.length === 1 ? "" : "s"})`)}`,
+    );
 
     const cellResults: TestCellResult[] = [];
     let workspaceOk = true;
@@ -181,9 +176,7 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
       const cellLabel = formatCellLabel(cell);
       const cellStarted = Date.now();
 
-      if (opts.json !== true) {
-        log.info(`  ${dim("→")} ${cellLabel}`);
-      }
+      log.info(`  ${dim("→")} ${cellLabel}`);
 
       try {
         const outcome: TestRunOutcome = await runTests(project, {
@@ -202,15 +195,13 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
             durationMs: outcome.durationMs,
             skipped: outcome.reason,
           });
-          if (opts.json !== true) {
-            const msg =
-              outcome.reason === "no-test-dir"
-                ? `no test/ directory — nothing to run`
-                : `test/ contains no .java sources`;
-            log.warn(`    ${msg}`);
-          }
+          log.warn(
+            outcome.reason === "no-test-dir"
+              ? `    no test/ directory; nothing to run`
+              : `    test/ contains no .java sources`,
+          );
           // No-tests is the same across every cell (it's a workspace fact),
-          // so once we see it we can break out — re-running the matrix would
+          // so once we see it we can break out: re-running the matrix would
           // produce identical output.
           break;
         }
@@ -247,12 +238,10 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
           failures: failures.length > 0 ? failures : undefined,
         });
 
-        if (opts.json !== true) {
-          renderHumanResult(result.cases, result);
-        }
+        renderHumanResult(result.cases, result);
 
         if (!ok && opts.failFast === true) {
-          // Stop the whole run — the user asked to bail on first failure.
+          // Stop the whole run: the user asked to bail on first failure.
           anyFailed = true;
           stopAfterWorkspace = true;
           break;
@@ -268,9 +257,7 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
           durationMs: Date.now() - cellStarted,
           error: message,
         });
-        if (opts.json !== true) {
-          log.error(`    ${message}`);
-        }
+        log.error(`    ${message}`);
         if (totalCellCount === 1) {
           throw err;
         }
@@ -299,22 +286,17 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
   const exitCode: 0 | 1 = anyFailed ? 1 : 0;
   const status: TestCommandResult["status"] = anyFailed ? "partial" : "success";
 
-  if (opts.json === true) {
-    const payload = {
-      status: anyFailed ? "error" : "success",
-      results,
-    };
-    if (anyFailed) {
-      console.error(JSON.stringify(payload, null, 2));
-    } else {
-      console.log(JSON.stringify(payload, null, 2));
-    }
-  } else if (results.length > 1 || (results[0]?.cells.length ?? 0) > 1) {
+  const payload = {
+    status: anyFailed ? "error" : "success",
+    results,
+  };
+  const printSummary = (): void => {
+    if (results.length <= 1 && (results[0]?.cells.length ?? 0) <= 1) return;
     log.info("");
     log.info(bold("summary"));
     for (const r of results) {
       if (r.error !== undefined) {
-        log.info(`  ${r.workspace}: FAILED — ${r.error}`);
+        log.info(`  ${r.workspace}: FAILED: ${r.error}`);
         continue;
       }
       for (const cell of r.cells) {
@@ -322,7 +304,9 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
         log.info(`  ${r.workspace} ${dim(cellLabel)}: ${summaryLine(cell)}`);
       }
     }
-  }
+  };
+  if (anyFailed) emitErr(payload, printSummary);
+  else emit(payload, printSummary);
 
   return { status, exitCode, results };
 }
@@ -341,11 +325,11 @@ interface MatrixCell {
  */
 export function buildMatrix(project: ResolvedProject, opts: TestCommandOptions): MatrixCell[] {
   const versions = project.compatibility?.versions ?? [];
-  const platforms = project.compatibility?.platforms ?? [];
+  const declaredPlatforms = project.compatibility?.platforms ?? [];
 
-  if (platforms.length > 0) {
-    // Throws if platforms come from more than one family — caller catches.
-    assertSamePlatformFamily(platforms);
+  if (declaredPlatforms.length > 0) {
+    // Throws if platforms come from more than one family; caller catches.
+    platforms.assertSameFamily(declaredPlatforms);
   }
 
   const versionFilter = opts.mcVersions ?? [];
@@ -362,19 +346,19 @@ export function buildMatrix(project: ResolvedProject, opts: TestCommandOptions):
   }
   if (platformFilter.length > 0) {
     for (const p of platformFilter) {
-      if (!platforms.includes(p)) {
+      if (!declaredPlatforms.includes(p)) {
         throw new InvalidArgumentError(
-          `--platform "${p}" is not declared in compatibility.platforms (${platforms.join(", ") || "empty"}).`,
+          `--platform "${p}" is not declared in compatibility.platforms (${declaredPlatforms.join(", ") || "empty"}).`,
         );
       }
     }
   }
 
   const usedVersions = versionFilter.length > 0 ? versionFilter : versions;
-  const usedPlatforms = platformFilter.length > 0 ? platformFilter : platforms;
+  const usedPlatforms = platformFilter.length > 0 ? platformFilter : declaredPlatforms;
 
   // If a project has no compatibility entries at all, emit a single "default"
-  // cell — preserves the prior behaviour of testing whatever the project is
+  // cell. Preserves the prior behaviour of testing whatever the project is
   // shaped like (compile-only suites without a platform classpath still work).
   if (usedVersions.length === 0 && usedPlatforms.length === 0) {
     return [{}];
@@ -397,7 +381,7 @@ export function buildMatrix(project: ResolvedProject, opts: TestCommandOptions):
 
 /**
  * Pick the workspaces `pluggy test` should cover. Mirrors `selectBuildTargets`
- * exactly — root with workspaces → all in topo order, `--workspace` narrows,
+ * exactly: root with workspaces → all in topo order, `--workspace` narrows,
  * inside a workspace → just that one.
  */
 export function selectTestTargets(
@@ -454,7 +438,7 @@ interface CellRollup {
  * Aggregate cell results into workspace-level rollup fields. Tests counts
  * sum across cells; failures gain `mcVersion` / `platformId` tags so the
  * caller can tell which cell each failure came from. `skipped` is only
- * surfaced when *every* cell reported the same reason — a per-cell
+ * surfaced when *every* cell reported the same reason; a per-cell
  * skip otherwise belongs in `cells[i].skipped`. `error` collects every
  * cell's error message into a single newline-joined blob (with cell
  * coordinates prefixed) so simple consumers don't have to walk `cells`.
@@ -512,7 +496,7 @@ function formatCellLabel(cell: MatrixCell): string {
 }
 
 function summaryLine(cell: TestCellResult): string {
-  if (cell.error !== undefined) return `FAILED — ${cell.error}`;
+  if (cell.error !== undefined) return `FAILED: ${cell.error}`;
   if (cell.skipped === "no-test-dir") return "no test/ directory";
   if (cell.skipped === "no-sources") return "no .java sources in test/";
   const t = cell.tests;
@@ -594,7 +578,6 @@ export function testCommand(): Command {
       parseList,
     )
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals();
       const result = await runTestCommand({
         filter: options.filter,
         failFast: options.failFast === true,
@@ -603,7 +586,6 @@ export function testCommand(): Command {
         workspaces: options.workspaces === true,
         mcVersions: options.mcVersion,
         platforms: options.platform,
-        json: globalOpts.json === true,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

@@ -31,7 +31,7 @@ async function makeJar(path: string, entries: Record<string, Buffer | string>): 
 
 /**
  * Build a stored (uncompressed) zip from `entries` without any path-safety
- * validation — yazl deliberately rejects `..` and absolute paths, so we
+ * validation: yazl deliberately rejects `..` and absolute paths, so we
  * can't use it for zip-slip fixtures. Layout: per-entry local headers, then
  * central directory, then EOCD record.
  */

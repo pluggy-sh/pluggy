@@ -1,5 +1,5 @@
 /**
- * `pluggy sdk` — the JDK *toolchain* surface. For cross-cutting cache
+ * `pluggy sdk`: the JDK *toolchain* surface. For cross-cutting cache
  * housekeeping (LRU eviction, total size, cleaning everything) see
  * `pluggy cache prune` / `cache info` / `cache clean --category jdk`.
  *
@@ -13,7 +13,7 @@
  *   remove <major>            Delete a cached JDK.
  *
  * `--distribution` is an opt-in override; defaults to Temurin. Only the
- * curated allowlist is accepted — see `ALLOWED_DISTRIBUTIONS`. Adding
+ * curated allowlist is accepted (see `ALLOWED_DISTRIBUTIONS`). Adding
  * distributions later is non-breaking; narrowing isn't.
  */
 
@@ -29,7 +29,7 @@ import {
   type Project,
   type ResolvedProject,
 } from "../project.ts";
-import { bold, dim, green, log, red } from "../logging.ts";
+import { bold, dim, emit, emitErr, green, log, red } from "../logging.ts";
 
 import { ensureJdk, getCachedJdk, listInstalled, removeJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
@@ -40,7 +40,6 @@ import {
 } from "../sdk/distributions.ts";
 
 interface SdkGlobalOpts {
-  json?: boolean;
   project?: string;
 }
 
@@ -78,11 +77,11 @@ function installSubcommand(): Command {
         await removeJdk(major, distribution);
       }
 
-      // Explicit installs always write to the cache — never accept JAVA_HOME.
+      // Explicit installs always write to the cache; never accept JAVA_HOME.
       const resolved = await ensureJdk(major, { distribution, ignoreSystemJava: true });
 
-      if (globalOpts.json === true) {
-        emitJson({
+      emit(
+        {
           status: "success",
           action: "install",
           major: resolved.major,
@@ -90,16 +89,19 @@ function installSubcommand(): Command {
           source: resolved.source,
           javaHome: resolved.javaHome,
           javaPath: resolved.javaPath,
-        });
-        return;
-      }
-      if (resolved.source === "cache") {
-        log.info(
-          `${bold("sdk")} ${distribution} ${major} already installed at ${resolved.javaHome}`,
-        );
-      } else {
-        log.success(`${bold("sdk")} installed ${distribution} ${major} at ${resolved.javaHome}`);
-      }
+        },
+        () => {
+          if (resolved.source === "cache") {
+            log.info(
+              `${bold("sdk")} ${distribution} ${major} already installed at ${resolved.javaHome}`,
+            );
+          } else {
+            log.success(
+              `${bold("sdk")} installed ${distribution} ${major} at ${resolved.javaHome}`,
+            );
+          }
+        },
+      );
     });
 }
 
@@ -113,35 +115,29 @@ function listSubcommand(): Command {
     .description("Show cached JDKs.")
     .option("--available", "Show distributions pluggy will install.")
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
-
       if (options.available === true) {
-        if (globalOpts.json === true) {
-          emitJson({ status: "success", available: ALLOWED_DISTRIBUTIONS });
-          return;
-        }
-        log.info(bold("Distributions pluggy can install:"));
-        for (const d of ALLOWED_DISTRIBUTIONS) log.info(`  ${d}`);
+        emit({ status: "success", available: ALLOWED_DISTRIBUTIONS }, () => {
+          log.info(bold("Distributions pluggy can install:"));
+          for (const d of ALLOWED_DISTRIBUTIONS) log.info(`  ${d}`);
+        });
         return;
       }
 
       const installed = await listInstalled();
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", installed });
-        return;
-      }
-      if (installed.length === 0) {
-        log.info("No cached JDKs. Run `pluggy sdk install <major>` to install one.");
-        return;
-      }
-      log.info(bold("Cached JDKs:"));
-      for (const e of installed) {
-        const status = e.present ? green("✓") : red("✗");
-        const used = formatRelative(e.lastUsed);
-        log.info(
-          `  ${status} ${e.distribution} ${e.major}  ${dim(`(${e.fullVersion})`)}  ${dim(`last used ${used}`)}`,
-        );
-      }
+      emit({ status: "success", installed }, () => {
+        if (installed.length === 0) {
+          log.info("No cached JDKs. Run `pluggy sdk install <major>` to install one.");
+          return;
+        }
+        log.info(bold("Cached JDKs:"));
+        for (const e of installed) {
+          const status = e.present ? green("✓") : red("✗");
+          const used = formatRelative(e.lastUsed);
+          log.info(
+            `  ${status} ${e.distribution} ${e.major}  ${dim(`(${e.fullVersion})`)}  ${dim(`last used ${used}`)}`,
+          );
+        }
+      });
     });
 }
 
@@ -155,40 +151,38 @@ function pathSubcommand(): Command {
     .argument("<major>", "Java major release.")
     .option("--distribution <name>", "JDK distribution.", parseDistribution, "temurin")
     .action(async function action(this: Command, majorArg: string, options) {
-      const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
       const major = parseMajor(majorArg);
       const distribution = options.distribution as AllowedDistribution;
 
       const cached = getCachedJdk(major, distribution);
       if (cached === undefined) {
-        if (globalOpts.json === true) {
-          emitJson(
-            {
-              status: "error",
-              message: `${distribution} ${major} not installed`,
-              exitCode: 1,
-            },
-            "stderr",
-          );
-        } else {
-          log.error(
-            `${distribution} ${major} is not installed. Run: pluggy sdk install ${major}${distribution === "temurin" ? "" : ` --distribution ${distribution}`}`,
-          );
-        }
+        emitErr(
+          {
+            status: "error",
+            message: `${distribution} ${major} not installed`,
+            exitCode: 1,
+          },
+          () => {
+            log.error(
+              `${distribution} ${major} is not installed. Run: pluggy sdk install ${major}${distribution === "temurin" ? "" : ` --distribution ${distribution}`}`,
+            );
+          },
+        );
         process.exit(1);
       }
 
-      if (globalOpts.json === true) {
-        emitJson({
+      emit(
+        {
           status: "success",
           major: cached.major,
           distribution: cached.distribution,
           javaHome: cached.javaHome,
           javaPath: cached.javaPath,
-        });
-      } else {
-        process.stdout.write(`${cached.javaHome}\n`);
-      }
+        },
+        () => {
+          process.stdout.write(`${cached.javaHome}\n`);
+        },
+      );
     });
 }
 
@@ -218,13 +212,11 @@ function useSubcommand(): Command {
       };
       await writeFileLF(path, `${JSON.stringify(parsed, null, 2)}\n`);
 
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", action: "use", major, distribution, projectFile: path });
-        return;
-      }
-      log.success(
-        `Pinned Java ${major}${distribution !== undefined ? ` (${distribution})` : ""} in ${path}`,
-      );
+      emit({ status: "success", action: "use", major, distribution, projectFile: path }, () => {
+        log.success(
+          `Pinned Java ${major}${distribution !== undefined ? ` (${distribution})` : ""} in ${path}`,
+        );
+      });
     });
 }
 
@@ -239,21 +231,18 @@ function removeSubcommand(): Command {
     .argument("<major>", "Java major release.")
     .option("--distribution <name>", "JDK distribution.", parseDistribution, "temurin")
     .action(async function action(this: Command, majorArg: string, options) {
-      const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
       const major = parseMajor(majorArg);
       const distribution = options.distribution as AllowedDistribution;
 
       const removed = await removeJdk(major, distribution);
 
-      if (globalOpts.json === true) {
-        emitJson({ status: "success", action: "remove", removed, major, distribution });
-        return;
-      }
-      if (removed) {
-        log.success(`Removed ${distribution} ${major}`);
-      } else {
-        log.warn(`${distribution} ${major} was not installed`);
-      }
+      emit({ status: "success", action: "remove", removed, major, distribution }, () => {
+        if (removed) {
+          log.success(`Removed ${distribution} ${major}`);
+        } else {
+          log.warn(`${distribution} ${major} was not installed`);
+        }
+      });
     });
 }
 
@@ -274,7 +263,7 @@ function loadProject(globalOpts: SdkGlobalOpts): ResolvedProject {
     globalOpts.project !== undefined ? resolveProjectFile(globalOpts.project) : undefined;
   const project = fromFile ?? getCurrentProject();
   if (project === undefined) {
-    throw new Error("sdk: no project.json found — run from inside a pluggy project");
+    throw new Error("sdk: no project.json found. Run from inside a pluggy project");
   }
   return project;
 }
@@ -283,11 +272,6 @@ async function majorFromProject(globalOpts: SdkGlobalOpts): Promise<number> {
   const project = loadProject(globalOpts);
   const selection = await selectJdkForProject(project);
   return selection.major;
-}
-
-function emitJson(payload: unknown, target: "stdout" | "stderr" = "stdout"): void {
-  const stream = target === "stderr" ? process.stderr : process.stdout;
-  stream.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function formatRelative(epochMs: number): string {

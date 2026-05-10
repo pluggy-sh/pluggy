@@ -1,5 +1,5 @@
 /**
- * Unit tests for pure helpers in `src/test/runner.ts`. No I/O — every
+ * Unit tests for pure helpers in `src/test/runner.ts`. No I/O; every
  * behavior here is input-output only.
  */
 

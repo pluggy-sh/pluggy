@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
+import { UserError } from "./errors.ts";
+
 /** Parsed `project.json`. */
 export interface Project {
   name: string;
@@ -70,7 +72,7 @@ export interface DevConfig {
   serverProperties?: Record<string, string | number | boolean>;
   extraPlugins?: string[];
   /**
-   * Hotswapping is on by default — pluggy provisions JetBrains Runtime and
+   * Hotswapping is on by default. Pluggy provisions JetBrains Runtime and
    * HotswapAgent into the user cache and reloads classes in-place on every
    * rebuild. Set to `false` to fall back to plain restart-on-change.
    */
@@ -91,9 +93,9 @@ export interface HotswapConfig {
  * Windows: `%LOCALAPPDATA%/pluggy/cache`.
  * Linux/other: `$XDG_CACHE_HOME/pluggy` (defaulting to `~/.cache/pluggy`).
  *
- * Cache contents are *reproducible* — wiping this directory only forces
- * re-downloads. State that must survive `pluggy cache clean` (e.g. the
- * update-check timestamp) belongs under `getStatePath` instead.
+ * Cache contents are *reproducible*: wiping this directory only forces
+ * re-downloads. State that must survive `pluggy cache clean` (e.g.
+ * the update-check timestamp) belongs under `getStatePath` instead.
  */
 export function getCachePath(): string {
   const home = homedir();
@@ -165,4 +167,59 @@ export function resolveProjectFile(path: string): ResolvedProject | undefined {
 export function getCurrentProject(cwd?: string): ResolvedProject | undefined {
   const path = cwd || process.cwd();
   return resolveProject(path);
+}
+
+/**
+ * Primary platform for a project. Plugin commands that act on a single
+ * platform (`dev`, `build`'s main jar) use this; the rest of
+ * `compatibility.platforms` are extra compile-check targets.
+ *
+ * Throws `UserError` when `compatibility.platforms` is empty or missing.
+ * The schema doesn't enforce non-empty; this helper is the single
+ * runtime gate.
+ */
+export function primaryPlatform(project: Project): string {
+  const list = project.compatibility?.platforms ?? [];
+  if (list.length === 0) {
+    const projectFile = (project as Partial<ResolvedProject>).projectFile;
+    throw new UserError(
+      `project "${project.name}" has no compatibility.platforms. Declare at least one platform.`,
+      {
+        code: "E_PROJECT_NO_PLATFORMS",
+        hint: 'Add at least one platform to "compatibility.platforms" in project.json.',
+        source:
+          projectFile !== undefined
+            ? { file: projectFile, pointer: "/compatibility/platforms" }
+            : undefined,
+      },
+    );
+  }
+  return list[0];
+}
+
+/**
+ * Primary Minecraft version for a project. Used wherever pluggy needs a
+ * single MC version (dev server boot, BuildTools invocation, JDK
+ * targeting). Other entries in `compatibility.versions` are the supported
+ * range; index 0 is canonical.
+ *
+ * Throws `UserError` when `compatibility.versions` is empty or missing.
+ */
+export function primaryVersion(project: Project): string {
+  const list = project.compatibility?.versions ?? [];
+  if (list.length === 0) {
+    const projectFile = (project as Partial<ResolvedProject>).projectFile;
+    throw new UserError(
+      `project "${project.name}" has no compatibility.versions. Declare at least one Minecraft version.`,
+      {
+        code: "E_PROJECT_NO_VERSIONS",
+        hint: 'Add at least one Minecraft version to "compatibility.versions" in project.json.',
+        source:
+          projectFile !== undefined
+            ? { file: projectFile, pointer: "/compatibility/versions" }
+            : undefined,
+      },
+    );
+  }
+  return list[0];
 }

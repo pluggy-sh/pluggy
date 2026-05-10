@@ -11,7 +11,7 @@ import type { PlatformContext } from "../platform.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// Compile runs java against a live Spigot checkout — needs Java 8-21, takes
+// Compile runs java against a live Spigot checkout: needs Java 8-21, takes
 // minutes. Gated behind PLUGGY_INTEGRATION=1.
 const integration = process.env.PLUGGY_INTEGRATION === "1";
 

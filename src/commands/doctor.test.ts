@@ -14,6 +14,7 @@ import type { ResolvedProject } from "../project.ts";
 import yazl from "yazl";
 import { createWriteStream } from "node:fs";
 
+import { initLogging } from "../logging.ts";
 import {
   checkDependencyJars,
   checkDescriptors,
@@ -55,6 +56,7 @@ describe("runDoctorCommand", () => {
     rootDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-"));
     stdoutSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    initLogging({ json: false, verbose: false, noColor: true });
     await writeFile(
       join(rootDir, "project.json"),
       JSON.stringify({
@@ -71,6 +73,7 @@ describe("runDoctorCommand", () => {
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
     vi.restoreAllMocks();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   test("all checks pass → exitCode 0, ok=true", async () => {
@@ -114,12 +117,17 @@ describe("runDoctorCommand", () => {
   });
 
   test("JSON mode, success: single JSON blob on stdout", async () => {
-    await runDoctorCommand({ cwd: rootDir, json: true, checks: passingHooks() });
+    initLogging({ json: true });
+    await runDoctorCommand({ cwd: rootDir, checks: passingHooks() });
     expect(stdoutSpy).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(stdoutSpy.mock.calls[0][0] as string);
     expect(parsed.ok).toBe(true);
     expect(Array.isArray(parsed.checks)).toBe(true);
     expect(parsed.failures).toEqual([]);
+    expect(parsed.environment).toBeDefined();
+    expect(parsed.environment.pluggy).toBeDefined();
+    expect(parsed.summary).toBeDefined();
+    expect(parsed.summary.passed).toBeGreaterThan(0);
   });
 
   test("JSON mode, failure: JSON blob on stderr with failures[]", async () => {
@@ -130,7 +138,8 @@ describe("runDoctorCommand", () => {
       status: "fail",
       detail: "not found",
     });
-    const res = await runDoctorCommand({ cwd: rootDir, json: true, checks: hooks });
+    initLogging({ json: true });
+    const res = await runDoctorCommand({ cwd: rootDir, checks: hooks });
     expect(res.ok).toBe(false);
     expect(stderrSpy).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(stderrSpy.mock.calls[0][0] as string);
@@ -139,13 +148,126 @@ describe("runDoctorCommand", () => {
     expect(parsed.failures[0].id).toBe("java");
   });
 
-  test("throws if not inside a pluggy project", async () => {
+  test("missing project produces a project-found failure but still emits environment", async () => {
     const empty = await mkdtemp(join(tmpdir(), "pluggy-doctor-empty-"));
     try {
-      await expect(runDoctorCommand({ cwd: empty })).rejects.toThrow(/No pluggy project found/);
+      const res = await runDoctorCommand({ cwd: empty });
+      expect(res.ok).toBe(false);
+      expect(res.exitCode).toBe(1);
+      expect(res.checks).toHaveLength(1);
+      expect(res.checks[0].id).toBe("project-found");
+      expect(res.checks[0].status).toBe("fail");
+      expect(res.environment.pluggy.version).toBeDefined();
+      expect(res.environment.project).toBeUndefined();
     } finally {
       await rm(empty, { recursive: true, force: true });
     }
+  });
+
+  test("environment is populated with pluggy.version, os.platform, runtime.name", async () => {
+    const res = await runDoctorCommand({
+      cwd: rootDir,
+      checks: passingHooks(),
+      pluggyVersion: "1.2.3",
+    });
+    expect(res.environment.pluggy.version).toBe("1.2.3");
+    expect(typeof res.environment.os.platform).toBe("string");
+    expect(res.environment.os.platform.length).toBeGreaterThan(0);
+    expect(res.environment.runtime.name === "bun" || res.environment.runtime.name === "node").toBe(
+      true,
+    );
+    expect(typeof res.environment.runtime.version).toBe("string");
+    expect(res.environment.runtime.version.length).toBeGreaterThan(0);
+  });
+
+  test("envVarsSet includes a tracked name when set, omits it when unset", async () => {
+    const original = process.env.PLUGGY_NO_AUTO_INSTALL;
+    delete process.env.PLUGGY_NO_AUTO_INSTALL;
+    try {
+      const without = await runDoctorCommand({ cwd: rootDir, checks: passingHooks() });
+      expect(without.environment.envVarsSet).not.toContain("PLUGGY_NO_AUTO_INSTALL");
+
+      process.env.PLUGGY_NO_AUTO_INSTALL = "1";
+      const withVar = await runDoctorCommand({ cwd: rootDir, checks: passingHooks() });
+      expect(withVar.environment.envVarsSet).toContain("PLUGGY_NO_AUTO_INSTALL");
+    } finally {
+      if (original === undefined) delete process.env.PLUGGY_NO_AUTO_INSTALL;
+      else process.env.PLUGGY_NO_AUTO_INSTALL = original;
+    }
+  });
+
+  test("envVarsSet records names only, never values", async () => {
+    const original = process.env.PLUGGY_NO_UPDATE_CHECK;
+    process.env.PLUGGY_NO_UPDATE_CHECK = "supersecret-sentinel-12345";
+    try {
+      const res = await runDoctorCommand({ cwd: rootDir, checks: passingHooks() });
+      expect(res.environment.envVarsSet).toContain("PLUGGY_NO_UPDATE_CHECK");
+      for (const name of res.environment.envVarsSet) {
+        expect(name).not.toContain("supersecret-sentinel-12345");
+      }
+      const serialized = JSON.stringify(res.environment);
+      expect(serialized).not.toContain("supersecret-sentinel-12345");
+    } finally {
+      if (original === undefined) delete process.env.PLUGGY_NO_UPDATE_CHECK;
+      else process.env.PLUGGY_NO_UPDATE_CHECK = original;
+    }
+  });
+
+  test("--report emits markdown wrapped in <details>", async () => {
+    await runDoctorCommand({ cwd: rootDir, checks: passingHooks(), report: true });
+    expect(stdoutSpy).toHaveBeenCalled();
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
+    expect(output.startsWith("<details>")).toBe(true);
+    expect(output).toContain("pluggy doctor report");
+    expect(output.trimEnd().endsWith("</details>")).toBe(true);
+  });
+
+  test("lockfile with orphan transitive yields warn and orphans=1", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "withdep",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: {
+          "kept-plugin": { source: "modrinth:kept-plugin", version: "*" },
+        },
+      }),
+    );
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 2,
+        entries: {
+          "kept-plugin": {
+            source: { kind: "modrinth", slug: "kept-plugin", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-aaa",
+            declaredBy: ["withdep"],
+          },
+          "orphan-plugin": {
+            source: { kind: "modrinth", slug: "orphan-plugin", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-bbb",
+            // No declaredBy, no parent → orphan once pruneOrphans runs.
+            declaredBy: [],
+          },
+        },
+      }),
+    );
+
+    // Hooks short-circuit network/cache/jvm checks; we only care about checkLockfile.
+    const hooks = passingHooks()!;
+    const res = await runDoctorCommand({ cwd: rootDir, checks: hooks });
+    const lockCheck = res.checks.find((c) => c.id === "lockfile");
+    expect(lockCheck).toBeDefined();
+    expect(lockCheck!.status).toBe("warn");
+    expect(lockCheck!.detail).toMatch(/orphan/);
+    expect(res.environment.lockfile).toBeDefined();
+    expect(res.environment.lockfile!.orphans).toBe(1);
+    expect(res.environment.lockfile!.entries).toBe(2);
+    expect(res.environment.lockfile!.topLevel).toBe(1);
   });
 });
 
@@ -434,7 +556,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "some-plugin": {
             source: { kind: "modrinth", slug: "some-plugin", version: "1.0.0" },
@@ -455,7 +577,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "some-plugin": {
             source: { kind: "modrinth", slug: "some-plugin", version: "1.0.0" },
@@ -482,7 +604,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "heavy-dep": {
             source: { kind: "modrinth", slug: "heavy-dep", version: "2.0.0" },
@@ -514,7 +636,7 @@ describe("checkDependencyJars", () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           "compat-dep": {
             source: { kind: "modrinth", slug: "compat-dep", version: "1.0.0" },

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { bold, dim, log } from "../logging.ts";
+import { bold, dim, emit, log } from "../logging.ts";
 
 import { parseInteger, parsePlatform, parseSemver } from "./parsers.ts";
 
@@ -13,7 +13,7 @@ interface ModrinthSearchHit {
   categories?: string[];
   client_side?: string;
   server_side?: string;
-  /** Always "mod" — Modrinth folds plugins under "mod" + category tags. */
+  /** Always "mod"; Modrinth folds plugins under "mod" + category tags. */
   project_type?: string;
   downloads?: number;
   follows?: number;
@@ -40,7 +40,6 @@ export interface SearchOptions {
   page: number;
   platform?: string;
   version?: string;
-  json?: boolean;
 }
 
 export interface SearchResult {
@@ -89,11 +88,9 @@ export async function doSearch(query: string, options: SearchOptions): Promise<S
     total: data.total_hits ?? data.hits.length,
   };
 
-  if (options.json) {
-    console.log(JSON.stringify({ status: "success", ...result }, null, 2));
-  } else {
+  emit({ status: "success", ...result }, () => {
     printHumanSearch(query, result);
-  }
+  });
 
   return result;
 }
@@ -128,7 +125,7 @@ function printHumanSearch(query: string, result: SearchResult): void {
 }
 
 /**
- * Compact summary of the MC versions the hit supports — `"1.8.8 … 1.21.8"`
+ * Compact summary of the MC versions the hit supports: `"1.8.8 … 1.21.8"`
  * for a span, the single version when one, or `""` when unknown.
  *
  * Sorts by numeric segment so "1.10.2" comes after "1.9.4".
@@ -161,13 +158,11 @@ export function searchCommand(): Command {
     .option("--platform <name>", "Filter by platform.", parsePlatform)
     .option("--version <semver>", "Filter by Minecraft version.", parseSemver)
     .action(async function action(this: Command, query: string, options) {
-      const globalOpts = this.optsWithGlobals();
       await doSearch(query, {
         size: options.size,
         page: options.page,
         platform: options.platform,
         version: options.version,
-        json: globalOpts.json,
       });
     });
 }

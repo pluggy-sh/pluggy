@@ -5,7 +5,7 @@
  *
  * SpigotMC publishes BuildTools.jar without a checksum sidecar, so we
  * can't bake an upstream-known hash in. Instead we apply trust-on-first-use
- * (TOFU) — record the SHA-256 of the first download alongside the cached
+ * (TOFU): record the SHA-256 of the first download alongside the cached
  * jar, and refuse to use a cached copy whose bytes drift from the recorded
  * value on subsequent runs. Catches post-install substitution and partial
  * download even though the initial download is still trusted on its first
@@ -46,7 +46,7 @@ export async function download(ctx: PlatformContext, ignoreCache = false): Promi
         return BUILDTOOLS_PATH;
       }
     } else {
-      // Older install (pre-TOFU) — adopt the existing jar by recording
+      // Older install (pre-TOFU): adopt the existing jar by recording
       // its current hash. Strictly weaker than a clean download, but the
       // user has already been running this jar so it's not a regression.
       const actual = createHash("sha256")
@@ -177,9 +177,9 @@ export async function compile(
 /**
  * Fetch a version's manifest from Spigot's hub and return the Java major
  * release range it declares (`javaVersions` is a class-file major range,
- * e.g. `[65, 70]` meaning Java 21 — 26). Returns `undefined` when the
+ * e.g. `[65, 70]` meaning Java 21 to 26). Returns `undefined` when the
  * manifest is missing, malformed, omits `javaVersions`, or the request
- * fails for any reason — `init` treats this as "unknown, fall through"
+ * fails for any reason; `init` treats this as "unknown, fall through"
  * rather than a hard error, so this function never throws.
  *
  * A 5s abort guards against the OS-level TCP timeout (~75s) when Spigot's

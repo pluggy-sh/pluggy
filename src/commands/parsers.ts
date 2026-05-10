@@ -1,12 +1,12 @@
 /**
  * commander argParser functions. Each validates, throws `InvalidArgumentError`
- * on failure, and returns the parsed value — commander interpolates the
+ * on failure, and returns the parsed value. Commander interpolates the
  * return value into the parsed option.
  */
 
 import { InvalidArgumentError } from "commander";
 
-import { getRegisteredPlatforms } from "../platform/index.ts";
+import { platforms } from "../platform/index.ts";
 import { parseIdentifier } from "../source.ts";
 
 /**
@@ -31,11 +31,11 @@ export function parseSemver(value: string): string {
 }
 
 export function parsePlatform(value: string): string {
-  const platforms = getRegisteredPlatforms();
+  const registered = platforms.list();
   const id = value.toLowerCase();
-  if (!platforms.includes(id)) {
+  if (!registered.includes(id)) {
     throw new InvalidArgumentError(
-      `Invalid platform: "${value}". Available platforms: ${platforms.join(", ")}`,
+      `Invalid platform: "${value}". Available platforms: ${registered.join(", ")}`,
     );
   }
   return id;
@@ -44,7 +44,7 @@ export function parsePlatform(value: string): string {
 export function parseMcVersion(value: string): string {
   if (/^\d+\.\d+(\.\d+)?$/.test(value)) return value;
   throw new InvalidArgumentError(
-    `Invalid Minecraft version: ${value} — expected format like 1.21.8 or 26.1.2`,
+    `Invalid Minecraft version: ${value}; expected format like 1.21.8 or 26.1.2`,
   );
 }
 

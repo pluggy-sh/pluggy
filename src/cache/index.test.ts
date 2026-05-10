@@ -57,7 +57,7 @@ async function writeJdkSlot(key: string, fullVersion: string, lastUsed: number):
   const root = jdkCacheRoot();
   await mkdir(slotPath(key), { recursive: true });
   await writeFile(join(slotPath(key), "marker"), Buffer.alloc(1024, "j"));
-  // Distribution-major-os-arch parse — pretend Linux x64 21.
+  // Distribution-major-os-arch parse: pretend Linux x64 21.
   await mkdir(root, { recursive: true });
   const parts = key.split("-");
   await recordEntry(

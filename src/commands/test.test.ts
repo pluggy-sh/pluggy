@@ -15,6 +15,7 @@ vi.mock("../test/index.ts", () => ({
 
 import { runTests } from "../test/index.ts";
 
+import { initLogging } from "../logging.ts";
 import { runTestCommand, selectTestTargets } from "./test.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
@@ -28,6 +29,7 @@ describe("runTestCommand", () => {
     stdoutSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(runTests).mockReset();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   afterEach(async () => {
@@ -35,6 +37,7 @@ describe("runTestCommand", () => {
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
     vi.restoreAllMocks();
+    initLogging({ json: false, verbose: false, noColor: true });
   });
 
   async function writeStandalone(): Promise<void> {
@@ -215,7 +218,8 @@ describe("runTestCommand", () => {
       },
     });
 
-    await runTestCommand({ cwd: rootDir, json: true });
+    initLogging({ json: true });
+    await runTestCommand({ cwd: rootDir });
 
     expect(stdoutSpy).toHaveBeenCalledTimes(1);
     const parsed = JSON.parse(stdoutSpy.mock.calls[0][0] as string);
@@ -238,7 +242,8 @@ describe("runTestCommand", () => {
       },
     });
 
-    const res = await runTestCommand({ cwd: rootDir, json: true });
+    initLogging({ json: true });
+    const res = await runTestCommand({ cwd: rootDir });
 
     expect(res.exitCode).toBe(1);
     expect(stderrSpy).toHaveBeenCalledTimes(1);

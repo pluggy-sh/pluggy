@@ -1,6 +1,6 @@
 /**
- * Tests for src/dev/index.ts. Every downstream module — buildProject,
- * resolveDependency, the platform registry, and the four `dev/*` helpers —
+ * Tests for src/dev/index.ts. Every downstream module (buildProject,
+ * resolveDependency, the platform registry, and the four `dev/*` helpers)
  * is mocked so `runDev`'s orchestration is exercised in isolation.
  */
 
@@ -23,7 +23,11 @@ vi.mock("../resolver/index.ts", () => ({
 }));
 
 vi.mock("../platform/index.ts", () => ({
-  getPlatform: vi.fn(),
+  platforms: {
+    get: vi.fn(),
+    list: vi.fn(),
+    assertSameFamily: vi.fn(),
+  },
 }));
 
 vi.mock("./stage.ts", () => ({
@@ -76,7 +80,7 @@ vi.mock("../portable.ts", async () => {
 });
 
 import { buildProject } from "../build/index.ts";
-import { getPlatform } from "../platform/index.ts";
+import { platforms } from "../platform/index.ts";
 import type { DescriptorSpec, PlatformProvider, Version } from "../platform/platform.ts";
 import { resolveDependency } from "../resolver/index.ts";
 
@@ -108,9 +112,9 @@ function fakePlatform(id = "paper"): PlatformProvider {
     id,
     descriptor: fakeDescriptor(),
     runtime: { pluginsDir: "plugins", serverArgs: ["nogui"], vanillaServerFiles: true },
-    getVersions: vi.fn(async () => ["1.21.8"]),
-    getLatestVersion: vi.fn(async () => ({ version: "1.21.8", build: 42 }) as Version),
-    getVersionInfo: vi.fn(async (v: string) => ({ version: v, build: 42 }) as Version),
+    versions: vi.fn(async () => ["1.21.8"]),
+    latest: vi.fn(async () => ({ version: "1.21.8", build: 42 }) as Version),
+    info: vi.fn(async (v: string) => ({ version: v, build: 42 }) as Version),
     download: vi.fn(async (v: Version) => ({ ...v, output: new Uint8Array([1, 2, 3]) })),
     api: vi.fn(async () => ({ repositories: [], dependencies: [] })),
   };
@@ -137,7 +141,7 @@ describe("runDev", () => {
 
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), "pluggy-dev-index-"));
-    vi.mocked(getPlatform).mockReset();
+    vi.mocked(platforms.get).mockReset();
     vi.mocked(buildProject).mockReset();
     vi.mocked(resolveDependency).mockReset();
     vi.mocked(stageDev).mockReset();
@@ -154,7 +158,7 @@ describe("runDev", () => {
 
   test("drives the pipeline in order: platform → build → stage → plugins → spawn → watch", async () => {
     const platform = fakePlatform("paper");
-    vi.mocked(getPlatform).mockReturnValue(platform);
+    vi.mocked(platforms.get).mockReturnValue(platform);
 
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "bin", "testplugin-1.0.0.jar"),
@@ -179,7 +183,7 @@ describe("runDev", () => {
     const project = makeProject(workDir);
     await runDev(project, {});
 
-    expect(getPlatform).toHaveBeenCalledWith("paper");
+    expect(platforms.get).toHaveBeenCalledWith("paper");
 
     expect(buildProject).toHaveBeenCalledTimes(1);
     expect(vi.mocked(buildProject).mock.calls[0][0]).toBe(project);
@@ -215,7 +219,7 @@ describe("runDev", () => {
 
   test("honors opts.platform / opts.version overrides", async () => {
     const platform = fakePlatform("folia");
-    vi.mocked(getPlatform).mockReturnValue(platform);
+    vi.mocked(platforms.get).mockReturnValue(platform);
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
@@ -233,10 +237,10 @@ describe("runDev", () => {
     const project = makeProject(workDir);
     await runDev(project, { platform: "folia", version: "1.22.0", watch: false });
 
-    expect(getPlatform).toHaveBeenCalledWith("folia");
-    // The jar path carries the overridden version, proving getVersionInfo was
+    expect(platforms.get).toHaveBeenCalledWith("folia");
+    // The jar path carries the overridden version, proving info was
     // invoked with opts.version. Asserting on the path avoids the unbound-
-    // method lint that would fire on `platform.getVersionInfo`.
+    // method lint that would fire on `platform.info`.
     const stageJarArg = vi.mocked(stageDev).mock.calls[0][1];
     expect(stageJarArg).toMatch(/folia-1\.22\.0-42\.jar$/);
     expect(watchProject).not.toHaveBeenCalled();
@@ -244,7 +248,7 @@ describe("runDev", () => {
 
   test("filters dependencies to runtime plugins via isRuntimePlugin", async () => {
     const platform = fakePlatform("paper");
-    vi.mocked(getPlatform).mockReturnValue(platform);
+    vi.mocked(platforms.get).mockReturnValue(platform);
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
@@ -291,7 +295,7 @@ describe("runDev", () => {
 
   test("extraPlugins are resolved relative to project.rootDir", async () => {
     const platform = fakePlatform("paper");
-    vi.mocked(getPlatform).mockReturnValue(platform);
+    vi.mocked(platforms.get).mockReturnValue(platform);
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
@@ -320,7 +324,7 @@ describe("runDev", () => {
 
   test("passes memory and jvmArgs from opts before falling back to project.dev", async () => {
     const platform = fakePlatform("paper");
-    vi.mocked(getPlatform).mockReturnValue(platform);
+    vi.mocked(platforms.get).mockReturnValue(platform);
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
@@ -358,7 +362,7 @@ describe("runDev", () => {
 
   test("passes clean, freshWorld, port, offline to stageDev", async () => {
     const platform = fakePlatform("paper");
-    vi.mocked(getPlatform).mockReturnValue(platform);
+    vi.mocked(platforms.get).mockReturnValue(platform);
     vi.mocked(buildProject).mockResolvedValue({
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
@@ -392,5 +396,5 @@ describe("runDev", () => {
   });
 });
 
-// Silence an unused-import warning — `writeFile` is only transitively used.
+// Silence an unused-import warning: `writeFile` is only transitively used.
 void writeFile;

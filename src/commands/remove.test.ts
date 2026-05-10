@@ -34,7 +34,7 @@ describe("doRemove", () => {
       dependencies: { worldedit: "7.3.15", keepme: "1.0.0" },
     });
     await writeJson(join(dir, "pluggy.lock"), {
-      version: 1,
+      version: 2,
       entries: {
         worldedit: {
           source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
@@ -99,7 +99,7 @@ describe("doRemove", () => {
       },
     });
     await writeJson(join(dir, "pluggy.lock"), {
-      version: 1,
+      version: 2,
       entries: {
         custom: {
           source: { kind: "file", path: jarPath, version: "1.0.0" },
@@ -121,7 +121,7 @@ describe("doRemove", () => {
 
   test("without --keep-file: never deletes the user's own source jar", async () => {
     // Regression guard: cache key is content-addressed under
-    // `<cache>/dependencies/file/<hex>.jar` — never the project-local path.
+    // `<cache>/dependencies/file/<hex>.jar`; never the project-local path.
     const jarPath = join(dir, "libs", "custom.jar");
     await mkdir(join(dir, "libs"), { recursive: true });
     await writeFile(jarPath, "fake jar bytes");
@@ -136,7 +136,7 @@ describe("doRemove", () => {
       },
     });
     await writeJson(join(dir, "pluggy.lock"), {
-      version: 1,
+      version: 2,
       entries: {
         custom: {
           source: { kind: "file", path: jarPath, version: "1.0.0" },

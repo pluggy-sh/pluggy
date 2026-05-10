@@ -49,7 +49,7 @@ export function resolveWorkspace(
   if (concreteVersion === undefined) {
     return Promise.reject(
       new Error(
-        `workspace "${name}" has no concrete version — set "version" in ${ws.project.projectFile} so its built jar has a stable filename`,
+        `workspace "${name}" has no concrete version: set "version" in ${ws.project.projectFile} so its built jar has a stable filename`,
       ),
     );
   }

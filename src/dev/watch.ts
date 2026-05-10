@@ -1,7 +1,7 @@
 /**
  * File watcher for `pluggy dev`. Watches `src/`, every path referenced by
  * `project.resources`, and `project.json`. Events are coalesced by
- * `debounceMs` — a burst of saves yields one `onChange`.
+ * `debounceMs`: a burst of saves yields one `onChange`.
  */
 
 import { existsSync, statSync } from "node:fs";
@@ -36,16 +36,37 @@ export function watchProject(project: ResolvedProject, opts: WatchOptions): () =
 
   let debounceTimer: NodeJS.Timeout | undefined;
   let disposed = false;
+  // Single-flight guard: while onChange is running, additional events set
+  // `pending` so we fire exactly one more rebuild after it settles. Without
+  // this, slow rebuilds (long compiles) would stack up indefinitely.
+  let inFlight: Promise<void> | undefined;
+  let pending = false;
 
-  const fire = (): void => {
-    debounceTimer = undefined;
+  const run = (): void => {
     if (disposed) return;
-    Promise.resolve()
+    inFlight = Promise.resolve()
       .then(() => opts.onChange())
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`watch: onChange handler threw: ${msg}`);
+      })
+      .finally(() => {
+        inFlight = undefined;
+        if (pending && !disposed) {
+          pending = false;
+          run();
+        }
       });
+  };
+
+  const fire = (): void => {
+    debounceTimer = undefined;
+    if (disposed) return;
+    if (inFlight !== undefined) {
+      pending = true;
+      return;
+    }
+    run();
   };
 
   const schedule = (): void => {
@@ -76,7 +97,7 @@ export function watchProject(project: ResolvedProject, opts: WatchOptions): () =
  * non-recursive, filename filter) so pluggy's own writes into `bin/`,
  * `dev/`, and `.pluggy-build/` do not trigger rebuild loops.
  *
- * Resource-file mappings are normalized to their parent directory — atomic-
+ * Resource-file mappings are normalized to their parent directory: atomic-
  * rewrite editors evict the file's inode, which kills a file-level watcher;
  * watching the dir survives.
  */

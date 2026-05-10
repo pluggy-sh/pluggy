@@ -1,12 +1,12 @@
 /**
  * The curated allowlist of JDK distributions pluggy auto-installs. GraalVM CE
  * is included for plugins that use Polyglot/Truffle scripting (Oracle's paid
- * `graalvm` is excluded — auto-installing it would require user license
+ * `graalvm` is excluded; auto-installing it would require user license
  * consent we can't model here). Expanding this list is safe; narrowing it
  * isn't, so be conservative when adding.
  *
- * The allowlist must apply to every source of a distribution slug — CLI
- * flags, project.json, and any other config — because the slug ends up in a
+ * The allowlist must apply to every source of a distribution slug (CLI
+ * flags, project.json, and any other config) because the slug ends up in a
  * filesystem path under the user cache.
  */
 
@@ -29,7 +29,7 @@ export const DEFAULT_DISTRIBUTION: AllowedDistribution = "temurin";
 export const MIN_JAVA_MAJOR = 6;
 export const MAX_JAVA_MAJOR = 99;
 
-/** Commander option parser — throws InvalidArgumentError on miss. */
+/** Commander option parser; throws InvalidArgumentError on miss. */
 export function parseDistribution(value: string): AllowedDistribution {
   if (!ALLOWED_DISTRIBUTIONS.includes(value as AllowedDistribution)) {
     throw new InvalidArgumentError(

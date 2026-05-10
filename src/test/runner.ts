@@ -1,6 +1,6 @@
 /**
  * Pure helpers for the test runner: JUnit Console Launcher argument
- * assembly, `--filter` translation, and JUnit-XML report parsing. No I/O —
+ * assembly, `--filter` translation, and JUnit-XML report parsing. No I/O;
  * callers in `./index.ts` spawn the JVM and read the reports directory.
  */
 
@@ -21,7 +21,7 @@ export interface LauncherArgs {
   failFast?: boolean;
   /**
    * JVM system properties to pass before `-jar` (rendered as `-Dkey=value`).
-   * Ordered iteration; values are not escaped — callers must pre-validate.
+   * Ordered iteration; values are not escaped, callers must pre-validate.
    */
   systemProperties?: Record<string, string>;
 }
@@ -53,7 +53,7 @@ export function buildLauncherArgs(args: LauncherArgs): string[] {
   const filterArgs = args.filter === undefined ? [] : filterToLauncherArgs(args.filter);
   // ConsoleLauncher refuses `--scan-class-path` combined with any `--select-*`
   // argument ("Scanning the classpath and using explicit selectors at the same
-  // time is not supported"). Drop the scan directive when a selector is present —
+  // time is not supported"). Drop the scan directive when a selector is present;
   // the selector does its own discovery against `--class-path`.
   const hasSelector = filterArgs.some((a) => a.startsWith("--select-"));
 
@@ -104,7 +104,7 @@ export function filterToLauncherArgs(filter: string): string[] {
 
 /**
  * Parse every `TEST-*.xml` file's content into a flat `TestRunResult`.
- * Input is the array of XML document strings — the caller reads the
+ * Input is the array of XML document strings; the caller reads the
  * directory. Empty input produces a zero-total result.
  */
 export function parseJUnitReports(xmlDocs: string[]): TestRunResult {

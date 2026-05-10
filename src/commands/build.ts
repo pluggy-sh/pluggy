@@ -3,7 +3,8 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { buildProject, checkPlatformCompile, type BuildResult } from "../build/index.ts";
-import { bold, log } from "../logging.ts";
+import { UserError } from "../errors.ts";
+import { bold, dim, emit, emitErr, log, red } from "../logging.ts";
 import type { ResolvedProject } from "../project.ts";
 import {
   findWorkspace,
@@ -58,7 +59,10 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found — run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_BUILD_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const targets = selectBuildTargets(context, opts);
@@ -71,9 +75,7 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
     const rootDir = target.rootDir;
     const started = Date.now();
     try {
-      if (!opts.json) {
-        log.info(`${bold("build")} ${label}`);
-      }
+      log.heading(`Building ${bold(label)}`);
       const res: BuildResult = await buildProject(target, {
         output: opts.output,
         clean: opts.clean,
@@ -88,7 +90,7 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
         try {
           await checkPlatformCompile(target, platform, { clean: opts.clean });
           platformChecks.push({ platform, ok: true, durationMs: Date.now() - pStart });
-          if (!opts.json) log.success(`  ${platform}: compiles`);
+          log.step(`${platform} compiles ${dim(`(${Date.now() - pStart}ms)`)}`);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           platformChecks.push({
@@ -97,7 +99,7 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
             durationMs: Date.now() - pStart,
             error: message,
           });
-          if (!opts.json) log.warn(`  ${platform}: ${message}`);
+          log.warn(`${platform}: ${message}`);
           anyFailed = true;
         }
       }
@@ -111,11 +113,9 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
         durationMs: res.durationMs,
         platformChecks: platformChecks.length > 0 ? platformChecks : undefined,
       });
-      if (!opts.json) {
-        log.success(
-          `${label}: ${res.outputPath} (${formatBytes(res.sizeBytes)}, ${res.durationMs}ms)`,
-        );
-      }
+      log.success(
+        `${bold(label)} → ${res.outputPath} ${dim(`(${formatBytes(res.sizeBytes)}, ${res.durationMs}ms)`)}`,
+      );
     } catch (err) {
       anyFailed = true;
       const message = err instanceof Error ? err.message : String(err);
@@ -126,9 +126,7 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
         durationMs: Date.now() - started,
         error: message,
       });
-      if (!opts.json) {
-        log.error(`${label}: ${message}`);
-      }
+      log.error(`${bold(label)}: ${message}`);
       if (targets.length === 1) {
         throw err;
       }
@@ -138,38 +136,25 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
   const exitCode: 0 | 1 = anyFailed ? 1 : 0;
   const status: BuildCommandResult["status"] = anyFailed ? "partial" : "success";
 
-  if (opts.json) {
-    const payload = {
-      status: anyFailed ? "error" : "success",
-      results: results.map((r) => ({
-        workspace: r.workspace,
-        rootDir: r.rootDir,
-        ok: r.ok,
-        outputPath: r.outputPath,
-        sizeBytes: r.sizeBytes,
-        durationMs: r.durationMs,
-        error: r.error,
-        platformChecks: r.platformChecks,
-      })),
-    };
-    if (anyFailed) {
-      console.error(JSON.stringify(payload, null, 2));
-    } else {
-      console.log(JSON.stringify(payload, null, 2));
-    }
-  } else if (targets.length > 1) {
-    log.info("");
-    log.info(bold("summary"));
+  const payload = {
+    status: anyFailed ? "error" : "success",
+    results,
+  };
+  const printSummary = (): void => {
+    if (targets.length <= 1) return;
+    log.heading("Summary");
     for (const r of results) {
       if (r.ok) {
-        log.info(
-          `  ${r.workspace}: ${r.outputPath} (${formatBytes(r.sizeBytes ?? 0)}, ${r.durationMs}ms)`,
+        log.step(
+          `${r.workspace} → ${r.outputPath} ${dim(`(${formatBytes(r.sizeBytes ?? 0)}, ${r.durationMs}ms)`)}`,
         );
       } else {
-        log.info(`  ${r.workspace}: FAILED — ${r.error ?? "unknown error"}`);
+        log.step(`${red(r.workspace)} failed: ${r.error ?? "unknown error"}`);
       }
     }
-  }
+  };
+  if (anyFailed) emitErr(payload, printSummary);
+  else emit(payload, printSummary);
 
   return { status, exitCode, results };
 }
@@ -234,14 +219,12 @@ export function buildCommand(): Command {
     .option("--workspace <name>", "Build a single workspace.")
     .option("--workspaces", "Explicit all-workspaces build.")
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals();
       const result = await runBuildCommand({
         output: options.output,
         clean: options.clean === true,
         skipClasspath: options.skipClasspath === true,
         workspace: options.workspace,
         workspaces: options.workspaces === true,
-        json: globalOpts.json === true,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

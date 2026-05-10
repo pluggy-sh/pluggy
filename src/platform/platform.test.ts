@@ -1,37 +1,39 @@
 /**
- * Tests for `assertSamePlatformFamily` — the validator the test command
+ * Tests for `platforms.assertSameFamily`, the validator the test command
  * runs before expanding `compatibility.platforms` into a matrix. Imports
  * `../platform/index.ts` for its side-effect registrations.
  */
 
 import { describe, expect, test } from "vite-plus/test";
 
-import { assertSamePlatformFamily } from "./index.ts";
+import { platforms } from "./index.ts";
 
-describe("assertSamePlatformFamily", () => {
+describe("platforms.assertSameFamily", () => {
   test("paper + spigot share the bukkit family", () => {
-    expect(assertSamePlatformFamily(["paper", "spigot"])).toBe("bukkit");
+    expect(platforms.assertSameFamily(["paper", "spigot"])).toBe("bukkit");
   });
 
   test("returns the family for a single platform", () => {
-    expect(assertSamePlatformFamily(["velocity"])).toBe("velocity");
+    expect(platforms.assertSameFamily(["velocity"])).toBe("velocity");
   });
 
   test("rejects mixing bukkit and velocity", () => {
-    expect(() => assertSamePlatformFamily(["paper", "velocity"])).toThrow(/must share one family/);
+    expect(() => platforms.assertSameFamily(["paper", "velocity"])).toThrow(
+      /must share one family/,
+    );
   });
 
   test("rejects mixing velocity and bungee", () => {
-    expect(() => assertSamePlatformFamily(["velocity", "waterfall"])).toThrow(
+    expect(() => platforms.assertSameFamily(["velocity", "waterfall"])).toThrow(
       /must share one family/,
     );
   });
 
   test("rejects an empty list", () => {
-    expect(() => assertSamePlatformFamily([])).toThrow(/empty/);
+    expect(() => platforms.assertSameFamily([])).toThrow(/empty/);
   });
 
-  test("propagates getPlatform's error for unknown ids", () => {
-    expect(() => assertSamePlatformFamily(["paper", "bogus"])).toThrow(/'bogus' not found/);
+  test("propagates platforms.get's error for unknown ids", () => {
+    expect(() => platforms.assertSameFamily(["paper", "bogus"])).toThrow(/'bogus' not found/);
   });
 });

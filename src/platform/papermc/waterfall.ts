@@ -12,14 +12,14 @@ export default createPlatform((ctx) => ({
   descriptor: bungeeDescriptor,
   runtime: BUNGEE_RUNTIME,
 
-  async getVersionInfo(version: string): Promise<Version> {
+  async info(version: string): Promise<Version> {
     const versionsList = await papermc.versions("waterfall");
     const versionInfo = versionsList.find((v) => v.version.id === version);
     if (!versionInfo) throw new Error(`Failed to fetch version info for ${version}`);
     return { version, build: versionInfo.builds[0] };
   },
 
-  async getLatestVersion(): Promise<Version> {
+  async latest(): Promise<Version> {
     const versionsList = await papermc.versions("waterfall");
     if (versionsList.length === 0) throw new Error("No versions found for waterfall");
     const latestVersion = versionsList[0];
@@ -39,7 +39,7 @@ export default createPlatform((ctx) => ({
     });
   },
 
-  async getVersions(): Promise<string[]> {
+  async versions(): Promise<string[]> {
     const versionsList = await papermc.versions("waterfall");
     return versionsList.map((v) => v.version.id);
   },

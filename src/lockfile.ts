@@ -1,12 +1,18 @@
 /**
  * `pluggy.lock` read / write / verify. The lockfile lives at the repo root
  * and is shared across workspaces.
+ *
+ * The schema is flat: every dependency, top-level or transitive, is one
+ * entry in `entries`, keyed by name. An entry records what other entries
+ * it directly pulls in via `transitives: string[]`. Reverse edges
+ * (`pulledInBy`) are computed on demand from the forward edges.
  */
 
 import { readFileSync } from "node:fs";
 import { rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { UserError } from "./errors.ts";
 import { stringifySource } from "./source.ts";
 import type { ResolvedSource } from "./source.ts";
 
@@ -16,30 +22,18 @@ export interface LockfileEntry {
   resolvedVersion: string;
   /** SHA-256 of the resolved jar, as `"sha256-<base64>"`. */
   integrity: string;
-  /** Workspace names that declared this dependency. */
+  /** Workspace names that declared this dependency directly. Empty for pure transitives. */
   declaredBy: string[];
   /**
-   * Direct transitive closure of this dependency, captured inline. Each
-   * child entry holds its own children, so the full tree is readable
-   * without cross-entry lookups. Omitted when there are no transitives.
+   * Names of other entries in this lockfile that this entry directly
+   * pulls in. Empty or omitted for leaf deps. Resolves on-demand via
+   * `entries[name]` instead of duplicating the subtree inline.
    */
-  transitives?: TransitiveEntry[];
-}
-
-/**
- * Entry for a transitive dependency nested under a top-level
- * `LockfileEntry`. Mirrors the top-level shape minus `declaredBy`, which
- * is only meaningful for user-declared deps.
- */
-export interface TransitiveEntry {
-  source: ResolvedSource;
-  resolvedVersion: string;
-  integrity: string;
-  transitives?: TransitiveEntry[];
+  transitives?: string[];
 }
 
 export interface Lockfile {
-  version: 1;
+  version: 2;
   entries: Record<string, LockfileEntry>;
 }
 
@@ -68,7 +62,12 @@ export function readLock(rootDir: string): Lockfile | null {
     parsed = JSON.parse(raw);
   } catch (err) {
     const msg = (err as Error).message;
-    throw new Error(`Failed to parse lockfile at ${path}: ${msg}`);
+    throw new UserError(`Failed to parse lockfile at ${path}: ${msg}`, {
+      code: "E_LOCKFILE_PARSE",
+      hint: "Restore from version control or delete pluggy.lock and rerun pluggy install.",
+      source: { file: path },
+      cause: err,
+    });
   }
 
   return validateLockfile(parsed, path);
@@ -110,9 +109,10 @@ export async function writeLock(rootDir: string, lock: Lockfile): Promise<void> 
  * Return dependency names that are missing from the lock or stale against
  * what's declared. Empty means the lockfile is fresh.
  *
- * "Stale" = lockfile entry exists but its source string or version diverges
- * from the declaration. Orphaned entries (locked but not declared) are
- * ignored. Does not refetch or recompute integrity — the resolver does that.
+ * "Stale" means the lockfile entry exists but its source string or version
+ * diverges from the declaration. Orphaned entries (locked but not declared)
+ * are ignored. Does not refetch or recompute integrity. The resolver does
+ * that.
  */
 export function verifyLock(
   lock: Lockfile,
@@ -136,20 +136,101 @@ export function verifyLock(
   return drift;
 }
 
+/**
+ * Drop entries that are neither top-level (declared by some workspace)
+ * nor reachable from a top-level entry's `transitives` graph. Mutates
+ * `entries` in place. Iterates until a steady state in case removals
+ * expose new orphans (a transitive whose only parent was itself orphaned).
+ *
+ * Callers that already know the top-level set can pass it as `topLevel`;
+ * by default it's derived from `entry.declaredBy.length > 0`, which is
+ * the lockfile's own source of truth.
+ */
+export function pruneOrphans(entries: Record<string, LockfileEntry>, topLevel?: Set<string>): void {
+  const tops = topLevel ?? deriveTopLevel(entries);
+  for (;;) {
+    const reachable = new Set<string>();
+    const stack: string[] = [];
+    for (const name of tops) {
+      if (entries[name] !== undefined) {
+        reachable.add(name);
+        stack.push(name);
+      }
+    }
+    while (stack.length > 0) {
+      const name = stack.pop() as string;
+      const entry = entries[name];
+      if (entry === undefined) continue;
+      for (const child of entry.transitives ?? []) {
+        if (!reachable.has(child) && entries[child] !== undefined) {
+          reachable.add(child);
+          stack.push(child);
+        }
+      }
+    }
+    let removed = false;
+    for (const key of Object.keys(entries)) {
+      if (!reachable.has(key)) {
+        delete entries[key];
+        removed = true;
+      }
+    }
+    if (!removed) return;
+  }
+}
+
+function deriveTopLevel(entries: Record<string, LockfileEntry>): Set<string> {
+  const out = new Set<string>();
+  for (const [name, entry] of Object.entries(entries)) {
+    if (entry.declaredBy.length > 0) out.add(name);
+  }
+  return out;
+}
+
+/**
+ * Build a reverse-edge index: for each entry, the names of entries that
+ * directly pull it in via their `transitives`. Top-level-only deps
+ * (declared by a workspace, never pulled in transitively) map to `[]`.
+ */
+export function pulledInBy(lock: Lockfile): Record<string, string[]> {
+  const reverse: Record<string, string[]> = {};
+  for (const name of Object.keys(lock.entries)) reverse[name] = [];
+  for (const [name, entry] of Object.entries(lock.entries)) {
+    for (const child of entry.transitives ?? []) {
+      if (reverse[child] === undefined) reverse[child] = [];
+      reverse[child].push(name);
+    }
+  }
+  return reverse;
+}
+
 function validateLockfile(parsed: unknown, path: string): Lockfile {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Invalid lockfile at ${path}: expected a JSON object`);
+    throw new UserError(`Invalid lockfile at ${path}: expected a JSON object`, {
+      code: "E_LOCKFILE_INVALID",
+      hint: "Delete pluggy.lock and rerun pluggy install to regenerate it.",
+      source: { file: path },
+    });
   }
   const obj = parsed as Record<string, unknown>;
 
-  if (obj.version !== 1) {
-    throw new Error(
-      `Unsupported lockfile version: ${String(obj.version)} (at ${path}; expected 1)`,
+  if (obj.version !== 2) {
+    throw new UserError(
+      `Unsupported lockfile version: ${String(obj.version)} (at ${path}; expected 2)`,
+      {
+        code: "E_LOCKFILE_VERSION",
+        hint: "Delete pluggy.lock and rerun pluggy install to regenerate it under the current version.",
+        source: { file: path, pointer: "/version" },
+      },
     );
   }
 
   if (obj.entries === null || typeof obj.entries !== "object" || Array.isArray(obj.entries)) {
-    throw new Error(`Invalid lockfile at ${path}: "entries" must be an object`);
+    throw new UserError(`Invalid lockfile at ${path}: "entries" must be an object`, {
+      code: "E_LOCKFILE_INVALID",
+      hint: "Delete pluggy.lock and rerun pluggy install to regenerate it.",
+      source: { file: path, pointer: "/entries" },
+    });
   }
   const rawEntries = obj.entries as Record<string, unknown>;
 
@@ -158,29 +239,56 @@ function validateLockfile(parsed: unknown, path: string): Lockfile {
     entries[key] = validateEntry(rawEntries[key], key, path);
   }
 
-  return { version: 1, entries };
+  return { version: 2, entries };
 }
 
 function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
+  const entryHint = "Delete pluggy.lock and rerun pluggy install to regenerate it.";
+  const entryPointer = `/entries/${key}`;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: expected an object`);
+    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: expected an object`, {
+      code: "E_LOCKFILE_INVALID_ENTRY",
+      hint: entryHint,
+      source: { file: path, pointer: entryPointer },
+    });
   }
   const entry = raw as Record<string, unknown>;
 
   if (entry.source === undefined) {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: missing "source"`);
+    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: missing "source"`, {
+      code: "E_LOCKFILE_INVALID_ENTRY",
+      hint: entryHint,
+      source: { file: path, pointer: `${entryPointer}/source` },
+    });
   }
   if (typeof entry.resolvedVersion !== "string") {
-    throw new Error(
+    throw new UserError(
       `Invalid lockfile entry "${key}" at ${path}: "resolvedVersion" must be a string`,
+      {
+        code: "E_LOCKFILE_INVALID_ENTRY",
+        hint: entryHint,
+        source: { file: path, pointer: `${entryPointer}/resolvedVersion` },
+      },
     );
   }
   if (typeof entry.integrity !== "string") {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: "integrity" must be a string`);
+    throw new UserError(
+      `Invalid lockfile entry "${key}" at ${path}: "integrity" must be a string`,
+      {
+        code: "E_LOCKFILE_INVALID_ENTRY",
+        hint: entryHint,
+        source: { file: path, pointer: `${entryPointer}/integrity` },
+      },
+    );
   }
   if (!Array.isArray(entry.declaredBy) || !entry.declaredBy.every((d) => typeof d === "string")) {
-    throw new Error(
+    throw new UserError(
       `Invalid lockfile entry "${key}" at ${path}: "declaredBy" must be an array of strings`,
+      {
+        code: "E_LOCKFILE_INVALID_ENTRY",
+        hint: entryHint,
+        source: { file: path, pointer: `${entryPointer}/declaredBy` },
+      },
     );
   }
 
@@ -194,55 +302,22 @@ function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
   };
 
   if (entry.transitives !== undefined) {
-    result.transitives = validateTransitives(entry.transitives, key, path);
-  }
-
-  return result;
-}
-
-/**
- * Recursively validate a `transitives` array. Each child entry mirrors
- * the parent's shape minus `declaredBy`. Missing `transitives` is allowed
- * (leaf) — an empty array is also tolerated on read but install callers
- * must not emit one (omit the field instead).
- */
-function validateTransitives(raw: unknown, key: string, path: string): TransitiveEntry[] {
-  if (!Array.isArray(raw)) {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: "transitives" must be an array`);
-  }
-  return raw.map((child, idx) =>
-    validateTransitiveEntry(child, `${key}.transitives[${idx}]`, path),
-  );
-}
-
-function validateTransitiveEntry(raw: unknown, key: string, path: string): TransitiveEntry {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: expected an object`);
-  }
-  const entry = raw as Record<string, unknown>;
-
-  if (entry.source === undefined) {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: missing "source"`);
-  }
-  if (typeof entry.resolvedVersion !== "string") {
-    throw new Error(
-      `Invalid lockfile entry "${key}" at ${path}: "resolvedVersion" must be a string`,
-    );
-  }
-  if (typeof entry.integrity !== "string") {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: "integrity" must be a string`);
-  }
-
-  const source = validateResolvedSource(entry.source, key, path);
-
-  const result: TransitiveEntry = {
-    source,
-    resolvedVersion: entry.resolvedVersion,
-    integrity: entry.integrity,
-  };
-
-  if (entry.transitives !== undefined) {
-    result.transitives = validateTransitives(entry.transitives, key, path);
+    if (
+      !Array.isArray(entry.transitives) ||
+      !entry.transitives.every((t) => typeof t === "string")
+    ) {
+      throw new UserError(
+        `Invalid lockfile entry "${key}" at ${path}: "transitives" must be an array of strings`,
+        {
+          code: "E_LOCKFILE_INVALID_ENTRY",
+          hint: entryHint,
+          source: { file: path, pointer: `${entryPointer}/transitives` },
+        },
+      );
+    }
+    if (entry.transitives.length > 0) {
+      result.transitives = entry.transitives as string[];
+    }
   }
 
   return result;
@@ -253,62 +328,83 @@ function validateTransitiveEntry(raw: unknown, key: string, path: string): Trans
  * Centralized so the on-disk form stays in lock-step with `src/source.ts`.
  */
 function validateResolvedSource(raw: unknown, key: string, path: string): ResolvedSource {
+  const sourceHint = "Delete pluggy.lock and rerun pluggy install to regenerate it.";
+  const sourcePointer = `/entries/${key}/source`;
+  const fail = (message: string, pointer = sourcePointer): never => {
+    throw new UserError(message, {
+      code: "E_LOCKFILE_INVALID_SOURCE",
+      hint: sourceHint,
+      source: { file: path, pointer },
+    });
+  };
+
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`Invalid lockfile entry "${key}" at ${path}: "source" must be an object`);
+    fail(`Invalid lockfile entry "${key}" at ${path}: "source" must be an object`);
   }
   const src = raw as Record<string, unknown>;
   if (typeof src.version !== "string" || src.version.length === 0) {
-    throw new Error(
+    fail(
       `Invalid lockfile entry "${key}" at ${path}: "source.version" must be a non-empty string`,
+      `${sourcePointer}/version`,
     );
   }
 
   switch (src.kind) {
     case "modrinth": {
       if (typeof src.slug !== "string" || src.slug.length === 0) {
-        throw new Error(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: modrinth source requires a non-empty "slug"`,
+          `${sourcePointer}/slug`,
         );
       }
-      return { kind: "modrinth", slug: src.slug, version: src.version };
+      return { kind: "modrinth", slug: src.slug as string, version: src.version as string };
     }
     case "maven": {
       if (typeof src.groupId !== "string" || src.groupId.length === 0) {
-        throw new Error(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: maven source requires a non-empty "groupId"`,
+          `${sourcePointer}/groupId`,
         );
       }
       if (typeof src.artifactId !== "string" || src.artifactId.length === 0) {
-        throw new Error(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: maven source requires a non-empty "artifactId"`,
+          `${sourcePointer}/artifactId`,
         );
       }
       return {
         kind: "maven",
-        groupId: src.groupId,
-        artifactId: src.artifactId,
-        version: src.version,
+        groupId: src.groupId as string,
+        artifactId: src.artifactId as string,
+        version: src.version as string,
       };
     }
     case "file": {
       if (typeof src.path !== "string" || src.path.length === 0) {
-        throw new Error(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: file source requires a non-empty "path"`,
+          `${sourcePointer}/path`,
         );
       }
-      return { kind: "file", path: src.path, version: src.version };
+      return { kind: "file", path: src.path as string, version: src.version as string };
     }
     case "workspace": {
       if (typeof src.name !== "string" || src.name.length === 0) {
-        throw new Error(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: workspace source requires a non-empty "name"`,
+          `${sourcePointer}/name`,
         );
       }
-      return { kind: "workspace", name: src.name, version: src.version };
+      return { kind: "workspace", name: src.name as string, version: src.version as string };
     }
     default:
-      throw new Error(
+      throw new UserError(
         `Invalid lockfile entry "${key}" at ${path}: unknown source kind "${String(src.kind)}" (expected "modrinth", "maven", "file", or "workspace")`,
+        {
+          code: "E_LOCKFILE_INVALID_SOURCE",
+          hint: 'Known source kinds: "modrinth", "maven", "file", "workspace".',
+          source: { file: path, pointer: `${sourcePointer}/kind` },
+        },
       );
   }
 }

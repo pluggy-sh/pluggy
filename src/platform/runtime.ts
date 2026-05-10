@@ -1,6 +1,6 @@
 /**
  * Per-family runtime layouts. Centralising these keeps the eight platform
- * providers consistent — every bukkit-derived server stages plugins the
+ * providers consistent: every bukkit-derived server stages plugins the
  * same way, every proxy skips the vanilla server files, and so on.
  *
  * Override at the provider level if a specific platform needs different

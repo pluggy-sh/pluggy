@@ -2,7 +2,7 @@
  * Background check for new pluggy releases.
  *
  * Reads/writes a small state file with the most recent known release tag
- * and the time we last checked. Network fetch is fire-and-forget — the
+ * and the time we last checked. Network fetch is fire-and-forget; the
  * banner shown to the user is always derived from the *cached* result, so
  * it never blocks the current command. Suppressed when output is
  * non-interactive (`--json`, CI, no TTY) or explicitly disabled via
@@ -70,7 +70,7 @@ async function migrateLegacyState(stateFile: string): Promise<void> {
 /**
  * Compare two semver-ish version strings (e.g. `0.2.0`, `v0.2.1-beta`).
  * Returns -1 if `a < b`, 0 if equal, 1 if `a > b`. Pre-release suffixes
- * are ignored for the comparison — close enough for "you are outdated".
+ * are ignored for the comparison; close enough for "you are outdated".
  */
 export function compareVersions(a: string, b: string): -1 | 0 | 1 {
   const parse = (v: string): number[] => {
@@ -100,7 +100,7 @@ function isSuppressed(opts: UpdateCheckOptions): boolean {
     return true;
   }
   if (process.stderr.isTTY !== true) return true;
-  // Dev builds (CLI_VERSION not yet stamped by release.yml) — nothing to compare against.
+  // Dev builds (CLI_VERSION not yet stamped by release.yml); nothing to compare against.
   if (opts.currentVersion === "0.0.0" || opts.currentVersion === "") return true;
   return false;
 }
@@ -134,7 +134,7 @@ interface ReleaseResponse {
  * cache is stale, a background fetch updates it for the next run.
  *
  * The returned handle owns an `AbortController` for the in-flight
- * request — call `dispose()` from a `beforeExit` hook so the process
+ * request: call `dispose()` from a `beforeExit` hook so the process
  * doesn't linger on a slow socket.
  */
 export async function startUpdateCheck(opts: UpdateCheckOptions): Promise<UpdateCheckHandle> {
@@ -171,7 +171,7 @@ export async function startUpdateCheck(opts: UpdateCheckOptions): Promise<Update
           lastCheckedAt: now().toISOString(),
         });
       } catch {
-        // Network errors, abort, JSON parse — all fine to ignore. We'll retry next run.
+        // Network errors, abort, JSON parse: all fine to ignore. We'll retry next run.
       } finally {
         clearTimeout(timer);
       }

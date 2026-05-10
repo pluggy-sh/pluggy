@@ -4,7 +4,7 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { runDev } from "../dev/index.ts";
-import { log } from "../logging.ts";
+import { bold, dim, emit, log } from "../logging.ts";
 import type { ResolvedProject } from "../project.ts";
 import { findWorkspace, resolveWorkspaceContext, type WorkspaceContext } from "../workspace.ts";
 
@@ -24,7 +24,6 @@ export interface DevCommandOptions {
   /** `--no-hotswap` → `false`; flag absence → `undefined` (config decides). */
   hotswap?: boolean;
   offline?: boolean;
-  json?: boolean;
   cwd?: string;
 }
 
@@ -39,27 +38,28 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found — run this from inside a project directory.");
+    throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
 
   const target = selectDevTarget(context, opts);
 
-  if (opts.json === true) {
-    const platformId = opts.platform ?? target.compatibility?.platforms?.[0];
-    const mcVersion = opts.version ?? target.compatibility?.versions?.[0];
-    const port = opts.port ?? target.dev?.port ?? 25565;
-    const devDir = join(target.rootDir, "dev");
-    const startupLine = {
+  const platformId = opts.platform ?? target.compatibility?.platforms?.[0];
+  const mcVersion = opts.version ?? target.compatibility?.versions?.[0];
+  const port = opts.port ?? target.dev?.port ?? 25565;
+  const devDir = join(target.rootDir, "dev");
+  emit(
+    {
       status: "starting",
       platform: platformId,
       version: mcVersion,
       port,
       devDir,
-    };
-    console.log(JSON.stringify(startupLine));
-  } else {
-    log.info(`dev: starting ${target.name}`);
-  }
+    },
+    () => {
+      log.heading(`Starting dev server for ${bold(target.name)}`);
+      log.step(`platform ${dim(`${platformId} ${mcVersion}`)}, port ${port}`);
+    },
+  );
 
   await runDev(target, {
     platform: opts.platform,
@@ -81,7 +81,7 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
  *
  * At a root with workspaces `--workspace` is required; inside a workspace it
  * must match (or be omitted); standalone projects use their root. `dev` has
- * no `--workspaces` — the dev server is always one-at-a-time.
+ * no `--workspaces`: the dev server is always one-at-a-time.
  */
 export function selectDevTarget(
   context: WorkspaceContext,
@@ -130,7 +130,6 @@ export function devCommand(): Command {
     .option("--no-hotswap", "Disable HotswapAgent + JBR; use /reload or restart only.")
     .option("--offline", "Set online-mode=false in server.properties.")
     .action(async function action(this: Command, options) {
-      const globalOpts = this.optsWithGlobals();
       await runDevCommand({
         workspace: options.workspace,
         platform: options.platform,
@@ -145,7 +144,6 @@ export function devCommand(): Command {
         // `--no-hotswap` → false; absence → undefined (let config decide).
         hotswap: options.hotswap === false ? false : undefined,
         offline: options.offline === true,
-        json: globalOpts.json === true,
       });
     });
 }

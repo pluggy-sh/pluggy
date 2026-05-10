@@ -1,10 +1,15 @@
 /**
- * Workspace discovery, inheritance, and build-order graph.
+ * Workspace discovery, inheritance, build-order graph, and scope
+ * selection for workspace-aware commands.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import process from "node:process";
 
+import { InvalidArgumentError } from "commander";
+
+import { UserError } from "./errors.ts";
 import type { Project, Registry, ResolvedProject } from "./project.ts";
 
 const PROJECT_FILE_NAME = "project.json";
@@ -49,7 +54,7 @@ export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefin
     };
   }
 
-  // Nearest project has no workspaces — check whether a parent project lists it as one.
+  // Nearest project has no workspaces; check whether a parent project lists it as one.
   const parentDir = dirname(nearest.rootDir);
   const parentProject = parentDir !== nearest.rootDir ? findNearestProject(parentDir) : undefined;
 
@@ -98,8 +103,13 @@ export function topologicalOrder(workspaces: WorkspaceNode[]): WorkspaceNode[] {
     const current = state.get(node.name);
     if (current === "done") return;
     if (current === "visiting") {
-      const cycle = [...stack.slice(stack.indexOf(node.name)), node.name].join(" -> ");
-      throw new Error(`workspace dependency cycle detected: ${cycle}`);
+      const cyclePath = [...stack.slice(stack.indexOf(node.name)), node.name];
+      const cycle = cyclePath.join(" -> ");
+      throw new UserError(`workspace dependency cycle detected: ${cycle}`, {
+        code: "E_WORKSPACE_CYCLE",
+        hint: 'Break the cycle by removing one of the "workspace:" dependencies in this loop.',
+        context: { cycle: cyclePath },
+      });
     }
 
     state.set(node.name, "visiting");
@@ -125,7 +135,124 @@ export function findWorkspace(context: WorkspaceContext, name: string): Workspac
   if (hit !== undefined) return hit;
   const known = context.workspaces.map((w) => w.name);
   const list = known.length > 0 ? known.join(", ") : "(none)";
-  throw new Error(`workspace not found: "${name}". known workspaces: ${list}`);
+  throw new UserError(`workspace not found: "${name}". known workspaces: ${list}`, {
+    code: "E_WORKSPACE_NOT_FOUND",
+    hint:
+      known.length > 0
+        ? `Known workspaces: ${known.join(", ")}`
+        : "This project declares no workspaces.",
+    context: { name, known },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Scope selection for workspace-aware commands
+// ---------------------------------------------------------------------------
+
+export interface ScopeOptions {
+  cwd?: string;
+  workspace?: string;
+  workspaces?: boolean;
+  /**
+   * Refuse to implicitly span all workspaces at a root. `remove` sets this:
+   * running at the root without an explicit flag is ambiguous. `install`
+   * leaves it false (at-root default is "all workspaces").
+   */
+  requireExplicitAtRoot?: boolean;
+  /** Command name interpolated into error messages. */
+  commandName: string;
+}
+
+/**
+ * One target for a workspace-aware command. `name` and `project` come from
+ * either a workspace node or the standalone-project root depending on the
+ * scope:
+ *   - In a workspace context: workspace name + workspace project.
+ *   - In a standalone context: root project name + root project.
+ *
+ * Use `ResolvedScope.spansAllWorkspaces` to tell which form a target list
+ * represents. The `name` is always meaningful as a human label, e.g.
+ * for lockfile `declaredBy` or per-target output, regardless of source.
+ */
+export interface ScopeTarget {
+  name: string;
+  project: ResolvedProject;
+}
+
+export interface ResolvedScope {
+  context: WorkspaceContext;
+  targets: ScopeTarget[];
+  /** True when acting across every workspace (implicit at-root or `--workspaces`). */
+  spansAllWorkspaces: boolean;
+}
+
+/**
+ * Resolve which workspaces a command should act on, from cwd plus per-command
+ * flags. Throws `InvalidArgumentError` for user-input problems (no project,
+ * unknown workspace name, ambiguous root scope).
+ */
+export function resolveScope(opts: ScopeOptions): ResolvedScope {
+  const cwd = opts.cwd ?? process.cwd();
+  const context = resolveWorkspaceContext(cwd);
+  if (context === undefined) {
+    throw new InvalidArgumentError(
+      `${opts.commandName}: no pluggy project found at or above "${cwd}"`,
+    );
+  }
+
+  if (opts.workspace !== undefined) {
+    if (context.workspaces.length === 0) {
+      throw new InvalidArgumentError(
+        `${opts.commandName}: --workspace "${opts.workspace}" was given but this project has no workspaces`,
+      );
+    }
+    const node = findWorkspace(context, opts.workspace);
+    return {
+      context,
+      targets: [{ name: node.name, project: node.project }],
+      spansAllWorkspaces: false,
+    };
+  }
+
+  if (opts.workspaces === true) {
+    if (context.workspaces.length === 0) {
+      throw new InvalidArgumentError(
+        `${opts.commandName}: --workspaces was given but this project has no workspaces`,
+      );
+    }
+    return {
+      context,
+      targets: context.workspaces.map((w) => ({ name: w.name, project: w.project })),
+      spansAllWorkspaces: true,
+    };
+  }
+
+  if (context.current !== undefined) {
+    return {
+      context,
+      targets: [{ name: context.current.name, project: context.current.project }],
+      spansAllWorkspaces: false,
+    };
+  }
+
+  if (context.workspaces.length > 0) {
+    if (opts.requireExplicitAtRoot === true) {
+      throw new InvalidArgumentError(
+        `${opts.commandName}: at the workspace root. Pass --workspace <name> or --workspaces to disambiguate`,
+      );
+    }
+    return {
+      context,
+      targets: context.workspaces.map((w) => ({ name: w.name, project: w.project })),
+      spansAllWorkspaces: true,
+    };
+  }
+
+  return {
+    context,
+    targets: [{ name: context.root.name, project: context.root }],
+    spansAllWorkspaces: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -168,8 +295,14 @@ function enumerateWorkspaces(root: ResolvedProject): WorkspaceNode[] {
     const wsDir = resolveWorkspacePath(root.rootDir, rel);
     const projectFile = join(wsDir, PROJECT_FILE_NAME);
     if (!existsSync(projectFile)) {
-      throw new Error(
+      throw new UserError(
         `workspace declared in ${root.projectFile} is missing project.json: ${wsDir}`,
+        {
+          code: "E_WORKSPACE_MISSING_PROJECT_JSON",
+          hint: `Create ${projectFile} or remove the entry from "workspaces" in ${root.projectFile}.`,
+          source: { file: root.projectFile, pointer: "/workspaces" },
+          context: { workspaceDir: wsDir, expected: projectFile },
+        },
       );
     }
     const raw = readFileSync(projectFile, "utf8");

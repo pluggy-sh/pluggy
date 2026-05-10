@@ -1,12 +1,12 @@
 /**
- * Test pipeline — resolve deps → compile src → package main.jar → compile
+ * Test pipeline: resolve deps → compile src → package main.jar → compile
  * test → run JUnit Platform Console Launcher → parse JUnit XML reports.
  * Orchestration only; pure arg-building and report-parsing live in
  * `./runner.ts`.
  *
  * Main classes are zipped into a `main.jar` (with the generated descriptor
- * and any declared `resources`) and that jar — not the raw classes directory
- * — is what the test classpath sees. This mirrors how the plugin is loaded
+ * and any declared `resources`) and that jar (not the raw classes directory)
+ * is what the test classpath sees. This mirrors how the plugin is loaded
  * in production and lets any framework that inspects the runtime classloader
  * (MockBukkit, agent-style harnesses, …) work without per-framework hooks.
  *
@@ -25,7 +25,7 @@ import { pickDescriptor } from "../build/descriptor.ts";
 import { zipDirectory } from "../build/jar.ts";
 import { stageResources } from "../build/resources.ts";
 import { log } from "../logging.ts";
-import { getPlatform } from "../platform/index.ts";
+import { platforms } from "../platform/index.ts";
 import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
 import { effectiveRegistries } from "../registry.ts";
@@ -40,7 +40,7 @@ import {
   type TestRunResult as ParsedRunResult,
 } from "./runner.ts";
 
-/** Pinned JUnit Platform Console Standalone — single jar, includes Jupiter + Vintage. */
+/** Pinned JUnit Platform Console Standalone: single jar, includes Jupiter + Vintage. */
 const JUNIT_CONSOLE = {
   groupId: "org.junit.platform",
   artifactId: "junit-platform-console-standalone",
@@ -53,7 +53,7 @@ const MAX_STDERR_LINES = 40;
 export interface TestRunOptions {
   /** Wipe the test staging dir (compiled classes, XML reports) before running. */
   clean?: boolean;
-  /** User filter — see `filterToLauncherArgs`. */
+  /** User filter; see `filterToLauncherArgs`. */
   filter?: string;
   /** Stop on first test failure. */
   failFast?: boolean;
@@ -81,7 +81,7 @@ export type TestRunOutcome =
   | {
       status: "no-tests";
       durationMs: number;
-      /** Why no tests ran — surfaced to the user. */
+      /** Why no tests ran; surfaced to the user. */
       reason: "no-test-dir" | "no-sources";
       mcVersion?: string;
       platformId?: string;
@@ -132,9 +132,9 @@ export async function runTests(
   // Main classes are compiled directly into a stage dir we then zip into a
   // jar. Putting the *jar* (rather than the raw classes directory) on the test
   // classpath matches how the plugin is loaded in production: any framework
-  // that does runtime classloader inspection — MockBukkit, agent-based test
-  // tooling, anything that calls `Class.getProtectionDomain().getCodeSource()`
-  // — sees a real jar URL and can find the descriptor on the classpath.
+  // that does runtime classloader inspection (MockBukkit, agent-based test
+  // tooling, anything that calls `Class.getProtectionDomain().getCodeSource()`)
+  // sees a real jar URL and can find the descriptor on the classpath.
   const mainStageDir = join(stagingDir, "main-jar-stage");
   const mainJarPath = join(stagingDir, "main.jar");
   const mainRuntimeJarPath = join(stagingDir, "main-runtime.jar");
@@ -183,15 +183,15 @@ export async function runTests(
 
   // We build two jars from the same staged directory:
   //
-  //   * `main.jar` — the full jar, handed to the test JVM via the
+  //   * `main.jar`: the full jar, handed to the test JVM via the
   //     `pluggy.test.mainJar` system property. Mocking frameworks
   //     (MockBukkit, anything else that mounts a plugin classloader) load
   //     the plugin from this path so the entry-point class ends up under
   //     their own `ConfiguredPluginClassLoader`.
-  //   * `main-runtime.jar` — same content minus the declared entry-point
+  //   * `main-runtime.jar`: same content minus the declared entry-point
   //     class. This jar goes on the system test classpath so plain
   //     utility classes are reachable for non-mocking unit tests, but the
-  //     entry-point class is *not* — keeping it off the system loader is
+  //     entry-point class is *not*. Keeping it off the system loader is
   //     what lets the mocking framework own it cleanly. Without this
   //     split, Bukkit's `JavaPlugin requires a valid classloader` check
   //     fires when the framework tries to reload the plugin.
@@ -275,9 +275,9 @@ export async function runTests(
  * Stage the generated descriptor + declared resources alongside the compiled
  * classes in `mainStageDir`, then zip the directory into two jars:
  *
- *   * `mainJarPath` — full content, used by mocking frameworks via the
+ *   * `mainJarPath`: full content, used by mocking frameworks via the
  *     `pluggy.test.mainJar` system property.
- *   * `mainRuntimeJarPath` — same content minus the declared entry-point
+ *   * `mainRuntimeJarPath`: same content minus the declared entry-point
  *     class. Goes on the system test classpath so utility classes are
  *     reachable; the entry-point stays unreachable so the mocking
  *     framework's classloader can own it (see Bukkit's `JavaPlugin`
@@ -313,7 +313,7 @@ async function packageMainJar(
 
   // `project.main` is required for any workspace that runs tests (it has a
   // `src/` to compile). If it's missing here, descriptor generation above
-  // already threw with a clearer message — but be defensive.
+  // already threw with a clearer message; but be defensive.
   const mainEntry =
     project.main !== undefined && project.main.length > 0
       ? `${project.main.replace(/\./g, "/")}.class`
@@ -328,19 +328,19 @@ async function packageMainJar(
  *
  * Three properties are exposed:
  *
- *   * `pluggy.test.mainJar` — absolute path to the plugin's own jar.
- *   * `pluggy.test.dependency.<name>` — one entry per declared dep
+ *   * `pluggy.test.mainJar`: absolute path to the plugin's own jar.
+ *   * `pluggy.test.dependency.<name>`: one entry per declared dep
  *     (`project.dependencies` and `project.testDependencies`), keyed by
  *     the name from project.json. Picks of "load worldedit but not
  *     luckperms" use this.
- *   * `pluggy.test.dependencies` — `path.delimiter`-joined list of every
+ *   * `pluggy.test.dependencies`: `path.delimiter`-joined list of every
  *     declared dep jar in declaration order (`dependencies` first, then
  *     `testDependencies`). For "boot the server with everything declared".
  *
  * Transitive deps are intentionally not exposed: they're already on the
  * test classpath, and surfacing them would let callers depend on
  * indirect dep names that change without notice. Library-style Maven
- * deps may end up in the catalog — pluggy doesn't try to detect "is
+ * deps may end up in the catalog; pluggy doesn't try to detect "is
  * this a plugin?", that's the test's call.
  *
  * On a name collision between `dependencies` and `testDependencies`,
@@ -412,7 +412,7 @@ async function readReports(reportsDir: string): Promise<string[]> {
     try {
       out.push(await readFile(join(reportsDir, name), "utf8"));
     } catch {
-      // File vanished or couldn't be read — skip, don't fail the whole run.
+      // File vanished or couldn't be read; skip, don't fail the whole run.
     }
   }
   return out;
@@ -460,7 +460,7 @@ async function resolvePlatformApiJars(
 
   let provider;
   try {
-    provider = getPlatform(platformId);
+    provider = platforms.get(platformId);
   } catch {
     return [];
   }

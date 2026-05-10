@@ -1,5 +1,5 @@
 /**
- * Shading — selectively copy entries from dependency jars into the staging
+ * Shading. Selectively copy entries from dependency jars into the staging
  * directory per the project's `shading` rules. A dep without a rule is not
  * shaded.
  */
@@ -17,7 +17,7 @@ import type { ResolvedDependency } from "../resolver/index.ts";
 import { PENDING_BUILD_INTEGRITY } from "../resolver/workspace.ts";
 
 /**
- * The dep's name as declared in `project.json` — the key the `shading` map
+ * The dep's name as declared in `project.json`: the key the `shading` map
  * is indexed by. Slug for modrinth, artifactId for maven, basename without
  * `.jar` for file, name for workspace.
  */
@@ -55,14 +55,14 @@ export async function applyShading(
     if (dep.integrity === PENDING_BUILD_INTEGRITY) {
       if (!existsSync(dep.jarPath)) {
         throw new Error(
-          `shade: workspace dependency "${name}" has not been built yet — expected jar at "${dep.jarPath}". Build the sibling workspace first (topological order is the caller's responsibility).`,
+          `shade: workspace dependency "${name}" has not been built yet; expected jar at "${dep.jarPath}". Build the sibling workspace first (topological order is the caller's responsibility).`,
         );
       }
     }
 
     if (!existsSync(dep.jarPath)) {
       throw new Error(
-        `shade: dependency "${name}" jar not found at "${dep.jarPath}" — resolve it first`,
+        `shade: dependency "${name}" jar not found at "${dep.jarPath}"; resolve it first`,
       );
     }
 
@@ -80,7 +80,7 @@ async function shadeDependency(
   const excludes = rule.exclude ?? [];
 
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    // autoClose:false — with the default, yauzl closes the FD on `end`,
+    // autoClose:false: with the default, yauzl closes the FD on `end`,
     // which races against openReadStream calls we queue from the entry loop.
     yauzl.open(jarPath, { lazyEntries: true, autoClose: false }, (err, zip) => {
       if (err !== null || zip === undefined) {

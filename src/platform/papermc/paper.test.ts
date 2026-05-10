@@ -1,26 +1,26 @@
 import { expect, test } from "vite-plus/test";
-import { getPlatform } from "../index.ts";
+import { platforms } from "../index.ts";
 
 test("paper platform exists", () => {
-  expect(getPlatform("paper").id).toBe("paper");
-  expect(getPlatform("Paper").id).toBe("paper");
-  expect(() => getPlatform("@Paper")).toThrow("Platform with id '@Paper' not found");
+  expect(platforms.get("paper").id).toBe("paper");
+  expect(platforms.get("Paper").id).toBe("paper");
+  expect(() => platforms.get("@Paper")).toThrow("Platform with id '@Paper' not found");
 });
 
 test("paper platform versions", async () => {
-  const paper = getPlatform("paper");
-  const versions = await paper.getVersions();
+  const paper = platforms.get("paper");
+  const versions = await paper.versions();
   expect(Array.isArray(versions)).toBe(true);
   expect(versions).toEqual(expect.arrayContaining(["1.21.8", "1.21.7", "1.21.6"]));
   expect(versions.length).toBeGreaterThan(0);
 
-  const latest = await paper.getLatestVersion();
+  const latest = await paper.latest();
   expect(latest.version).toBe(versions[0]);
 });
 
 test("paper platform download latest version", async () => {
-  const paper = getPlatform("paper");
-  const latestVersion = await paper.getLatestVersion();
+  const paper = platforms.get("paper");
+  const latestVersion = await paper.latest();
   const result = await paper.download(latestVersion, true);
 
   expect(result?.version).toBe(latestVersion.version);
