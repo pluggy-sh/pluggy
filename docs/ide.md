@@ -12,7 +12,7 @@ why, and how to opt out.
 | `pluggy build` | `.classpath` + `.project` (project root) | Regenerated on every build to reflect the resolved classpath. |
 
 Pluggy never touches `.vscode/`. The `.classpath` is the single source
-of truth — the same file feeds Eclipse, VS Code, and IntelliJ.
+of truth: the same file feeds Eclipse, VS Code, and IntelliJ.
 
 ## How each IDE reads it
 
@@ -22,9 +22,9 @@ of truth — the same file feeds Eclipse, VS Code, and IntelliJ.
 | VS Code  | Reads `.classpath` via Red Hat's `vscode-java` extension (the "Extension Pack for Java" is the easy install). |
 | IntelliJ | Reads `.classpath` because the `.idea/` stub `init` writes opens the project in linked-Eclipse mode.          |
 
-That's why opening the project folder in any of the three "just works"
-without an import wizard. After the first build, every IDE sees the
-same dependency set.
+Opening the project folder in any of the three loads it as a Java
+project with no import wizard. After the first build, every IDE sees
+the same dependency set.
 
 ## Opting out for a single build
 
@@ -34,7 +34,7 @@ pluggy build --skip-classpath
 
 Skips the `.classpath` + `.project` write for one invocation. Useful in
 CI when the IDE files would only churn the diff. There is no permanent
-opt-out flag — the cost is a few microseconds and two small XML files.
+opt-out flag. The cost is a few microseconds and two small XML files.
 
 ## Version control
 

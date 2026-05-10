@@ -94,7 +94,7 @@ Without `-y`, pluggy walks through an interactive session:
 - **Project name**: pre-filled with the target basename. Skipped when `--name` is passed or a positional `path` is given.
 - **Target platforms**: checkbox list of every registered platform, with `paper` pre-selected. Skipped when `--platform` is passed. Requires at least one selection.
 - **Main class**: pre-filled with `com.example.<DerivedClassName>`, where the class name is derived from the project name by splitting on `-` and `_` and PascalCasing. Skipped when `--main` is passed.
-  There is no IDE prompt — `pluggy init` writes the IntelliJ stub (`.idea/` + `<name>.iml`) and a `.gitignore` covering the regenerated IDE files unconditionally. `pluggy build` writes `.classpath` and `.project` on every build. See [IDE integration](../ide.md).
+  There is no IDE prompt. `pluggy init` writes the IntelliJ stub (`.idea/` + `<name>.iml`) and a `.gitignore` covering the regenerated IDE files unconditionally. `pluggy build` writes `.classpath` and `.project` on every build. See [IDE integration](../ide.md).
 
 Under `--json` or `-y`, the non-empty-dir situation throws instead of prompting (an interactive prompt in a non-interactive session would hang forever) and every other prompt falls back to its default: `paper` for platforms, derived name and main class.
 
