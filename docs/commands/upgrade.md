@@ -10,9 +10,10 @@ pluggy upgrade [options]
 
 ## Flags
 
-| Flag           | Default | Notes                                                            |
-| -------------- | ------- | ---------------------------------------------------------------- |
-| `--print-only` | off     | Skip the download and print manual install instructions instead. |
+| Flag           | Default | Notes                                                                                                                       |
+| -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `--print-only` | off     | Skip the download and print manual install instructions instead.                                                            |
+| `--force`      | off     | Self-update even when pluggy was installed via Homebrew or Scoop. Not recommended; corrupts the package manager's tracking. |
 
 ## What it does
 
@@ -58,6 +59,36 @@ Install manually:
   Unix:    curl -fsSL https://pluggy.sh/install.sh | sh
   Windows: irm https://pluggy.sh/install.ps1 | iex
 ```
+
+## Managed installs (Homebrew, Scoop)
+
+`pluggy upgrade` refuses to run when it detects that the binary is owned
+by a package manager — overwriting it would leave the package manager's
+manifest pointing at a file it didn't install. Run the package manager's
+own upgrade instead:
+
+```text
+$ pluggy upgrade
+✖ pluggy was installed via Homebrew; don't self-update — that would corrupt the package manager's tracking.
+
+Run this instead:
+
+  $ brew upgrade pluggy
+```
+
+The same guard fires for Scoop, suggesting `scoop update pluggy`.
+Pass `--force` to override (the upgrade will succeed but leave the
+package manager confused).
+
+Detection looks at `process.execPath`:
+
+| Install method | Detected by path containing            |
+| -------------- | -------------------------------------- |
+| Homebrew       | `/Cellar/pluggy/`                      |
+| Scoop          | `/scoop/apps/pluggy/`                  |
+| Install script | `/.pluggy/bin/` or `/Programs/pluggy/` |
+
+Unrecognised paths are treated as self-updateable.
 
 ## Permissions
 

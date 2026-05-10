@@ -24,7 +24,7 @@ Doctor groups its output into four blocks. Run with `--report` to get the same d
 
 ### Environment
 
-Always shown. Lists pluggy version, OS plus release plus arch, runtime (`bun` or `node`), terminal info (TTY, columns, locale), the names (not values) of pluggy-relevant env vars that are set, and the cache and state directory paths.
+Always shown. Lists pluggy version, OS plus release plus arch, runtime (`bun` or `node`), terminal info (TTY, columns, locale), the names (not values) of pluggy-relevant env vars that are set, the cache and state directory paths, and the install method (`Homebrew`, `Scoop`, `install script`, or `unknown`) plus the resolved binary path. When PATH contains additional pluggy binaries that shadow each other, doctor warns and lists them.
 
 ### Project
 
@@ -72,6 +72,7 @@ Environment
   › env vars set: JAVA_HOME
   › cache: /Users/you/Library/Caches/pluggy
   › state: /Users/you/Library/Application Support/pluggy
+  › install: install script (/Users/you/.pluggy/bin/pluggy)
 
 Project
   › name: my_plugin@1.0.0
@@ -123,6 +124,7 @@ $ pluggy doctor --report
 - env vars set: JAVA_HOME
 - cache: /Users/you/Library/Caches/pluggy
 - state: /Users/you/Library/Application Support/pluggy
+- install: install script (/Users/you/.pluggy/bin/pluggy)
 
 ### Project
 

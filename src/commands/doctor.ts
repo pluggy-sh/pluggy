@@ -12,6 +12,12 @@ import { HOTSWAP_AGENT_VERSION } from "../dev/hotswap.ts";
 import { JBR_VERSION, jbrCacheKey, jbrJavaPath, jbrTarget } from "../dev/jbr.ts";
 import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
 import { type LockfileEntry, pruneOrphans, readLock } from "../lockfile.ts";
+import {
+  type InstallMethod,
+  describeInstallMethod,
+  detectInstallMethod,
+  findOtherInstalls,
+} from "../install-method.ts";
 import { bold, emit, emitErr, green, isJsonMode, log, red, yellow } from "../logging.ts";
 import { platforms } from "../platform/index.ts";
 import {
@@ -45,6 +51,12 @@ export interface EnvironmentInfo {
   locale?: string;
   envVarsSet: string[];
   paths: { cache: string; state: string };
+  install: {
+    method: InstallMethod;
+    label: string;
+    binaryPath: string;
+    otherInstalls: string[];
+  };
   project?: {
     name: string;
     version: string;
@@ -295,6 +307,7 @@ function collectEnvVarsSet(): string[] {
  * context for the bug report.
  */
 function collectEnvironmentInfo(pluggyVersion?: string): EnvironmentInfo {
+  const installInfo = detectInstallMethod();
   const env: EnvironmentInfo = {
     pluggy: { version: pluggyVersion ?? "0.0.0" },
     os: { platform: platform(), release: release(), arch: arch() },
@@ -302,6 +315,12 @@ function collectEnvironmentInfo(pluggyVersion?: string): EnvironmentInfo {
     terminal: { isTTY: process.stdout.isTTY === true },
     envVarsSet: collectEnvVarsSet(),
     paths: { cache: getCachePath(), state: getStatePath() },
+    install: {
+      method: installInfo.method,
+      label: describeInstallMethod(installInfo.method),
+      binaryPath: installInfo.resolvedPath,
+      otherInstalls: findOtherInstalls(installInfo.resolvedPath),
+    },
   };
   if (typeof process.stdout.columns === "number" && process.stdout.columns > 0) {
     env.terminal.columns = process.stdout.columns;
@@ -1192,6 +1211,12 @@ function printHumanReport(result: DoctorCommandResult): void {
   );
   log.step(`cache: ${env.paths.cache}`);
   log.step(`state: ${env.paths.state}`);
+  log.step(`install: ${env.install.label} (${env.install.binaryPath})`);
+  if (env.install.otherInstalls.length > 0) {
+    log.step(
+      `${yellow("⚠")} other pluggy binaries on PATH: ${env.install.otherInstalls.join(", ")}`,
+    );
+  }
 
   if (env.project !== undefined) {
     log.heading("Project");

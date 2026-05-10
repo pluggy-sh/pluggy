@@ -7,6 +7,12 @@ import process from "node:process";
 
 import { Command } from "commander";
 
+import {
+  type InstallInfo,
+  describeInstallMethod,
+  detectInstallMethod,
+  upgradeCommandFor,
+} from "../install-method.ts";
 import { bold, brightBlue, dim, log, red, yellow } from "../logging.ts";
 
 interface GithubReleaseAsset {
@@ -333,6 +339,21 @@ function extractLeafCertificatePem(bundle: Record<string, unknown>): string | un
   return `-----BEGIN CERTIFICATE-----\n${wrapped}\n-----END CERTIFICATE-----\n`;
 }
 
+function printManagedInstallGuidance(install: InstallInfo, upgradeCmd: string): void {
+  const label = describeInstallMethod(install.method);
+  log.error(
+    `${red("✖")} pluggy was installed via ${label}; ${bold("don't")} self-update — that would corrupt the package manager's tracking.`,
+  );
+  log.info("");
+  log.info(`${bold("Run this instead:")}`);
+  log.info("");
+  log.info(`  ${dim("$")} ${upgradeCmd}`);
+  log.info("");
+  log.info(
+    `${dim(`(detected install path: ${install.resolvedPath}. Override with --force if you really mean it.)`)}`,
+  );
+}
+
 function printPermissionGuidance(repository: string, currentBinaryPath: string): void {
   log.error(
     `cannot write to ${currentBinaryPath}: pluggy was installed to a system path and upgrades from there require root.`,
@@ -368,12 +389,27 @@ export function upgradeCommand(options: UpgradeOptions): Command {
       "--print-only",
       "Don't download; just print the latest release info and install commands.",
     )
+    .option(
+      "--force",
+      "Self-update even when pluggy was installed via a package manager. Not recommended; use the package manager's upgrade command instead.",
+    )
     .action(async function action(this: Command, cmdOptions) {
       const release = await fetchLatestRelease(options.repository, options.token);
 
       if (cmdOptions.printOnly === true) {
         printManualInstructions(options.repository, release);
         return;
+      }
+
+      const installInfo = detectInstallMethod();
+      const managedUpgrade = upgradeCommandFor(installInfo.method);
+      if (managedUpgrade !== undefined && cmdOptions.force !== true) {
+        printManagedInstallGuidance(installInfo, managedUpgrade);
+        const err = new Error(
+          `upgrade aborted: pluggy was installed via ${describeInstallMethod(installInfo.method)}; run \`${managedUpgrade}\` instead`,
+        ) as Error & { exitCode?: number };
+        err.exitCode = 1;
+        throw err;
       }
 
       const assetName = currentAssetName();
