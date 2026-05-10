@@ -1,5 +1,5 @@
 /**
- * Foojay Disco API client. Pure HTTP, no FS — the install pipeline consumes
+ * Foojay Disco API client. Pure HTTP, no FS. The install pipeline consumes
  * what this returns. Disco aggregates JDK distributions (Temurin, Zulu,
  * Liberica, Corretto, Microsoft, GraalVM CE, …) and exposes a single query
  * surface for "give me JDK <major> for <os>/<arch>".
@@ -13,6 +13,8 @@
 
 import process from "node:process";
 
+import { RuntimeError } from "../errors.ts";
+
 const DISCO_BASE = "https://api.foojay.io/disco/v3.0";
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -20,7 +22,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 export type DiscoOs = "macos" | "linux" | "windows";
 /** Arch names Disco accepts. */
 export type DiscoArch = "aarch64" | "x64";
-/** Archive type per OS — Unix ships tarballs, Windows ships zips. */
+/** Archive type per OS: Unix ships tarballs, Windows ships zips. */
 export type DiscoArchiveType = "tar.gz" | "zip";
 
 /** Resolved package metadata sufficient to download and extract a JDK. */
@@ -34,7 +36,7 @@ export interface JdkSpec {
   os: DiscoOs;
   arch: DiscoArch;
   archiveType: DiscoArchiveType;
-  /** Disco redirect URL — fetch follows it transparently to the upstream CDN. */
+  /** Disco redirect URL; fetch follows it transparently to the upstream CDN. */
   downloadUrl: string;
   /** Filename Disco reports for the archive; used for caching the download. */
   filename: string;
@@ -63,7 +65,7 @@ export interface ResolveJdkOptions {
  * Resolve a single Disco package matching the requested major/distribution
  * for the given (or detected) host. Picks the latest GA build available.
  *
- * Throws when Disco returns no matches — that surfaces as a clean error to
+ * Throws when Disco returns no matches; that surfaces as a clean error to
  * the user (typically: "this major isn't published for your OS/arch").
  */
 export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
@@ -89,16 +91,33 @@ export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
   const data = await fetchJson(url);
   const items = (data as DiscoListResponse).result ?? [];
   if (items.length === 0) {
-    throw new Error(
-      `disco: no ${distribution} JDK ${opts.major} (${target.os}/${target.arch}, ${archiveType}) — ` +
-        `try a different distribution or check https://api.foojay.io/disco/v3.0/distributions`,
+    throw new RuntimeError(
+      `No ${distribution} JDK ${opts.major} (${target.os}/${target.arch}, ${archiveType}) available`,
+      {
+        code: "E_DISCO_NO_MATCH",
+        hint: "Try a different distribution or check https://api.foojay.io/disco/v3.0/distributions.",
+        context: {
+          distribution,
+          major: opts.major,
+          os: target.os,
+          arch: target.arch,
+          archiveType,
+        },
+      },
     );
   }
 
   const pkg = items[0];
   const downloadUrl = pkg.links?.pkg_download_redirect;
   if (typeof downloadUrl !== "string" || downloadUrl.length === 0) {
-    throw new Error(`disco: package ${pkg.id ?? "?"} returned no pkg_download_redirect link`);
+    throw new RuntimeError(
+      `Disco package ${pkg.id ?? "?"} returned no pkg_download_redirect link`,
+      {
+        code: "E_DISCO_NO_DOWNLOAD",
+        hint: "Retry, or check https://api.foojay.io/disco/v3.0/distributions for an alternative.",
+        context: { packageId: pkg.id ?? null, distribution, major: opts.major },
+      },
+    );
   }
 
   const checksum =
@@ -123,12 +142,12 @@ export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
 /**
  * Fetch the per-package detail endpoint to recover the vendor-published
  * checksum. Returns `undefined` on any failure (network, missing field,
- * unsupported algorithm) — `installJdk` logs a warning and proceeds without
+ * unsupported algorithm); `installJdk` logs a warning and proceeds without
  * verification in that case rather than refusing every install.
  *
  * `checksum_uri` (when present) points to a text file containing the digest
  * value. Some vendors include the hash inline as `checksum`, others only as
- * a sidecar URL — we handle both.
+ * a sidecar URL; we handle both.
  */
 async function fetchPackageChecksum(pkgInfoUri: string): Promise<JdkSpec["checksum"] | undefined> {
   const data = await fetchJson(new URL(pkgInfoUri)).catch(() => undefined);
@@ -149,7 +168,7 @@ async function fetchPackageChecksum(pkgInfoUri: string): Promise<JdkSpec["checks
   if (value === undefined || value.length === 0) return undefined;
 
   // Sidecar files often look like "<hex>  filename"; take the leading hex
-  // token. Hashes are case-insensitive — normalize to lowercase for compare.
+  // token. Hashes are case-insensitive; normalize to lowercase for compare.
   const trimmed = value.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
   if (!/^[0-9a-f]+$/.test(trimmed)) return undefined;
 
@@ -190,13 +209,12 @@ export function targetForHost(): { os: DiscoOs; arch: DiscoArch } {
   if (process.platform === "darwin") os = "macos";
   else if (process.platform === "linux") os = "linux";
   else if (process.platform === "win32") os = "windows";
-  else throw new Error(`disco: unsupported platform "${process.platform}"`);
+  else throw new Error(`Unsupported platform "${process.platform}"`);
 
   let arch: DiscoArch;
   if (process.arch === "arm64") arch = "aarch64";
   else if (process.arch === "x64") arch = "x64";
-  else
-    throw new Error(`disco: unsupported arch "${process.arch}" — only aarch64 and x64 are mapped`);
+  else throw new Error(`Unsupported arch "${process.arch}"; only aarch64 and x64 are mapped`);
 
   return { os, arch };
 }
@@ -231,7 +249,11 @@ async function fetchJson(url: URL): Promise<unknown> {
       headers: { accept: "application/json" },
     });
     if (!res.ok) {
-      throw new Error(`disco: ${res.status} ${res.statusText} — ${url.toString()}`);
+      throw new RuntimeError(`Disco API ${res.status} ${res.statusText}: ${url.toString()}`, {
+        code: "E_DISCO_HTTP",
+        hint: "Check connectivity to https://api.foojay.io and retry.",
+        context: { status: res.status, statusText: res.statusText, url: url.toString() },
+      });
     }
     return await res.json();
   } finally {

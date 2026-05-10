@@ -23,7 +23,7 @@ describe("renderPropertiesFile", () => {
     expect(out).toContain("LOGGER=debug");
   });
 
-  test("normalizes Windows-style backslashes — Java properties parser would otherwise eat them", () => {
+  test("normalizes Windows-style backslashes; Java properties parser would otherwise eat them", () => {
     const out = renderPropertiesFile({
       classesDir: "C:\\Users\\dev\\.pluggy-build\\abc",
     });
@@ -144,7 +144,7 @@ describe("start (stdout marker watcher)", () => {
     expect(await pending).toBe("timeout");
   });
 
-  test("buffers across chunk boundaries — a marker split mid-line still matches", async () => {
+  test("buffers across chunk boundaries: a marker split mid-line still matches", async () => {
     const child = makeFakeChild();
     watcher = start({
       child: child as unknown as Parameters<typeof start>[0]["child"],
@@ -156,7 +156,7 @@ describe("start (stdout marker watcher)", () => {
     expect(await pending).toBe("reloaded");
   });
 
-  test("each wait() is independent — buffers reset between calls", async () => {
+  test("each wait() is independent: buffers reset between calls", async () => {
     const child = makeFakeChild();
     watcher = start({
       child: child as unknown as Parameters<typeof start>[0]["child"],
@@ -175,7 +175,7 @@ describe("start (stdout marker watcher)", () => {
     expect(await second).toBe("timeout");
   });
 
-  test("arm() then a marker arriving BEFORE wait() — wait() resolves immediately (race fix)", async () => {
+  test("arm() then a marker arriving BEFORE wait(): wait() resolves immediately (race fix)", async () => {
     const child = makeFakeChild();
     watcher = start({
       child: child as unknown as Parameters<typeof start>[0]["child"],
@@ -198,7 +198,7 @@ describe("start (stdout marker watcher)", () => {
       child: child as unknown as Parameters<typeof start>[0]["child"],
       timeoutMs: 50,
     });
-    // No arm() yet — emit a marker that should be ignored.
+    // No arm() yet; emit a marker that should be ignored.
     child.stdout.emit(
       "data",
       "HOTSWAP AGENT: 10:30 RELOAD - Reloading classes [stale] (autoHotswap)\n",

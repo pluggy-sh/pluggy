@@ -1,5 +1,5 @@
 /**
- * Unit tests for `src/sdk/cache.ts`. Pure path/manifest helpers — no
+ * Unit tests for `src/sdk/cache.ts`. Pure path/manifest helpers, no
  * network, no extraction. The manifest tests redirect `getCachePath` to
  * a tempdir per-test so the user's real pluggy cache is never touched.
  */
@@ -61,7 +61,7 @@ describe("cacheKey", () => {
 
 describe("javaBinaryPath / javaHomePath", () => {
   // Build expected paths with `join` so the assertions use native separators
-  // on every OS — these helpers return runtime paths for spawning processes,
+  // on every OS; these helpers return runtime paths for spawning processes,
   // not POSIX-normalized paths.
   test("linux is flat", () => {
     const slot = join("/cache", "temurin-21-linux-x64");

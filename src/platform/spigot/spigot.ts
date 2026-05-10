@@ -12,7 +12,7 @@ export default createPlatform((ctx) => ({
   descriptor: bukkitDescriptor,
   runtime: BUKKIT_RUNTIME,
 
-  async getVersionInfo(version: string) {
+  async info(version: string) {
     const res = await fetch(`${VERSIONS_URL}${version}.json`);
     if (!res.ok) throw new Error(`Failed to fetch version info for ${version}: ${res.statusText}`);
     const data = (await res.json()) as { name?: number };
@@ -20,15 +20,15 @@ export default createPlatform((ctx) => ({
     return { version, build: data.name };
   },
 
-  async getVersions() {
+  async versions() {
     return (await versions()).filter((version) => version.includes("."));
   },
 
-  async getLatestVersion() {
-    const versionsList = await this.getVersions();
+  async latest() {
+    const versionsList = await this.versions();
     const latestVersion = versionsList[0];
     if (!latestVersion) throw new Error("No versions found for Spigot");
-    return await this.getVersionInfo(latestVersion);
+    return await this.info(latestVersion);
   },
 
   api(version) {

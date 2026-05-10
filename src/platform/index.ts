@@ -1,6 +1,6 @@
 export * from "./platform.ts";
 
-// Side-effect imports — each module calls createPlatform() at load time.
+// Side-effect imports: each module calls createPlatform() at load time.
 import "./spigot/bukkit.ts";
 import "./spigot/spigot.ts";
 import "./papermc/paper.ts";

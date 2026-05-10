@@ -1,12 +1,12 @@
 /**
  * Shared classpath resolution. `build`, `checkPlatformCompile`, and `docs`
  * all need the same answer to "what jars should be on the classpath for this
- * project?" — declared dependencies (with their transitive trees) plus the
+ * project?". Declared dependencies (with their transitive trees) plus the
  * platform API jars for the primary (or explicitly requested) platform.
  */
 
 import { readLock, type LockfileEntry } from "../lockfile.ts";
-import { getPlatform } from "../platform/index.ts";
+import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
@@ -79,7 +79,7 @@ async function resolveDeclaredDependencies(
   // Pull the lockfile entries up front so we can pass each top-level dep's
   // recorded `integrity` as `expectedIntegrity`. Catches the silent
   // upstream substitution scenario (registry rolls forward bytes for a
-  // pinned version between `install` and `build`) — without this thread,
+  // pinned version between `install` and `build`). Without this thread,
   // build re-resolved fresh and accepted whatever bytes came back.
   const lockEntries = readLock(project.rootDir)?.entries ?? {};
 
@@ -107,7 +107,7 @@ async function resolveDeclaredDependencies(
  * Look up the lockfile entry for `name` and return its `integrity` if the
  * recorded source/version still matches the declared one. Drift means the
  * pin is stale (user edited project.json since `install`) and the recorded
- * hash is no longer the right thing to enforce — surface the issue via
+ * hash is no longer the right thing to enforce; surface the issue via
  * `pluggy install` rather than blocking the build.
  */
 function expectedIntegrityFor(
@@ -127,16 +127,16 @@ async function resolvePlatformApiJars(
   projectRegistries: string[],
   platformId: string | undefined,
 ): Promise<string[]> {
-  const platforms = project.compatibility?.platforms ?? [];
+  const declaredPlatforms = project.compatibility?.platforms ?? [];
   const versions = project.compatibility?.versions ?? [];
-  if (platforms.length === 0 || versions.length === 0) return [];
+  if (declaredPlatforms.length === 0 || versions.length === 0) return [];
 
-  const primaryId = platformId ?? platforms[0];
+  const primaryId = platformId ?? declaredPlatforms[0];
   const primaryVersion = versions[0];
 
   let primary;
   try {
-    primary = getPlatform(primaryId);
+    primary = platforms.get(primaryId);
   } catch {
     // pickDescriptor / build callers already surfaced this; stay quiet.
     return [];

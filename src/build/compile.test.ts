@@ -1,4 +1,4 @@
-/** Tests for src/build/compile.ts. `spawn` is stubbed — no real javac. */
+/** Tests for src/build/compile.ts. `spawn` is stubbed; no real javac. */
 
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -197,7 +197,7 @@ describe("compileJava", () => {
         outputDir: join(workDir, "out"),
         classpath: [],
       }),
-    ).rejects.toThrow(/no \.java sources found/);
+    ).rejects.toThrow(/[Nn]o \.java sources found/);
   });
 
   test("surfaces spawn errors as a clear message", async () => {
@@ -218,6 +218,6 @@ describe("compileJava", () => {
         outputDir: join(workDir, "out"),
         classpath: [],
       }),
-    ).rejects.toThrow(/failed to spawn javac.*ENOENT/);
+    ).rejects.toThrow(/[Ff]ailed to spawn javac.*ENOENT/);
   });
 });

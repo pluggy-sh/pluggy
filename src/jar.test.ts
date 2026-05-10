@@ -28,7 +28,7 @@ async function makeJar(path: string, entries: Record<string, Buffer | string>): 
 
 /** Build a minimal class-file buffer with the given major version. */
 function classBytes(major: number): Buffer {
-  // magic (4) + minor (2) + major (2) — rest omitted, jar.ts only reads first 8 bytes
+  // magic (4) + minor (2) + major (2); rest omitted, jar.ts only reads first 8 bytes
   const buf = Buffer.alloc(8);
   buf.writeUInt32BE(0xcafebabe, 0);
   buf.writeUInt16BE(0, 4); // minor

@@ -1,5 +1,5 @@
 /**
- * Build pipeline — compile → resources → descriptor → shade → jar.
+ * Build pipeline: compile → resources → descriptor → shade → jar.
  * Workspace orchestration is the caller's job; `buildProject` handles
  * exactly one workspace per call.
  */
@@ -33,7 +33,7 @@ export interface BuildOptions {
    * are relative paths inside the JAR; values are file contents (LF-only).
    *
    * The dev runtime uses this to inject `hotswap-agent.properties` so the
-   * file is visible only to the plugin's own classloader — putting it on the
+   * file is visible only to the plugin's own classloader. Putting it on the
    * boot classpath instead would let HotswapAgent splice the staging dir
    * into the system classloader and break Bukkit's plugin classloader guard.
    */
@@ -70,7 +70,7 @@ export function projectStagingDir(project: ResolvedProject): string {
 
 /**
  * Drive the full build pipeline for one project. Returns the output jar
- * path, its size, and wall-clock duration. Throws on any stage failure —
+ * path, its size, and wall-clock duration. Throws on any stage failure;
  * partial output is left in the staging directory for inspection.
  *
  * The staging dir is keyed by a (name, version, rootDir) hash so repeat

@@ -1,4 +1,4 @@
-/** Tests for src/docs/javadoc.ts. `spawn` is stubbed — no real javadoc. */
+/** Tests for src/docs/javadoc.ts. `spawn` is stubbed; no real javadoc. */
 
 import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -210,7 +210,7 @@ describe("runJavadoc", () => {
         docTitle: "x",
         links: [],
       }),
-    ).rejects.toThrow(/no \.java sources/);
+    ).rejects.toThrow(/[Nn]o \.java sources/);
     expect(spawn).not.toHaveBeenCalled();
   });
 });

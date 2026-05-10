@@ -8,7 +8,7 @@ import { copyFile, link, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 /**
- * Make `destination` reference the bytes at `source` — hardlink first,
+ * Make `destination` reference the bytes at `source`. Hardlink first,
  * byte-copy fallback on EXDEV/EPERM/ENOTSUP/etc. Overwrites `destination`
  * if it exists. Never symlinks (Windows symlinks require admin rights).
  */
@@ -24,7 +24,7 @@ export async function linkOrCopy(source: string, destination: string): Promise<v
         await link(source, destination);
         return;
       } catch {
-        // Retry also failed — fall through to copy.
+        // Retry also failed; fall through to copy.
       }
     }
     try {
@@ -164,7 +164,7 @@ export async function writeFileLF(path: string, contents: string): Promise<void>
 /**
  * Join `root` with `relativePath` and assert the result stays under `root`.
  * Use whenever an archive entry name, downloaded path component, or other
- * untrusted input is being written under a directory — a malicious `..` or
+ * untrusted input is being written under a directory: a malicious `..` or
  * absolute path otherwise escapes the root (zip-slip). Behaviour is the same
  * on every host: backslashes in the input are rejected up front so a
  * Windows-targeted entry doesn't traverse on Windows but write a literal
@@ -175,7 +175,7 @@ export function safeJoin(root: string, relativePath: string): string {
     throw new Error(`safeJoin: relativePath must be a string`);
   }
   // Absolute-path check has to come first: on Windows, `path.resolve("/x")`
-  // returns `C:\x` — `\` is the platform separator, so the backslash check
+  // returns `C:\x`. `\` is the platform separator, so the backslash check
   // below would fire before the absolute one and misreport the error.
   if (isAbsolute(relativePath)) {
     throw new Error(`safeJoin: refusing absolute path: ${JSON.stringify(relativePath)}`);

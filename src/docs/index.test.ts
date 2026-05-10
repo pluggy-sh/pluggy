@@ -145,7 +145,7 @@ describe("generateDocs", () => {
 
     await generateDocs(makeProject(workDir), { clean: true });
 
-    // stale.html must be gone — only files written by the (mocked) javadoc remain.
+    // stale.html must be gone: only files written by the (mocked) javadoc remain.
     const { readdir } = await import("node:fs/promises");
     const entries = await readdir(outDir);
     expect(entries).toContain("index.html");

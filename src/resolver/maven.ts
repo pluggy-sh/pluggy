@@ -7,7 +7,7 @@
  * resolver understands direct `<dependencies>` with `compile` / `runtime` /
  * unscoped entries, and `<dependencyManagement>` BOM imports (`<type>pom</type>`
  * `<scope>import</scope>`). Property expansion and parent-POM inheritance are
- * NOT implemented — an unresolved `${...}` placeholder in a version is
+ * NOT implemented: an unresolved `${...}` placeholder in a version is
  * logged and the entry is skipped.
  */
 
@@ -109,7 +109,7 @@ async function resolveOne(
   // is normal flux and out of scope for the lockfile-pin we're enforcing.
   if (depth === 0 && expectedIntegrity !== undefined && integrity !== expectedIntegrity) {
     throw new Error(
-      `maven: integrity check failed for "${coord}" — ` +
+      `maven: integrity check failed for "${coord}": ` +
         `lockfile expects ${expectedIntegrity} but resolved bytes are ${integrity}. ` +
         `Re-run with --force to accept the new bytes (this overwrites the lockfile).`,
     );
@@ -149,7 +149,7 @@ async function resolveTransitives(
   const pomXml = await fetchText(pomUrl, pomErrors);
   if (pomXml === undefined) {
     log.debug(
-      `maven: skipped transitives for ${groupId}:${artifactId}:${version} — ${pomErrors.join(", ")}`,
+      `maven: skipped transitives for ${groupId}:${artifactId}:${version}: ${pomErrors.join(", ")}`,
     );
     return [];
   }
@@ -165,7 +165,7 @@ async function resolveTransitives(
     const concreteVersion = concretizeVersion(dep, managedVersions, groupId, artifactId, version);
     if (concreteVersion === undefined) {
       log.debug(
-        `maven: skipped transitive ${dep.groupId}:${dep.artifactId} — version "${dep.version}" could not be resolved`,
+        `maven: skipped transitive ${dep.groupId}:${dep.artifactId}: version "${dep.version}" could not be resolved`,
       );
       continue;
     }
@@ -182,7 +182,7 @@ async function resolveTransitives(
       resolved.push(child);
     } catch (err) {
       log.debug(
-        `maven: skipped transitive ${dep.groupId}:${dep.artifactId}:${concreteVersion} — ${(err as Error).message}`,
+        `maven: skipped transitive ${dep.groupId}:${dep.artifactId}:${concreteVersion}: ${(err as Error).message}`,
       );
     }
   }
@@ -282,7 +282,7 @@ function concretizeVersion(
 /**
  * Maven versions can be declared as ranges like `[1.0,2.0)` or soft pins
  * `1.0`. For the soft-pin case return the string as-is. For ranges, return
- * the lower bound (good enough for transitive resolution — real Maven picks
+ * the lower bound (good enough for transitive resolution: real Maven picks
  * the highest in-range available, but we don't need that fidelity for the
  * plugin-development use case).
  */
@@ -429,6 +429,33 @@ function parseSnapshotFilenameValue(xml: string, extension: "jar" | "pom"): stri
   return undefined;
 }
 
+/**
+ * Latest published version of a Maven artifact across the given registries.
+ * Walks `<base>/<group>/<artifact>/maven-metadata.xml` and reads `<release>`
+ * (preferred) or `<latest>`. Returns `undefined` when no registry has the
+ * artifact or none publishes a `<release>`/`<latest>` element.
+ */
+export async function getLatestMavenVersion(
+  groupId: string,
+  artifactId: string,
+  registries: string[],
+): Promise<string | undefined> {
+  const errors: string[] = [];
+  for (const registry of registries) {
+    const base = stripTrailingSlash(registry);
+    const url = `${base}/${groupPath(groupId)}/${artifactId}/maven-metadata.xml`;
+    const xml = await fetchText(url, errors);
+    if (xml === undefined) continue;
+    const release = xml.match(/<release>([^<]+)<\/release>/)?.[1];
+    if (release !== undefined && release.length > 0) return release.trim();
+    const latest = xml.match(/<latest>([^<]+)<\/latest>/)?.[1];
+    if (latest !== undefined && latest.length > 0) return latest.trim();
+    const versions = Array.from(xml.matchAll(/<version>([^<]+)<\/version>/g), (m) => m[1]);
+    if (versions.length > 0) return versions[versions.length - 1].trim();
+  }
+  return undefined;
+}
+
 async function fetchBytes(url: string, errors: string[]): Promise<Uint8Array | undefined> {
   try {
     const res = await fetch(url);
@@ -467,8 +494,8 @@ function cachedJarPath(groupId: string, artifactId: string, version: string): st
  * order). Maven Central and most repos publish at least one of these next
  * to every artifact; a present-but-mismatching sidecar is a hard fail
  * because that's the registry telling us the bytes we got aren't the bytes
- * it intended to serve. A missing sidecar is logged at debug and tolerated
- * — some smaller mirrors (and snapshot repos for older Spigot artifacts)
+ * it intended to serve. A missing sidecar is logged at debug and tolerated.
+ * Some smaller mirrors (and snapshot repos for older Spigot artifacts)
  * skip them.
  */
 async function verifyAgainstSidecar(
@@ -491,7 +518,7 @@ async function verifyAgainstSidecar(
     const actual = createHash(algorithm).update(bytes).digest("hex");
     if (actual !== expected) {
       throw new Error(
-        `maven: ${algorithm} mismatch for "${coord}" — sidecar at ${sidecarUrl} says ${expected}, downloaded bytes hash to ${actual}. ` +
+        `maven: ${algorithm} mismatch for "${coord}": sidecar at ${sidecarUrl} says ${expected}, downloaded bytes hash to ${actual}. ` +
           `Refusing to use a tampered jar.`,
       );
     }

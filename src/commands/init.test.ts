@@ -9,7 +9,7 @@ import type { Project } from "../project.ts";
 
 import { generateProject } from "./init.ts";
 
-describe("generateProject — embedded family stubs", () => {
+describe("generateProject: embedded family stubs", () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -68,7 +68,7 @@ describe("generateProject — embedded family stubs", () => {
   });
 });
 
-describe("generateProject — template files", () => {
+describe("generateProject: template files", () => {
   let dir: string;
 
   beforeEach(async () => {

@@ -74,7 +74,7 @@ describe("isRuntimePlugin", () => {
     expect(result).toBe(false);
   });
 
-  test("uses the descriptor.path to decide — plugin.yml-containing jar is NOT a velocity plugin", async () => {
+  test("uses the descriptor.path to decide: plugin.yml-containing jar is NOT a velocity plugin", async () => {
     const jar = join(workDir, "mixed.jar");
     await writeJar(jar, { "plugin.yml": "name: foo" });
 

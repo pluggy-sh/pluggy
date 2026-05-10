@@ -161,7 +161,7 @@ describe("spawnServer", () => {
     expect(args[args.length - 1]).toBe("nogui");
   });
 
-  test("serverArgs are appended verbatim — empty array means no trailing args (proxies)", () => {
+  test("serverArgs are appended verbatim: empty array means no trailing args (proxies)", () => {
     const fake = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
 

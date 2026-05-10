@@ -1,18 +1,10 @@
 /**
  * Template source resolution + instantiation. Templates live at
  * `templates/<id>/` in the pluggy repo (or any fork pointed at via the
- * `PLUGGY_TEMPLATE_REPO` / `PLUGGY_TEMPLATE_DIR` env vars). At init time we
- * either:
- *
- *   - read straight from a local `templates/` dir (when `PLUGGY_TEMPLATE_DIR`
- *     is set — used by tests and by working copies of the pluggy repo
- *     itself), or
- *   - fetch the repo as a zip from `codeload.github.com`, parse it with
- *     yauzl, and pull out only the requested template's subtree.
- *
- * Filename substitution (`__packagePath__` / `__className__`) and content
- * substitution (`${project.x}`) both happen here so callers receive
- * ready-to-write {@link TemplateFile}s.
+ * `PLUGGY_TEMPLATE_REPO` / `PLUGGY_TEMPLATE_DIR` env vars). When
+ * `PLUGGY_TEMPLATE_DIR` is set we read straight from disk; otherwise we
+ * fetch the repo as a zip from `codeload.github.com` and pull out the
+ * requested template's subtree.
  */
 
 import { existsSync } from "node:fs";
@@ -105,7 +97,7 @@ async function fetchRepoZip(repo: string, ref: string): Promise<Buffer> {
   return buf;
 }
 
-/** Fetch the template registry — every entry from `templates/index.json`. */
+/** Fetch the template registry: every entry from `templates/index.json`. */
 export async function listTemplates(): Promise<TemplateSummary[]> {
   const source = resolveSource();
   if (source.kind === "local") {
@@ -182,7 +174,7 @@ async function walk(dir: string): Promise<string[]> {
 /**
  * Pull the template subtree out of a GitHub repo zip. The zip's top-level
  * directory is named `<repo>-<ref>/` (where ref may be a branch, tag, or
- * sha) — we infer that prefix from the first entry rather than guessing.
+ * sha); we infer that prefix from the first entry rather than guessing.
  */
 function extractFromZip(
   buffer: Buffer,
@@ -278,7 +270,7 @@ function applyPathPlaceholders(path: string, ctx: TemplateContext): string {
 /**
  * Stringify-replace-parse round-trip on `projectJsonExtras` so JSON values
  * benefit from the same `${...}` substitution as file contents do. Strings
- * that look numeric are kept as strings — `replace()` only touches segments
+ * that look numeric are kept as strings; `replace()` only touches segments
  * matching `${...}`.
  */
 function substituteExtras(metadata: TemplateMetadata, ctx: TemplateContext): TemplateMetadata {

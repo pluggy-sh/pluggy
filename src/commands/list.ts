@@ -2,8 +2,8 @@ import process from "node:process";
 
 import { Command } from "commander";
 
-import { bold, dim, log, yellow } from "../logging.ts";
-import { readLock, type TransitiveEntry } from "../lockfile.ts";
+import { bold, dim, emit, log, yellow } from "../logging.ts";
+import { type LockfileEntry, readLock } from "../lockfile.ts";
 import type { Dependency, ResolvedProject } from "../project.ts";
 import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
@@ -20,7 +20,6 @@ export interface ListOptions {
   outdated?: boolean;
   workspace?: string;
   workspaces?: boolean;
-  json?: boolean;
   project?: string;
   cwd?: string;
 }
@@ -61,7 +60,7 @@ export interface ListResult {
  *
  * Aggregates per-workspace declarations by dep name (merging `declaredBy`
  * lists), overlays resolved versions from `pluggy.lock`, and elides registry
- * credentials. Credentials must never appear in the result — it feeds `--json`
+ * credentials. Credentials must never appear in the result; it feeds `--json`
  * output and terminal logs.
  */
 export async function doList(options: ListOptions): Promise<ListResult> {
@@ -100,8 +99,13 @@ export async function doList(options: ListOptions): Promise<ListResult> {
           integrity,
           declaredBy: [declaringName],
         };
-        if (lockEntry?.transitives !== undefined && lockEntry.transitives.length > 0) {
-          entry.children = lockEntry.transitives.map(transitiveToDepEntry);
+        if (
+          lock !== null &&
+          lockEntry?.transitives !== undefined &&
+          lockEntry.transitives.length > 0
+        ) {
+          const children = buildChildren(lock.entries, lockEntry.transitives, new Set([name]));
+          if (children.length > 0) entry.children = children;
         }
         agg.set(name, entry);
       }
@@ -125,13 +129,13 @@ export async function doList(options: ListOptions): Promise<ListResult> {
 
   const result: ListResult = { scope, deps, registries, target };
 
-  if (options.json) {
-    console.log(JSON.stringify({ status: "success", ...result }, null, 2));
-  } else if (options.tree) {
-    printTreeList(result, options.outdated === true);
-  } else {
-    printHumanList(result, options.outdated === true);
-  }
+  emit({ status: "success", ...result }, () => {
+    if (options.tree) {
+      printTreeList(result, options.outdated === true);
+    } else {
+      printHumanList(result, options.outdated === true);
+    }
+  });
 
   return result;
 }
@@ -205,48 +209,43 @@ function selectTargets(
 }
 
 /**
- * Project a `TransitiveEntry` from the lockfile into a child `DepEntry`
- * suitable for `--tree` rendering and JSON output. Recurses into nested
- * transitives so the full subtree is materialized.
+ * Build child `DepEntry`s by walking the flat lockfile graph forward from
+ * a parent's `transitives` (an array of entry names). `seen` prevents
+ * infinite recursion on a cyclic graph. A child whose name isn't present
+ * in `entries` is skipped: the lockfile validator should never let that
+ * through, but it would be wrong to crash list output if it did.
  *
- * Transitives aren't user-declared, so `declaredBy` is empty. The
- * `declaredVersion` field has no meaningful value for a transitive — we
- * reuse `resolvedVersion` so consumers don't have to special-case a
- * nullable field.
+ * `declaredVersion` has no meaningful value for a transitive; we reuse
+ * `resolvedVersion` so consumers don't have to special-case a nullable
+ * field.
  */
-function transitiveToDepEntry(entry: TransitiveEntry): DepEntry {
-  const dep: DepEntry = {
-    name: depNameFromSource(entry.source),
-    source: entry.source,
-    declaredVersion: entry.resolvedVersion,
-    resolvedVersion: entry.resolvedVersion,
-    integrity: entry.integrity,
-    declaredBy: [],
-  };
-  if (entry.transitives !== undefined && entry.transitives.length > 0) {
-    dep.children = entry.transitives.map(transitiveToDepEntry);
-  }
-  return dep;
-}
-
-/**
- * Derive a human-readable dep name from a `ResolvedSource`. Mirrors
- * `pickDepName` in `install.ts` but lives here to keep the list/install
- * seams independent.
- */
-function depNameFromSource(source: ResolvedSource): string {
-  switch (source.kind) {
-    case "modrinth":
-      return source.slug;
-    case "maven":
-      return `${source.groupId}:${source.artifactId}`;
-    case "workspace":
-      return source.name;
-    case "file": {
-      const base = source.path.replace(/\\/g, "/").split("/").pop() ?? source.path;
-      return base.replace(/\.jar$/i, "") || source.path;
+function buildChildren(
+  entries: Record<string, LockfileEntry>,
+  names: string[],
+  seen: Set<string>,
+): DepEntry[] {
+  const out: DepEntry[] = [];
+  for (const name of names) {
+    if (seen.has(name)) continue;
+    const entry = entries[name];
+    if (entry === undefined) continue;
+    const nextSeen = new Set(seen);
+    nextSeen.add(name);
+    const child: DepEntry = {
+      name,
+      source: entry.source,
+      declaredVersion: entry.resolvedVersion,
+      resolvedVersion: entry.resolvedVersion,
+      integrity: entry.integrity,
+      declaredBy: [],
+    };
+    if (entry.transitives !== undefined && entry.transitives.length > 0) {
+      const grandchildren = buildChildren(entries, entry.transitives, nextSeen);
+      if (grandchildren.length > 0) child.children = grandchildren;
     }
+    out.push(child);
   }
+  return out;
 }
 
 function normalizeDependencySource(name: string, raw: string | Dependency): ResolvedSource {
@@ -286,7 +285,7 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
     log.info("");
     log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
     for (const dep of result.deps) {
-      const resolved = dep.resolvedVersion ?? dim("(unresolved — run install)");
+      const resolved = dep.resolvedVersion ?? dim("(unresolved; run install)");
       const decl = result.scope === "root" ? ` ${dim(`[${dep.declaredBy.join(", ")}]`)}` : "";
       const update =
         dep.outdated === true && dep.latestVersion !== null && dep.latestVersion !== undefined
@@ -317,7 +316,7 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
  * - `├──` / `└──` mark the branch at the current level
  * - `│   ` / `    ` continue the indentation when descending
  *
- * `--outdated` applies to top-level entries only — transitive outdated
+ * `--outdated` applies to top-level entries only. Transitive outdated
  * checking is a future exercise (would require per-kind latest-version
  * queries through the closure; for now the semantics are: "show me my
  * declared deps that need updates", and transitives come along for the
@@ -408,7 +407,6 @@ export function listCommand(): Command {
         outdated: options.outdated,
         workspace: options.workspace,
         workspaces: options.workspaces,
-        json: globalOpts.json,
         project: globalOpts.project,
       });
     });

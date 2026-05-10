@@ -1,5 +1,5 @@
 /**
- * Resource staging — walks `project.resources`, copies files into staging,
+ * Resource staging. Walks `project.resources`, copies files into staging,
  * and applies `${project.x}` substitution on text files whose extension is
  * on the allowlist. First-declared entry wins on output-path collisions;
  * duplicates are skipped with a warning.
@@ -87,7 +87,7 @@ async function copyDirectory(
     } else if (info.isFile()) {
       await writeEntry(childAbs, outPath, stagingDir, templateContext, written);
     }
-    // Symlinks and specials are skipped — jar entries only support files.
+    // Symlinks and specials are skipped; jar entries only support files.
   }
 }
 
@@ -119,7 +119,7 @@ async function writeEntry(
   const key = posix.normalize(outPath);
   if (written.has(key)) {
     log.warn(
-      `resources: skipping "${outPath}" — an earlier entry already resolved to the same output path`,
+      `resources: skipping "${outPath}": an earlier entry already resolved to the same output path`,
     );
     return;
   }

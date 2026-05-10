@@ -16,7 +16,7 @@ import type { ResolvedDependency } from "../resolver/index.ts";
 
 /**
  * True iff the jar at `jarPath` contains an entry named `descriptor.path`.
- * Read-only — no extraction.
+ * Read-only; no extraction.
  */
 export function isRuntimePlugin(jarPath: string, descriptor: DescriptorSpec): Promise<boolean> {
   return new Promise<boolean>((resolvePromise, rejectPromise) => {
@@ -58,7 +58,7 @@ export function isRuntimePlugin(jarPath: string, descriptor: DescriptorSpec): Pr
  * Populate `<devDir>/<pluginsDir>/` with the user's plugin jar, every
  * runtime-plugin dep, and the `extraPlugins` jars. `pluginsDir` is the
  * platform's `runtime.pluginsDir` (e.g. `"plugins"` for bukkit,
- * `"mods/plugins"` for sponge) — forward-slashed and resolved relative to
+ * `"mods/plugins"` for sponge), forward-slashed and resolved relative to
  * `devDir`. Each jar is hardlinked (copy fallback) under its basename;
  * callers must ensure unique names.
  */

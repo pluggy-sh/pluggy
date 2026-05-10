@@ -1,18 +1,7 @@
 /**
- * SDK orchestration layer. Public entry points for the rest of the codebase:
- *
- *   * `ensureJdk(major, opts?)` — return a usable JDK for the given Java
- *     major. Cache hit → return immediately; cache miss → install via Disco.
- *   * `ensureJdkForProject(project)` — combine `selectJdkForProject` with
- *     `ensureJdk`. The one call build/test/dev care about.
- *   * `getCachedJdk(major, distribution?)` — look up a cached JDK without
- *     installing. Returns `undefined` on miss.
- *   * `listInstalled()` — used by `pluggy sdk list`. Eviction lives in
- *     `pluggy cache prune` (see `src/cache/index.ts`).
- *
- * Auto-install is on by default. Set `PLUGGY_NO_AUTO_INSTALL=1` to make a
- * cache miss raise instead — CI escape hatch. The error points at the
- * concrete remediation command (`pluggy sdk install <major>`).
+ * SDK orchestration layer. Auto-install is on by default; set
+ * `PLUGGY_NO_AUTO_INSTALL=1` to make a cache miss raise instead (CI escape
+ * hatch).
  *
  * `JAVA_HOME` is consulted *before* the cache: if it points at a JDK whose
  * major matches what the project needs, that path wins. Lets users keep
@@ -49,7 +38,7 @@ export interface EnsureJdkOptions {
   distribution?: string;
   /**
    * When true, skip the JAVA_HOME short-circuit even if it would match.
-   * `pluggy sdk install <major>` sets this — explicit installs always
+   * `pluggy sdk install <major>` sets this; explicit installs always
    * write to the cache, regardless of system Java.
    */
   ignoreSystemJava?: boolean;
@@ -77,7 +66,7 @@ export interface ResolvedJdk {
  * Resolve a usable JDK for `major`. Order:
  *   1. JAVA_HOME if its major matches and `ignoreSystemJava` is false.
  *   2. Existing cache slot for (distribution, major, host-os, host-arch).
- *   3. Install via Disco — unless PLUGGY_NO_AUTO_INSTALL is set, in which
+ *   3. Install via Disco; unless PLUGGY_NO_AUTO_INSTALL is set, in which
  *      case raise with a clear remediation message.
  */
 export async function ensureJdk(major: number, opts: EnsureJdkOptions = {}): Promise<ResolvedJdk> {
@@ -111,12 +100,12 @@ export async function ensureJdk(major: number, opts: EnsureJdkOptions = {}): Pro
 
   const spec = await resolveJdk({ major, distribution, os: target.os, arch: target.arch });
   await installJdk(spec);
-  log.success(`sdk: installed ${distribution} ${spec.fullVersion}`);
+  log.success(`Installed ${distribution} ${spec.fullVersion}`);
   return resolvedFromSlot(slot, target.os, parts, "installed");
 }
 
 /**
- * Resolve the JDK for a project — combines `selectJdkForProject` with
+ * Resolve the JDK for a project; combines `selectJdkForProject` with
  * `ensureJdk`. This is what `build`, `test`, and `dev` call.
  */
 export async function ensureJdkForProject(
@@ -132,7 +121,7 @@ export async function ensureJdkForProject(
 /**
  * Resolve the JDK for a specific MC version of a project. Used by matrix
  * callers (the test command) so each `(version, platform)` cell gets the
- * JDK its MC version actually requires — 1.20.4 cells stay on Java 17 even
+ * JDK its MC version actually requires; 1.20.4 cells stay on Java 17 even
  * if `versions[0]` is 1.21.
  */
 export async function ensureJdkForVersion(
@@ -176,7 +165,7 @@ export interface InstalledJdkInfo {
   lastUsed: number;
   /** Slot path on disk. Present even when the directory has been deleted out-of-band. */
   slotPath: string;
-  /** True iff the slot still exists on disk (i.e. the entry isn't dangling). */
+  /** True iff the slot still exists on disk (i.e., the entry isn't dangling). */
   present: boolean;
 }
 
@@ -245,7 +234,7 @@ async function tryJavaHome(major: number): Promise<ResolvedJdk | undefined> {
   }
   if (detectedMajor !== major) return undefined;
 
-  log.debug(`sdk: using JAVA_HOME (Java ${major}) at ${javaHome}`);
+  log.debug(`Using JAVA_HOME (Java ${major}) at ${javaHome}`);
   return {
     javaPath,
     javacPath: join(javaHome, "bin", target.os === "windows" ? "javac.exe" : "javac"),
@@ -264,7 +253,7 @@ async function resolvedFromSlot(
 ): Promise<ResolvedJdk> {
   const fromManifest = (await readManifest()).entries[cacheKey(parts)];
   if (fromManifest === undefined && source === "installed") {
-    // installJdk records the entry — but if a future code path skips that,
+    // installJdk records the entry, but if a future code path skips that,
     // backfill defensively rather than returning a torn ResolvedJdk.
     await recordEntry(cacheKey(parts), parts, "unknown");
   }

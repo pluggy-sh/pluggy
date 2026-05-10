@@ -7,7 +7,7 @@ import { createPlatform, type Version } from "../platform.ts";
 import { SPONGE_RUNTIME } from "../runtime.ts";
 
 /**
- * SpongeVanilla — the standalone server flavour of Sponge. (SpongeForge and
+ * SpongeVanilla, the standalone server flavour of Sponge. (SpongeForge and
  * SpongeNeo are mod-loader variants and live on top of Forge/NeoForge; pluggy
  * doesn't model modding, so they're intentionally out of scope.)
  *
@@ -16,7 +16,7 @@ import { SPONGE_RUNTIME } from "../runtime.ts";
  * (`<mc>-<api>-RC<n>`), and the dl-api exposes them via `tagValues`. Pluggy's
  * `compatibility.versions` is always Minecraft, so this provider surfaces
  * MC versions and resolves the matching SpongeAPI/SpongeVanilla artifact
- * internally — same pattern as the velocity provider.
+ * internally; same pattern as the velocity provider.
  */
 
 const ARTIFACT_BASE =
@@ -71,7 +71,7 @@ function isStableMc(mc: string): boolean {
  * Walk the dl-api versions endpoint newest-first and yield artifacts that
  * pass `predicate`, stopping once `limit` matches are collected or the
  * dataset is exhausted. The artifact list runs into the thousands, so the
- * scanner pages and bails early — never fetching more than it needs.
+ * scanner pages and bails early; never fetching more than it needs.
  */
 async function findArtifacts(
   predicate: (a: ResolvedArtifact) => boolean,
@@ -136,7 +136,7 @@ export default createPlatform((ctx) => ({
   descriptor: spongeDescriptor,
   runtime: SPONGE_RUNTIME,
 
-  async getVersions(): Promise<string[]> {
+  async versions(): Promise<string[]> {
     const res = await fetch(ARTIFACT_BASE);
     if (!res.ok) {
       throw new Error(`Failed to fetch spongevanilla metadata: ${res.statusText}`);
@@ -146,12 +146,12 @@ export default createPlatform((ctx) => ({
     return mcs.filter(isStableMc);
   },
 
-  async getVersionInfo(mcVersion: string): Promise<Version> {
+  async info(mcVersion: string): Promise<Version> {
     const artifact = await findLatestArtifactForMc(mcVersion);
     return { version: artifact.minecraft, build: artifact.build };
   },
 
-  async getLatestVersion(): Promise<Version> {
+  async latest(): Promise<Version> {
     const matches = await findArtifacts((a) => isStableMc(a.minecraft), 1);
     if (matches.length === 0) {
       throw new Error("No SpongeVanilla artifacts available");

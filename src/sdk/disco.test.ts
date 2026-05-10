@@ -1,6 +1,6 @@
 /**
  * Live tests for the Foojay Disco client. We deliberately hit the real
- * upstream API per the project's "no mocking for upstream" convention —
+ * upstream API per the project's "no mocking for upstream" convention.
  * Disco is the source of truth for what we install, so a regression in
  * the response shape should fail CI loudly.
  *
@@ -33,7 +33,7 @@ describe("resolveJdk (live)", () => {
   }, 15_000);
 
   test("propagates a clean error for a non-existent distribution+major combo", async () => {
-    // Major 7 is below Temurin's published range — Disco returns no matches.
-    await expect(resolveJdk({ major: 7 })).rejects.toThrow(/no temurin JDK 7/);
+    // Major 7 is below Temurin's published range; Disco returns no matches.
+    await expect(resolveJdk({ major: 7 })).rejects.toThrow(/[Nn]o temurin JDK 7/);
   }, 15_000);
 });

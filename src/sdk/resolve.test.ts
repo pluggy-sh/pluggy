@@ -1,6 +1,6 @@
 /**
  * Tests for `selectJdkForProject`. Stubs `getJavaRange` so behavior is
- * deterministic offline — the real network probe is exercised by Spigot
+ * deterministic offline; the real network probe is exercised by Spigot
  * platform tests upstream.
  */
 
