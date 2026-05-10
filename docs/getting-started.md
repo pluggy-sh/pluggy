@@ -29,7 +29,7 @@ Manage it later with [`pluggy cache`](./commands/cache.md) or [`pluggy sdk`](./c
 Run the install script:
 
 ```bash
-curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
+curl -fsSL https://pluggy.sh/install.sh | sh
 ```
 
 The script downloads the binary for your operating system into `~/.pluggy/bin/pluggy` and adds that directory to your `PATH` by appending an `export` line to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, `~/.profile`, or `~/.config/fish/config.fish`, whichever exist). It does not need `sudo`.
@@ -37,7 +37,7 @@ The script downloads the binary for your operating system into `~/.pluggy/bin/pl
 To put pluggy somewhere else, set `PLUGGY_HOME`:
 
 ```bash
-PLUGGY_HOME=/opt/pluggy curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
+PLUGGY_HOME=/opt/pluggy curl -fsSL https://pluggy.sh/install.sh | sh
 ```
 
 Open a new terminal, or run `source` on the profile that was updated, to pick up the new `PATH` in your current session.
@@ -47,7 +47,7 @@ Open a new terminal, or run `source` on the profile that was updated, to pick up
 Open PowerShell and run:
 
 ```powershell
-irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
+irm https://pluggy.sh/install.ps1 | iex
 ```
 
 The script puts `pluggy.exe` at `%LOCALAPPDATA%\Programs\pluggy` and appends that directory to your user `PATH`. It does not need administrator rights. Restart your terminal before using `pluggy`.

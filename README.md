@@ -28,13 +28,13 @@ Pick the script for your operating system. Both scripts drop the binary on your 
 On macOS and Linux:
 
 ```bash
-curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
+curl -fsSL https://pluggy.sh/install.sh | sh
 ```
 
 On Windows (PowerShell):
 
 ```powershell
-irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
+irm https://pluggy.sh/install.ps1 | iex
 ```
 
 Open a new terminal and verify:

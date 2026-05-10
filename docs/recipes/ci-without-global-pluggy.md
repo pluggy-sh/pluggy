@@ -29,7 +29,7 @@ jobs:
 
       - name: Install pluggy
         run: |
-          curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
+          curl -fsSL https://pluggy.sh/install.sh | sh
 
       - name: Cache pluggy downloads
         uses: actions/cache@v4
@@ -94,7 +94,7 @@ The PowerShell install script adds the binary to your user `PATH`, which doesn't
 - name: Install pluggy
   shell: pwsh
   run: |
-    irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
+    irm https://pluggy.sh/install.ps1 | iex
     # Add to PATH for the rest of this job
     echo "$env:LOCALAPPDATA\Programs\pluggy" >> $env:GITHUB_PATH
 ```
