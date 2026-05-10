@@ -8,10 +8,10 @@ If you only want to free disk space without removing the CLI, run [`pluggy cache
 
 Every install method writes to four locations: the binary, a `PATH` entry pointing at it, a cache directory, and a small state directory. The cache and state paths are the same regardless of how you installed pluggy.
 
-| Kind     | macOS                                   | Linux                                                              | Windows                          |
-| -------- | --------------------------------------- | ------------------------------------------------------------------ | -------------------------------- |
-| Cache    | `~/Library/Caches/pluggy/`              | `$XDG_CACHE_HOME/pluggy/` (default `~/.cache/pluggy/`)             | `%LOCALAPPDATA%\pluggy\cache\`   |
-| State    | `~/Library/Application Support/pluggy/` | `$XDG_STATE_HOME/pluggy/` (default `~/.local/state/pluggy/`)       | `%APPDATA%\pluggy\`              |
+| Kind  | macOS                                   | Linux                                                        | Windows                        |
+| ----- | --------------------------------------- | ------------------------------------------------------------ | ------------------------------ |
+| Cache | `~/Library/Caches/pluggy/`              | `$XDG_CACHE_HOME/pluggy/` (default `~/.cache/pluggy/`)       | `%LOCALAPPDATA%\pluggy\cache\` |
+| State | `~/Library/Application Support/pluggy/` | `$XDG_STATE_HOME/pluggy/` (default `~/.local/state/pluggy/`) | `%APPDATA%\pluggy\`            |
 
 The cache holds downloaded JDKs, server jars, and resolved plugin jars. The state directory holds small metadata such as the last `pluggy upgrade` check. Neither is recreated until the next `pluggy` command, so it is safe to delete both.
 
