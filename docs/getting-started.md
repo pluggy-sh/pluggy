@@ -202,5 +202,5 @@ That covers most days of plugin development.
 - Add JUnit tests: [`pluggy test`](./commands/test.md).
 - Split into multiple plugins: [Workspaces](./workspaces.md).
 - Bundle a third-party library into your jar: [Shading](./project-json.md#shading-optional).
-- Set up your editor: [IDE integration](./ide.md).
+- Open the project in your editor — IDE files are already written: [IDE integration](./ide.md).
 - Wire up CI without installing pluggy globally: [CI recipe](./recipes/ci-without-global-pluggy.md).
