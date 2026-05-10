@@ -55,8 +55,8 @@ URL:            https://github.com/pluggy-sh/pluggy/releases/tag/v0.2.0
 
 Install manually:
 
-  Unix:    curl -fsSL https://github.com/pluggy-sh/pluggy/releases/latest/download/install.sh | bash
-  Windows: irm https://github.com/pluggy-sh/pluggy/releases/latest/download/install.ps1 | iex
+  Unix:    curl -fsSL https://pluggy.sh/install.sh | sh
+  Windows: irm https://pluggy.sh/install.ps1 | iex
 ```
 
 ## Permissions

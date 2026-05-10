@@ -145,12 +145,12 @@ jobs:
 
             ### Windows (PowerShell)
             ```
-            irm https://github.com/pluggy-sh/pluggy/releases/download/${{ github.ref_name }}/install.ps1 | iex
+            irm https://pluggy.sh/install.ps1 | iex
             ```
 
             ### Unix-like Systems (macOS, Linux)
             ```
-            curl -fsSL https://github.com/pluggy-sh/pluggy/releases/download/${{ github.ref_name }}/install.sh | bash
+            curl -fsSL https://pluggy.sh/install.sh | sh
             ```
 
             ## Verification
@@ -166,3 +166,17 @@ jobs:
             ---
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Requires WEBSITE_DISPATCH_TOKEN: a fine-grained PAT scoped to
+      # pluggy-sh/pluggy.sh with `actions: write`. The default GITHUB_TOKEN
+      # cannot dispatch across repos.
+      - name: Trigger pluggy.sh docs rebuild
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            repos/pluggy-sh/pluggy.sh/dispatches \
+            -f event_type=pluggy-release \
+            -f "client_payload[tag]=${{ github.ref_name }}"
