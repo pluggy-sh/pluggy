@@ -88,16 +88,16 @@ Human, single workspace:
 
 ```text
 docs my_plugin
-✔ my_plugin: /repo/docs/my_plugin-1.0.0 (32 files, 259.0 KB, 1 warning, 5809ms)
+✓ my_plugin: /repo/docs/my_plugin-1.0.0 (32 files, 259.0 KB, 1 warning, 5809ms)
 ```
 
 Human, multi-workspace:
 
 ```text
 docs api
-✔ api: /repo/api/docs/api-1.0.0 (28 files, 210.4 KB, 1212ms)
+✓ api: /repo/api/docs/api-1.0.0 (28 files, 210.4 KB, 1212ms)
 docs impl
-✔ impl: /repo/impl/docs/impl-1.0.0 (45 files, 380.1 KB, 1845ms)
+✓ impl: /repo/impl/docs/impl-1.0.0 (45 files, 380.1 KB, 1845ms)
 
 summary
   api: /repo/api/docs/api-1.0.0 (28 files, 210.4 KB, 1212ms)

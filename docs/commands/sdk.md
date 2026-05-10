@@ -31,7 +31,7 @@ Download a JDK and cache it. With no `<major>`, pluggy derives the major from th
 $ pluggy sdk install 21
 sdk: downloading temurin 21.0.5+11 (~190 MB)…
 sdk: extracting JDK…
-✔ sdk: installed temurin 21 at /Users/you/Library/Caches/pluggy/jdk/temurin-21-macos-aarch64/Contents/Home
+✓ sdk: installed temurin 21 at /Users/you/Library/Caches/pluggy/jdk/temurin-21-macos-aarch64/Contents/Home
 ```
 
 Pass `--distribution <name>` to install a non-default distribution. Pass `--force` to wipe the slot and re-download.
@@ -72,7 +72,7 @@ Pin a JDK in the current `project.json` so teammates land on the same one.
 
 ```text
 $ pluggy sdk use 21 --distribution zulu
-✔ Pinned Java 21 (zulu) in /Users/you/my-plugin/project.json
+✓ Pinned Java 21 (zulu) in /Users/you/my-plugin/project.json
 ```
 
 The pin is written under the `jdk` block:
@@ -92,7 +92,7 @@ Delete a cached JDK.
 
 ```text
 $ pluggy sdk remove 17 --distribution zulu
-✔ Removed zulu 17
+✓ Removed zulu 17
 ```
 
 `remove` always honors the `--distribution` value, so you can prune one distribution while keeping another.

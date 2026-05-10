@@ -165,11 +165,11 @@ Output:
 
 ```text
 build api
-✔ api: /repo/api/bin/api-1.0.0.jar (6.1 KB, 1712ms)
+✓ api: /repo/api/bin/api-1.0.0.jar (6.1 KB, 1712ms)
 build impl
-✔ impl: /repo/impl/bin/impl-1.0.0.jar (8.4 KB, 1802ms)
+✓ impl: /repo/impl/bin/impl-1.0.0.jar (8.4 KB, 1802ms)
 build shop
-✔ shop: /repo/addons/shop/bin/shop-1.0.0.jar (5.2 KB, 1630ms)
+✓ shop: /repo/addons/shop/bin/shop-1.0.0.jar (5.2 KB, 1630ms)
 
 summary
   api: /repo/api/bin/api-1.0.0.jar (6.1 KB, 1712ms)

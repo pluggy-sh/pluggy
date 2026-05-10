@@ -83,7 +83,7 @@ public class ChatPlugin extends JavaPlugin {
 ```text
 $ pluggy build
 build chat_plugin
-✔ chat_plugin: /.../bin/chat_plugin-1.0.0.jar (4.2 KB, 1923ms)
+✓ chat_plugin: /.../bin/chat_plugin-1.0.0.jar (4.2 KB, 1923ms)
 ```
 
 Notice the output jar is small (kilobytes, not megabytes). That's because pluggy didn't shade Adventure. Paper already ships it. Your jar contains just your compiled classes plus `plugin.yml` and `config.yml`.

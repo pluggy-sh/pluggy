@@ -51,10 +51,10 @@ at a multi-workspace root, `remove` requires an explicit flag where
 
 ```text
 $ pluggy remove worldedit
-Removed "worldedit" from my_plugin (and pluggy.lock).
+✓ Removed worldedit from my_plugin (and pluggy.lock)
 
 $ pluggy remove --workspaces adventure-api
-Removed "adventure-api" from api, impl (and pluggy.lock).
+✓ Removed adventure-api from api, impl (and pluggy.lock)
 
 $ pluggy remove notinstalled
 "notinstalled" was not declared in the targeted workspaces; nothing to do.

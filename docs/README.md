@@ -25,6 +25,9 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 | [`info`](./commands/info.md)               | Inspect a Modrinth, Maven, file, or workspace source.    |
 | [`search`](./commands/search.md)           | Search Modrinth by keyword.                              |
 | [`list`](./commands/list.md)               | Print declared deps, resolved versions, and registries.  |
+| [`why`](./commands/why.md)                 | Trace which top-level dep pulled in a transitive.        |
+| [`outdated`](./commands/outdated.md)       | List locked deps with a newer upstream version.          |
+| [`audit`](./commands/audit.md)             | Verify cached jars against the lockfile hashes.          |
 | [`build`](./commands/build.md)             | Compile, copy resources, write the descriptor, jar.      |
 | [`test`](./commands/test.md)               | Compile and run JUnit Platform tests under `test/`.      |
 | [`docs`](./commands/docs.md)               | Generate Javadoc HTML against the resolved classpath.    |

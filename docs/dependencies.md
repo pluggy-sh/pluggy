@@ -112,11 +112,13 @@ Registry URLs are tried in declaration order, then `DEFAULT_MAVEN_REGISTRIES` (M
 
 ## Lockfile
 
-`pluggy.lock` lives at the repo root. It's written by `install`, read by `install --force`, `build`, `list`, and `doctor`, and shared across every workspace in a monorepo.
+`pluggy.lock` lives at the repo root. It's written by `install`, read by `install --force`, `build`, `list`, `doctor`, `why`, `outdated`, and `audit`, and shared across every workspace in a monorepo.
+
+The schema is **flat**: every dependency, top-level or transitive, is one entry in `entries`, keyed by name. An entry records what other entries it directly pulls in via `transitives: string[]`. Reverse edges (which top-level pulled in a transitive) are computed on demand.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "entries": {
     "adventure-api": {
       "source": {
@@ -126,38 +128,44 @@ Registry URLs are tried in declaration order, then `DEFAULT_MAVEN_REGISTRIES` (M
         "version": "4.17.0"
       },
       "resolvedVersion": "4.17.0",
-      "integrity": "sha256-a3b1...",
+      "integrity": "sha256-15c8...",
       "declaredBy": ["my_plugin"],
-      "transitives": [
-        {
-          "source": {
-            "kind": "maven",
-            "groupId": "net.kyori",
-            "artifactId": "adventure-key",
-            "version": "4.17.0"
-          },
-          "resolvedVersion": "4.17.0",
-          "integrity": "sha256-e2f4..."
-        }
-      ]
+      "transitives": ["net.kyori:adventure-key"]
+    },
+    "net.kyori:adventure-key": {
+      "source": {
+        "kind": "maven",
+        "groupId": "net.kyori",
+        "artifactId": "adventure-key",
+        "version": "4.17.0"
+      },
+      "resolvedVersion": "4.17.0",
+      "integrity": "sha256-8e5c...",
+      "declaredBy": []
     }
   }
 }
 ```
 
-Every top-level entry carries:
+Every entry carries:
 
-| Field             | Meaning                                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------------------- |
-| `source`          | The full tagged union from `source.ts` (kind + identifying fields + version).                  |
-| `resolvedVersion` | Concrete version resolved by `install`. Never a range, never `"*"`.                            |
-| `integrity`       | `sha256-<hex>` of the resolved jar bytes. Verified on every consuming read.                    |
-| `declaredBy`      | Workspaces that declared this dep. Used by `remove` to know when the entry can be dropped.     |
-| `transitives`     | Optional. Recursive. Omitted when there are no transitive deps. Does not include `declaredBy`. |
+| Field             | Meaning                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `source`          | The full tagged union from `source.ts` (kind + identifying fields + version).                       |
+| `resolvedVersion` | Concrete version resolved by `install`. Never a range, never `"*"`.                                 |
+| `integrity`       | `sha256-<hex>` of the resolved jar bytes. Verified on every consuming read.                         |
+| `declaredBy`      | Workspaces that declared this dep directly. Empty for pure transitives.                             |
+| `transitives`     | Names of other entries this dep directly pulls in. Optional; omitted when there are no transitives. |
 
-Transitives are recorded inline. Each child carries its own grandchildren. The field is elided entirely when the closure is empty. Writers must not emit an empty array.
+Transitives are referenced by key, not duplicated inline. To follow the graph forward, look up `entries[name]` for each name in `transitives`. To go backward (which top-level pulled in a transitive), use [`pluggy why <name>`](./commands/why.md) or compute reverse edges yourself by walking every entry's `transitives` array.
 
-The file is written atomically: pluggy creates a `.<pid>.<rand>.tmp` sibling, `fsync`s, then `rename`s over the target. Entries are sorted by key so diffs are deterministic. Trailing LF.
+Top-level entries have non-empty `declaredBy`. Pure transitives have `declaredBy: []` and reach the build only because some top-level lists them in `transitives`.
+
+The file is written atomically: pluggy creates a `.<pid>.<rand>.tmp` sibling and `rename`s over the target. Entries are sorted by key so diffs are deterministic. Trailing LF.
+
+### Migrating from version 1
+
+Version 1 lockfiles nested transitives inline (`transitives: LockfileEntry[]`). Version 2 flattens everything by name. Lockfiles are regenerated on the next `pluggy install`, so the migration is automatic. Delete `pluggy.lock` and run `pluggy install` if you hit a parse error from a stale file.
 
 ### When pluggy rewrites it
 

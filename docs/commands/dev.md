@@ -89,8 +89,7 @@ When pluggy detects a source change, it picks a strategy in this order:
 Rebuild failures don't restart the server. pluggy keeps the previous jar running and logs the failure:
 
 ```text
-dev: change detected, rebuilding…
-✖ dev: rebuild failed, keeping previous jar running: compile: javac exited with code 1 ...
+✗ Rebuild failed, keeping previous jar running: compile: javac exited with code 1 ...
 ```
 
 ## Shutdown
@@ -116,7 +115,6 @@ Debounce is 200 milliseconds. A burst of saves coalesces into one rebuild.
 
 ```text
 $ pluggy dev
-dev: starting my_plugin
 [server output on stdout/stderr, unfiltered]
 ```
 

@@ -43,7 +43,7 @@ install instructions and exits clean.
 $ pluggy upgrade
 Upgrading to: v0.2.0
 downloading https://github.com/pluggy-sh/pluggy/releases/download/v0.2.0/pluggy-darwin-arm64
-✔ pluggy v0.2.0 installed at ~/.pluggy/bin/pluggy (previous binary backed up to ~/.pluggy/bin/pluggy.old)
+✓ pluggy v0.2.0 installed at ~/.pluggy/bin/pluggy (previous binary backed up to ~/.pluggy/bin/pluggy.old)
 ```
 
 With `--print-only`:

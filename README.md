@@ -51,12 +51,13 @@ Three commands take you from an empty directory to a running server.
 
 ```text
 $ pluggy init --yes --name shop --main com.example.shop.Main
+✓ Project "shop" initialized
 
 $ pluggy install worldedit
-Installed worldedit into shop (1 resolved).
+✓ Installed worldedit into shop (1 resolved)
 
 $ pluggy dev
-dev: starting shop
+[server output streams here]
 ```
 
 That gives you this layout:
@@ -94,7 +95,8 @@ Save a `.java` file and pluggy rebuilds the jar, restarts the server, and lands 
 
 ```text
 $ pluggy build
-✔ shop: bin/shop-1.0.0.jar (142.4 KB, 3821ms)
+Building shop
+✓ shop → bin/shop-1.0.0.jar (142.4 KB, 3821ms)
 ```
 
 ## What pluggy does for you
@@ -123,6 +125,9 @@ pluggy exposes a small set of commands. Every command supports `--json` for stru
 | `pluggy info <plugin>`       | Inspect a source.                                  |
 | `pluggy search <query>`      | Search Modrinth.                                   |
 | `pluggy list`                | Show declared deps, resolved versions, registries. |
+| `pluggy why <name>`          | Trace which top-level dep pulled in a transitive.  |
+| `pluggy outdated`            | List locked deps with a newer upstream version.    |
+| `pluggy audit`               | Verify cached jars against the lockfile hashes.    |
 | `pluggy build`               | Compile, package resources, and produce a jar.     |
 | `pluggy test`                | Compile and run JUnit tests under `test/`.         |
 | `pluggy docs`                | Generate Javadoc HTML for the project.             |

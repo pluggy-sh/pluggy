@@ -2,6 +2,36 @@
 
 Common failures, grouped by command and stage. Error messages here are copied verbatim from the code, with placeholders (`<...>`) for interpolated values. If a term is unfamiliar, check the [glossary](./glossary.md).
 
+## Error format
+
+Every typed error pluggy emits has the same shape. Knowing the shape makes scanning the messages below faster.
+
+Human output:
+
+```text
+error [E_INSTALL_NO_REGISTRIES]: Maven: no registries configured for "net.kyori:adventure-api:4.17.0".
+  hint: Declare a Maven registry in project.json:registries, or use a github: alias.
+  at /Users/you/my-plugin/project.json (/registries)
+  caused by: <upstream message, when chained>
+```
+
+The `[E_*]` code is stable and scriptable. The `hint:` line offers a one-line next step. `at <file>` points at the source location when the error refers to a file. `caused by:` shows underlying errors when a higher-level error wraps a lower-level one.
+
+JSON envelope:
+
+```json
+{
+  "status": "error",
+  "exitCode": 2,
+  "message": "Maven: no registries configured for \"net.kyori:adventure-api:4.17.0\".",
+  "code": "E_INSTALL_NO_REGISTRIES",
+  "hint": "Declare a Maven registry in project.json:registries, or use a github: alias.",
+  "source": { "file": "/Users/you/my-plugin/project.json", "pointer": "/registries" }
+}
+```
+
+Exit codes: `2` for user input problems (`UserError`), `1` for runtime failures (`RuntimeError`, network outages, disk problems), `1` for unexpected internal errors (no `code` field). Only `UserError` exits `2`.
+
 ## `pluggy init`
 
 ### `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`
@@ -142,7 +172,7 @@ Don't use `--reload`. Bukkit's `/reload` has known reliability problems with sta
 
 ## `pluggy doctor`
 
-### `✖ Java toolchain: java not found or failed to run: spawn java ENOENT`
+### `✗ Java toolchain: java not found or failed to run: spawn java ENOENT`
 
 `doctor` probes the host's `java` for visibility, separately from the JDK pluggy provisions for builds. Builds still work without `java` on `PATH`. Install a JDK to silence this check, or rely on the `Project JDK` check below for a pluggy-managed verdict.
 
@@ -150,7 +180,7 @@ Don't use `--reload`. Bukkit's `/reload` has known reliability problems with sta
 
 The required JDK isn't cached, but auto-install is on. The next `pluggy build` will download it. Pre-install with `pluggy sdk install <major>` if you want the download to happen now.
 
-### `✖ Project JDK: temurin <major> not installed and PLUGGY_NO_AUTO_INSTALL=1`
+### `✗ Project JDK: temurin <major> not installed and PLUGGY_NO_AUTO_INSTALL=1`
 
 The CI escape hatch is set and the cache is cold. Pre-warm with the exact command in the message, or unset the env var.
 
@@ -158,7 +188,7 @@ The CI escape hatch is set and the cache is cold. Pre-warm with the exact comman
 
 The host `java` is older than the floor declared by the cached `BuildTools.jar` (read from its `Build-Jdk-Spec` manifest attribute). This is a warning. pluggy uses its own provisioned JDK for the build, so the host version usually doesn't matter. Fix this if a tool outside pluggy depends on the host `java`.
 
-### `✖ Cache reachability: cache is not writable: <path> (<errno>)`
+### `✗ Cache reachability: cache is not writable: <path> (<errno>)`
 
 The cache directory exists but pluggy can't write to it. Typical causes:
 
@@ -170,7 +200,7 @@ The cache directory exists but pluggy can't write to it. Typical causes:
 
 A declared Maven registry didn't respond to a `HEAD` with a 2xx, 3xx, or 4xx. This is a warning. Some registries legitimately reject HEAD. Try `pluggy install maven:<coord>@<version>` to see the real error from the resolver.
 
-### `✖ Workspace graph: workspace dependency cycle detected: <a> -> <b> -> <a>`
+### `✗ Workspace graph: workspace dependency cycle detected: <a> -> <b> -> <a>`
 
 Two workspaces depend on each other through `workspace:`. This is a build-order impossibility. Break the cycle by extracting a third workspace that both sides depend on.
 

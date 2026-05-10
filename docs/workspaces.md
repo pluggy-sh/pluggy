@@ -150,17 +150,17 @@ The `version` field in the dep declaration is ignored. The sibling's own `projec
 ```text
 $ pluggy build
 build api
-✔ api: /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
+✓ api: /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
 build impl
-✔ impl: /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
+✓ impl: /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
 build addons-store
-✔ addons-store: /repo/addons/store/bin/addons-store-1.0.0.jar (56.4 KB, 1902ms)
+✓ addons-store: /repo/addons/store/bin/addons-store-1.0.0.jar (56.4 KB, 1902ms)
 ```
 
 `pluggy doctor` verifies there are no cycles:
 
 ```text
-✖ Workspace graph: workspace dependency cycle detected: api -> impl -> api
+✗ Workspace graph: workspace dependency cycle detected: api -> impl -> api
 ```
 
 Cycles throw from `topologicalOrder`. Break them by extracting a third workspace that both sides depend on.

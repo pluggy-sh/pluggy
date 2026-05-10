@@ -120,8 +120,8 @@ When hotswap is off, or when a change is too deep for hotswap to apply (a new su
 ### Default fallback: full restart
 
 ```text
-dev: change detected, rebuilding…
-✔ build succeeded
+(file save detected; debounce timer starts)
+(rebuild succeeds)
 (sends `stop\n` to server stdin, waits for exit)
 (hardlinks the new jar into dev/plugins/)
 (spawns `java -Xmx2G -jar server.jar` again)
@@ -132,8 +132,8 @@ A full shutdown and restart. Safe, slow, predictable. Expect 10 to 30 seconds de
 ### `--reload`: Bukkit reload
 
 ```text
-dev: change detected, rebuilding…
-✔ build succeeded
+(file save detected; debounce timer starts)
+(rebuild succeeds)
 (hardlinks the new jar into dev/plugins/)
 (sends `reload confirm\n` to server stdin)
 ```
@@ -147,8 +147,7 @@ Use `--reload` (or `dev.hotswap.fallback: "reload"`) only when you know your plu
 The server stays running with the old jar. pluggy logs:
 
 ```text
-dev: change detected, rebuilding…
-✖ dev: rebuild failed, keeping previous jar running: compile: javac exited with code 1 ...
+✗ Rebuild failed, keeping previous jar running: compile: javac exited with code 1 ...
 ```
 
 Fix the compile error in your editor, save, and pluggy will try again.

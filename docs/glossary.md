@@ -90,7 +90,7 @@ Java Development Kit. The set of tools (including `javac`) needed to build Java 
 
 ## lockfile
 
-`pluggy.lock` at the project root. Records the exact version and integrity hash of every resolved dependency, including transitives. Commit it to version control so every teammate and CI build uses the same dependency bytes.
+`pluggy.lock` at the project root. Records the exact version and integrity hash of every resolved dependency, including transitives. Schema is flat: every dependency is one entry keyed by name, with `transitives: string[]` listing names of other entries it pulls in. Commit it to version control so every teammate and CI build uses the same dependency bytes.
 
 ## main class
 

@@ -54,21 +54,21 @@ The output jar is written to `<output>` after the staging dir is zipped.
 Human, single workspace:
 
 ```text
-build my_plugin
-✔ my_plugin: /repo/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
+Building my_plugin
+✓ my_plugin → /repo/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
 ```
 
 Human, multi-workspace:
 
 ```text
-build api
-✔ api: /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
-build impl
-✔ impl: /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
+Building api
+✓ api → /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
+Building impl
+✓ impl → /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
 
-summary
-  api: /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
-  impl: /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
+Summary
+  api → /repo/api/bin/api-1.0.0.jar (42.1 KB, 1802ms)
+  impl → /repo/impl/bin/impl-1.0.0.jar (98.3 KB, 2103ms)
 ```
 
 ## JSON output

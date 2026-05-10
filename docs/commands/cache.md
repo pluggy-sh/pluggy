@@ -98,7 +98,7 @@ Delete cache entries. With no flag, wipes everything pluggy manages under the ca
 ```text
 $ pluggy cache clean --category versions
 ? Delete the "versions" category (4.50 GB)? Yes
-✔ Removed 12 entries (4.50 GB).
+✓ Removed 12 entries (4.50 GB).
 ```
 
 `clean` is interactive by default. Pass `-y`/`--yes` to skip the confirmation; `--json` skips it implicitly. JDK manifest entries are reconciled automatically so subsequent `cache info` calls don't show ghost numbers.
@@ -111,7 +111,7 @@ Budget-driven eviction. Safe to run as a one-shot, since defaults are conservati
 $ pluggy cache prune
   - versions/paper-1.20.4-450.jar (age, 450.00 MB)
   - dependencies/net.kyori:adventure-api:4.18.0 (age, 280.00 KB)
-✔ Evicted 2; kept 102. Freed 450.27 MB.
+✓ Evicted 2; kept 102. Freed 450.27 MB.
 ```
 
 | Flag                   | Default | Effect                                                                                                                               |

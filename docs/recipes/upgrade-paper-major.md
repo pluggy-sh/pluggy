@@ -39,7 +39,7 @@ pluggy uses that one string to wire up everything else.
 3. Let `javac` tell you what's deprecated or removed:
 
    ```text
-   ✖ my_plugin: compile: javac exited with code 1 for project "my_plugin" (last 40 lines):
+   ✗ my_plugin: compile: javac exited with code 1 for project "my_plugin" (last 40 lines):
    src/com/example/Main.java:24: error: cannot find symbol
        event.getPlayer().getLocation().getBlock().getState().getData();
                                                               ^
@@ -53,7 +53,7 @@ pluggy uses that one string to wire up everything else.
 5. If you also need a newer JDK for the new Paper version, install it and update `PATH`. `pluggy doctor` reports the detected JDK:
 
    ```text
-   ✔ Java toolchain: Java 21
+   ✓ Java toolchain: Java 21
    ```
 
 ## Migrating the `dev/` directory

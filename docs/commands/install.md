@@ -86,10 +86,10 @@ Fix this in `project.json` before `install` will touch the lockfile.
 
 ```text
 $ pluggy install worldedit
-Installed worldedit into my_plugin (1 resolved).
+✓ Installed worldedit into my_plugin (1 resolved)
 
 $ pluggy install
-Installed 3 dependencies.
+✓ Installed 3 dependencies
 
 $ pluggy install                 # (lockfile was already fresh)
 lockfile is fresh; nothing to install.

@@ -109,7 +109,7 @@ Install a plugin from [Modrinth](./glossary.md#modrinth):
 
 ```text
 $ pluggy install worldedit
-Installed worldedit into my_plugin (1 resolved).
+✓ Installed worldedit into my_plugin (1 resolved)
 ```
 
 pluggy rewrites `project.json` to record the dependency:
@@ -138,7 +138,7 @@ Start a live server with `dev`:
 
 ```text
 $ pluggy dev
-dev: starting my_plugin
+[server output streams here]
 ```
 
 `pluggy dev` runs a full build, downloads the matching Paper server jar, sets up a `dev/` directory next to your project, writes `eula.txt` accepting Mojang's [EULA](./glossary.md#eula) on your behalf (suppress with `PLUGGY_DEV_NO_EULA=1`), and runs `java -jar server.jar` with your plugin and any runtime plugin dependencies linked into `dev/plugins/`.
@@ -153,8 +153,8 @@ When you're ready to ship a jar, run:
 
 ```text
 $ pluggy build
-build my_plugin
-✔ my_plugin: /Users/you/my-plugin/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
+Building my_plugin
+✓ my_plugin → /Users/you/my-plugin/bin/my_plugin-1.0.0.jar (142.4 KB, 3821ms)
 ```
 
 The output jar lives at `<workspace>/bin/<name>-<version>.jar` by default. Override with `--output path/to/out.jar`.
