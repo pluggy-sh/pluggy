@@ -215,6 +215,6 @@ For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/
 ## Review Checklist for Agents
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check` and `vp test` to validate changes.
+- [ ] Run `vp check` and `vp test` before every push, including docs-only changes. Oxfmt formats markdown too, so a missed `vp check` on a `.md` file fails CI just like a code change. Use `vp check --fix` to auto-fix formatting, then re-run `vp check` to confirm clean.
 - [ ] For release-shaped changes, verify `bun build --compile --outfile=bin/pluggy ./src/index.ts` still produces a working binary.
 <!--VITE PLUS END-->
