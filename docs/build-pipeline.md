@@ -94,7 +94,7 @@ Templated extensions get `${project.x}` substitution before being written: `.yml
 Output-path collisions are resolved "first wins" and subsequent declarations are skipped with a warning:
 
 ```text
-⚠ resources: skipping "config.yml" — an earlier entry already resolved to the same output path
+⚠ resources: skipping "config.yml": an earlier entry already resolved to the same output path
 ```
 
 ## 6. Generate the descriptor

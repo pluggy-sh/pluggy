@@ -342,7 +342,7 @@ function extractLeafCertificatePem(bundle: Record<string, unknown>): string | un
 function printManagedInstallGuidance(install: InstallInfo, upgradeCmd: string): void {
   const label = describeInstallMethod(install.method);
   log.error(
-    `${red("✖")} pluggy was installed via ${label}; ${bold("don't")} self-update — that would corrupt the package manager's tracking.`,
+    `${red("✖")} pluggy was installed via ${label}. ${bold("Don't")} self-update; that would corrupt the package manager's tracking.`,
   );
   log.info("");
   log.info(`${bold("Run this instead:")}`);

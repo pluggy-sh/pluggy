@@ -63,13 +63,13 @@ Install manually:
 ## Managed installs (Homebrew, Scoop)
 
 `pluggy upgrade` refuses to run when it detects that the binary is owned
-by a package manager — overwriting it would leave the package manager's
+by a package manager. Overwriting it would leave the package manager's
 manifest pointing at a file it didn't install. Run the package manager's
 own upgrade instead:
 
 ```text
 $ pluggy upgrade
-✖ pluggy was installed via Homebrew; don't self-update — that would corrupt the package manager's tracking.
+✖ pluggy was installed via Homebrew. Don't self-update; that would corrupt the package manager's tracking.
 
 Run this instead:
 

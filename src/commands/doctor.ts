@@ -107,7 +107,7 @@ export interface DoctorCommandResult {
   summary: { passed: number; warned: number; failed: number };
 }
 
-/** Env var names that influence pluggy's behaviour. Names only — never values. */
+/** Env var names that influence pluggy's behaviour. Names only; never values. */
 const TRACKED_ENV_VARS = [
   "APPDATA",
   "CI",
