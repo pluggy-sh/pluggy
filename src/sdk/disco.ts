@@ -13,6 +13,8 @@
 
 import process from "node:process";
 
+import { RuntimeError } from "../errors.ts";
+
 const DISCO_BASE = "https://api.foojay.io/disco/v3.0";
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -25,11 +27,11 @@ export type DiscoArchiveType = "tar.gz" | "zip";
 
 /** Resolved package metadata sufficient to download and extract a JDK. */
 export interface JdkSpec {
-  /** Disco distribution slug, for example "temurin", "graalvm_community". */
+  /** Disco distribution slug, e.g. "temurin", "graalvm_community". */
   distribution: string;
-  /** Major release, for example 21. */
+  /** Major release, e.g. 21. */
   major: number;
-  /** Full Java version string from Disco, for example "21.0.11+10". */
+  /** Full Java version string from Disco, e.g. "21.0.11+10". */
   fullVersion: string;
   os: DiscoOs;
   arch: DiscoArch;
@@ -89,16 +91,33 @@ export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
   const data = await fetchJson(url);
   const items = (data as DiscoListResponse).result ?? [];
   if (items.length === 0) {
-    throw new Error(
-      `disco: no ${distribution} JDK ${opts.major} (${target.os}/${target.arch}, ${archiveType}); ` +
-        `try a different distribution or check https://api.foojay.io/disco/v3.0/distributions`,
+    throw new RuntimeError(
+      `No ${distribution} JDK ${opts.major} (${target.os}/${target.arch}, ${archiveType}) available`,
+      {
+        code: "E_DISCO_NO_MATCH",
+        hint: "Try a different distribution or check https://api.foojay.io/disco/v3.0/distributions.",
+        context: {
+          distribution,
+          major: opts.major,
+          os: target.os,
+          arch: target.arch,
+          archiveType,
+        },
+      },
     );
   }
 
   const pkg = items[0];
   const downloadUrl = pkg.links?.pkg_download_redirect;
   if (typeof downloadUrl !== "string" || downloadUrl.length === 0) {
-    throw new Error(`disco: package ${pkg.id ?? "?"} returned no pkg_download_redirect link`);
+    throw new RuntimeError(
+      `Disco package ${pkg.id ?? "?"} returned no pkg_download_redirect link`,
+      {
+        code: "E_DISCO_NO_DOWNLOAD",
+        hint: "Retry, or check https://api.foojay.io/disco/v3.0/distributions for an alternative.",
+        context: { packageId: pkg.id ?? null, distribution, major: opts.major },
+      },
+    );
   }
 
   const checksum =
@@ -190,13 +209,12 @@ export function targetForHost(): { os: DiscoOs; arch: DiscoArch } {
   if (process.platform === "darwin") os = "macos";
   else if (process.platform === "linux") os = "linux";
   else if (process.platform === "win32") os = "windows";
-  else throw new Error(`disco: unsupported platform "${process.platform}"`);
+  else throw new Error(`Unsupported platform "${process.platform}"`);
 
   let arch: DiscoArch;
   if (process.arch === "arm64") arch = "aarch64";
   else if (process.arch === "x64") arch = "x64";
-  else
-    throw new Error(`disco: unsupported arch "${process.arch}"; only aarch64 and x64 are mapped`);
+  else throw new Error(`Unsupported arch "${process.arch}"; only aarch64 and x64 are mapped`);
 
   return { os, arch };
 }
@@ -231,7 +249,11 @@ async function fetchJson(url: URL): Promise<unknown> {
       headers: { accept: "application/json" },
     });
     if (!res.ok) {
-      throw new Error(`disco: ${res.status} ${res.statusText}: ${url.toString()}`);
+      throw new RuntimeError(`Disco API ${res.status} ${res.statusText}: ${url.toString()}`, {
+        code: "E_DISCO_HTTP",
+        hint: "Check connectivity to https://api.foojay.io and retry.",
+        context: { status: res.status, statusText: res.statusText, url: url.toString() },
+      });
     }
     return await res.json();
   } finally {

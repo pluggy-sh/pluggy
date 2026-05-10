@@ -1,18 +1,10 @@
 /**
  * Template source resolution + instantiation. Templates live at
  * `templates/<id>/` in the pluggy repo (or any fork pointed at via the
- * `PLUGGY_TEMPLATE_REPO` / `PLUGGY_TEMPLATE_DIR` env vars). At init time we
- * either:
- *
- *   - read straight from a local `templates/` dir (when `PLUGGY_TEMPLATE_DIR`
- *     is set, used by tests and by working copies of the pluggy repo
- *     itself), or
- *   - fetch the repo as a zip from `codeload.github.com`, parse it with
- *     yauzl, and pull out only the requested template's subtree.
- *
- * Filename substitution (`__packagePath__` / `__className__`) and content
- * substitution (`${project.x}`) both happen here so callers receive
- * ready-to-write {@link TemplateFile}s.
+ * `PLUGGY_TEMPLATE_REPO` / `PLUGGY_TEMPLATE_DIR` env vars). When
+ * `PLUGGY_TEMPLATE_DIR` is set we read straight from disk; otherwise we
+ * fetch the repo as a zip from `codeload.github.com` and pull out the
+ * requested template's subtree.
  */
 
 import { existsSync } from "node:fs";

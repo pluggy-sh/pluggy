@@ -57,7 +57,7 @@ export function spawnServer(opts: SpawnServerOptions): ChildProcess {
 
   if (child.stdin !== null && !child.stdin.destroyed) {
     // `end: false` keeps the child's stdin open when the parent's closes
-    // (for example, EOF on a non-TTY). Shutdown still reaches the child via the
+    // (e.g. EOF on a non-TTY). Shutdown still reaches the child via the
     // SIGINT handler installed below.
     process.stdin.pipe(child.stdin, { end: false });
   }

@@ -210,7 +210,7 @@ describe("runJavadoc", () => {
         docTitle: "x",
         links: [],
       }),
-    ).rejects.toThrow(/no \.java sources/);
+    ).rejects.toThrow(/[Nn]o \.java sources/);
     expect(spawn).not.toHaveBeenCalled();
   });
 });

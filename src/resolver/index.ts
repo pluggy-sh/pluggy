@@ -36,7 +36,7 @@ export interface ResolveContext {
    * Optional `sha256-<hex>` from the lockfile. When set, resolvers verify
    * the resolved bytes match it and refuse to overwrite with anything else.
    * Caller passes this only when it has a recorded integrity to enforce
-   * (that is, resolving an existing pinned dep, not a fresh install).
+   * (i.e., resolving an existing pinned dep, not a fresh install).
    */
   expectedIntegrity?: string;
 }

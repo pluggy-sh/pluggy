@@ -122,7 +122,7 @@ export function devCommand(): Command {
     .option("--platform <name>", "Override the primary platform.", parsePlatform)
     .option("--version <ver>", "Override the primary MC version.", parseSemver)
     .option("--port <n>", "Server listen port.", parseInteger)
-    .option("--memory <x>", "JVM heap size (for example, 2G, 512M).")
+    .option("--memory <x>", "JVM heap size (e.g. 2G, 512M).")
     .option("--clean", "Wipe dev/ before starting.")
     .option("--fresh-world", "Keep dev/ but delete dev/world*.")
     .option("--no-watch", "Run once, don't watch or rebuild.")

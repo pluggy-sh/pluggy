@@ -118,7 +118,15 @@ export const platforms = {
   /** Look up a registered platform by id (case-insensitive). Throws if missing. */
   get(this: void, providerId: string): PlatformProvider {
     const id = providerId.toLowerCase();
-    if (!PLATFORMS[id]) throw new UserError(`Platform with id '${providerId}' not found`);
+    if (!PLATFORMS[id]) {
+      const known = Object.keys(PLATFORMS).sort();
+      throw new UserError(`Platform with id '${providerId}' not found`, {
+        code: "E_PLATFORM_UNKNOWN",
+        hint:
+          known.length > 0 ? `Known: ${known.join(", ")}` : "No platforms have been registered.",
+        context: { providerId, known },
+      });
+    }
     return PLATFORMS[id];
   },
 
@@ -137,7 +145,10 @@ export const platforms = {
    */
   assertSameFamily(this: void, ids: string[]): PlatformFamily {
     if (ids.length === 0) {
-      throw new UserError("compatibility.platforms is empty. At least one platform is required.");
+      throw new UserError("compatibility.platforms is empty. At least one platform is required.", {
+        code: "E_PLATFORM_NO_PLATFORMS",
+        hint: 'Add at least one platform to "compatibility.platforms" in project.json.',
+      });
     }
 
     const byFamily = new Map<PlatformFamily, string[]>();
@@ -152,9 +163,18 @@ export const platforms = {
       const groups = Array.from(byFamily.entries())
         .map(([family, group]) => `${family} (${group.join(", ")})`)
         .join(" vs ");
+      const groupsContext = Array.from(byFamily.entries()).map(([family, group]) => ({
+        family,
+        platforms: group,
+      }));
       throw new UserError(
         `compatibility.platforms must share one family. Got ${groups}. ` +
           "Split platforms from different families into separate workspaces.",
+        {
+          code: "E_PLATFORM_FAMILIES_MIXED",
+          hint: "Split platforms from different families into separate workspaces.",
+          context: { groups: groupsContext },
+        },
       );
     }
 

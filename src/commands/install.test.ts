@@ -162,7 +162,7 @@ describe("doInstall: no plugin argument", () => {
     expect(lock?.entries.worldedit.integrity).toBe("sha256-abc");
   });
 
-  test("accepts Modrinth versions containing '+' (for example, 1.20.1+forge) when checking the cache", async () => {
+  test("accepts Modrinth versions containing '+' (e.g. 1.20.1+forge) when checking the cache", async () => {
     await writeFile(
       join(dir, "project.json"),
       JSON.stringify({
@@ -296,7 +296,7 @@ describe("doInstall: no plugin argument", () => {
 
     // worldedit isn't drifted so it shouldn't even be re-resolved; only
     // newdep is. The expectedIntegrity threading kicks in if worldedit ever
-    // does need re-resolution (for example, cache mismatch in another test).
+    // does need re-resolution (e.g. cache mismatch in another test).
     const result = await doInstall({ cwd: dir });
     expect(result.installed).toEqual(["newdep"]);
     expect(result.skipped).toContain("worldedit");

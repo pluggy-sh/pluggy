@@ -57,7 +57,7 @@ export async function runJavadoc(
   opts: JavadocOptions,
 ): Promise<JavadocResult> {
   if (opts.sources.length === 0) {
-    throw new Error(`docs: no .java sources to document for project "${project.name}"`);
+    throw new Error(`No .java sources to document for project "${project.name}"`);
   }
 
   await mkdir(opts.outputDir, { recursive: true });
@@ -132,7 +132,7 @@ export async function runJavadoc(
     child.once("error", (err) => {
       rejectPromise(
         new Error(
-          `docs: failed to spawn javadoc for project "${project.name}": ${(err as Error).message}`,
+          `Failed to spawn javadoc for project "${project.name}": ${(err as Error).message}`,
         ),
       );
     });
@@ -146,7 +146,7 @@ export async function runJavadoc(
       const suffix = stderrBuf.length > MAX_STDERR_LINES ? ` (last ${MAX_STDERR_LINES} lines)` : "";
       rejectPromise(
         new Error(
-          `docs: javadoc exited with code ${code} for project "${project.name}"${suffix}:\n${tail}`,
+          `javadoc exited with code ${code} for project "${project.name}"${suffix}:\n${tail}`,
         ),
       );
     });

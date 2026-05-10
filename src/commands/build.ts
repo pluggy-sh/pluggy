@@ -59,7 +59,10 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new UserError("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_BUILD_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const targets = selectBuildTargets(context, opts);

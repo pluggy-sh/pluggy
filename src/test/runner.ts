@@ -27,9 +27,9 @@ export interface LauncherArgs {
 }
 
 export interface TestCase {
-  /** Fully-qualified class name (for example, `com.example.FooTest`). */
+  /** Fully-qualified class name (e.g. `com.example.FooTest`). */
   suite: string;
-  /** Method name (for example, `addsPlayer`). */
+  /** Method name (e.g. `addsPlayer`). */
   name: string;
   durationMs: number;
   status: "passed" | "failed" | "skipped";

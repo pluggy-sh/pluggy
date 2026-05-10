@@ -220,12 +220,12 @@ function pruneSubcommand(): Command {
     )
     .option(
       "--max-age <duration>",
-      `Drop entries older than this (for example, 90d, 12h, 30m, 1w). Default: ${DEFAULT_MAX_AGE}. Use 0 to disable.`,
+      `Drop entries older than this (e.g. 90d, 12h, 30m, 1w). Default: ${DEFAULT_MAX_AGE}. Use 0 to disable.`,
       DEFAULT_MAX_AGE,
     )
     .option(
       "--max-size <size>",
-      "After age pruning, evict oldest entries until total is at or below this budget (for example, 5G, 500M).",
+      "After age pruning, evict oldest entries until total is at or below this budget (e.g. 5G, 500M).",
     )
     .option(
       "--keep-latest <n>",

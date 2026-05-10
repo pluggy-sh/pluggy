@@ -63,7 +63,7 @@ export function sdkCommand(): Command {
 function installSubcommand(): Command {
   return new Command("install")
     .description("Download and cache a JDK. With no <major>, derives it from project.json.")
-    .argument("[major]", "Java major release, for example 21.")
+    .argument("[major]", "Java major release, e.g. 21.")
     .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
     .option("--force", "Reinstall even if already cached. Wipes the slot and re-downloads.")
     .action(async function action(this: Command, majorArg: string | undefined, options) {

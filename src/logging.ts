@@ -131,7 +131,7 @@ export const log = {
 };
 
 /**
- * Render a subsystem name as a dim square-bracketed tag, for example
+ * Render a subsystem name as a dim square-bracketed tag, e.g.
  * `[dev]`. Use in front of a `log.step` / `log.info` line so the user
  * sees who produced the message without baking the prefix into every
  * call site.
@@ -168,20 +168,48 @@ export function emitErr(payload: Record<string, unknown>, humanFn: () => void): 
   humanFn();
 }
 
+/** Structured error fields rendered by `emitError`. */
+export interface EmitErrorDetails {
+  /** Stable error code (`E_LOCKFILE_PARSE`, `E_PLATFORM_UNKNOWN`, …). */
+  code?: string;
+  /** Single-line follow-up shown dim under the main message. */
+  hint?: string;
+  /** Pre-formatted source location, e.g. `at /path/project.json:12 (/compatibility)`. */
+  source?: string;
+  /** Free-form structured payload included verbatim in JSON output. */
+  context?: Record<string, unknown>;
+  /** Cause chain, proximate to root. Each entry rendered on its own dim line. */
+  causes?: string[];
+}
+
 /**
  * Emit a thrown error at the top-level handler. In `--json` mode, writes
- * one `{status: "error", message, exitCode, ...extra}` object to stderr.
- * Otherwise prints `error: <message>` in red. Does not exit; callers
- * decide.
+ * one structured object to stderr. Otherwise prints
+ * `error: <message>` in red, followed by dim hint / source / cause
+ * lines. Does not exit; callers decide.
  */
-export function emitError(
-  message: string,
-  exitCode: number,
-  extra?: Record<string, unknown>,
-): void {
+export function emitError(message: string, exitCode: number, details: EmitErrorDetails = {}): void {
   if (state.json) {
-    console.error(JSON.stringify({ status: "error", message, exitCode, ...extra }, null, 2));
+    const payload: Record<string, unknown> = { status: "error", exitCode, message };
+    if (details.code !== undefined) payload.code = details.code;
+    if (details.hint !== undefined) payload.hint = details.hint;
+    if (details.source !== undefined) payload.source = details.source;
+    if (details.causes !== undefined && details.causes.length > 0) payload.causes = details.causes;
+    if (details.context !== undefined) {
+      for (const [key, value] of Object.entries(details.context)) {
+        if (!(key in payload)) payload[key] = value;
+      }
+    }
+    console.error(JSON.stringify(payload, null, 2));
     return;
   }
-  console.error(red(`  ${bold("error")}: ${message}\n`));
+
+  const prefix = details.code !== undefined ? ` ${dim(`[${details.code}]`)}` : "";
+  console.error(`\n${red(bold("error"))}${prefix}: ${message}`);
+  if (details.hint !== undefined) console.error(`  ${dim("hint:")} ${details.hint}`);
+  if (details.source !== undefined) console.error(`  ${dim(details.source)}`);
+  for (const cause of details.causes ?? []) {
+    console.error(`  ${dim(`caused by: ${cause}`)}`);
+  }
+  console.error("");
 }

@@ -43,7 +43,7 @@ export interface TestCellResult {
   }>;
   /** "no-test-dir" | "no-sources" when the cell ran no tests. */
   skipped?: "no-test-dir" | "no-sources";
-  /** Set when the cell errored before tests could run (for example, compile). */
+  /** Set when the cell errored before tests could run (e.g. compile). */
   error?: string;
 }
 

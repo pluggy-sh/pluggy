@@ -429,6 +429,33 @@ function parseSnapshotFilenameValue(xml: string, extension: "jar" | "pom"): stri
   return undefined;
 }
 
+/**
+ * Latest published version of a Maven artifact across the given registries.
+ * Walks `<base>/<group>/<artifact>/maven-metadata.xml` and reads `<release>`
+ * (preferred) or `<latest>`. Returns `undefined` when no registry has the
+ * artifact or none publishes a `<release>`/`<latest>` element.
+ */
+export async function getLatestMavenVersion(
+  groupId: string,
+  artifactId: string,
+  registries: string[],
+): Promise<string | undefined> {
+  const errors: string[] = [];
+  for (const registry of registries) {
+    const base = stripTrailingSlash(registry);
+    const url = `${base}/${groupPath(groupId)}/${artifactId}/maven-metadata.xml`;
+    const xml = await fetchText(url, errors);
+    if (xml === undefined) continue;
+    const release = xml.match(/<release>([^<]+)<\/release>/)?.[1];
+    if (release !== undefined && release.length > 0) return release.trim();
+    const latest = xml.match(/<latest>([^<]+)<\/latest>/)?.[1];
+    if (latest !== undefined && latest.length > 0) return latest.trim();
+    const versions = Array.from(xml.matchAll(/<version>([^<]+)<\/version>/g), (m) => m[1]);
+    if (versions.length > 0) return versions[versions.length - 1].trim();
+  }
+  return undefined;
+}
+
 async function fetchBytes(url: string, errors: string[]): Promise<Uint8Array | undefined> {
   try {
     const res = await fetch(url);

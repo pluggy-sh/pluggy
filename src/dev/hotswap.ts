@@ -1,18 +1,8 @@
 /**
- * HotswapAgent integration for `pluggy dev`.
- *
- * Three responsibilities:
- *   1. Provision the HotswapAgent JAR into the user cache.
- *   2. Render `hotswap-agent.properties` so HA watches the build's exploded
- *      classes directory (`.pluggy-build/<hash>/`) and redefines classes in
- *      place when javac rewrites them.
- *   3. Expose a category-shaped watcher (`hotswap.start`) that taps the
- *      server's stdout for HA's success/failure markers and surfaces the
- *      outcome to the dev loop's fallback chain.
- *
- * The agent JAR alone allows method-body changes; pair with a JBR `java`
- * (see `./jbr.ts`) and `-XX:+AllowEnhancedClassRedefinition` for the full
- * DCEVM-grade redefinition (new methods, fields, supertype changes).
+ * HotswapAgent integration for `pluggy dev`. The agent JAR alone allows
+ * method-body changes; pair with a JBR `java` (see `./jbr.ts`) and
+ * `-XX:+AllowEnhancedClassRedefinition` for full DCEVM-grade redefinition
+ * (new methods, fields, supertype changes).
  */
 
 import type { ChildProcess } from "node:child_process";
@@ -21,6 +11,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { RuntimeError } from "../errors.ts";
 import { log } from "../logging.ts";
 import { toPosixPath } from "../portable.ts";
 import { getCachePath } from "../project.ts";
@@ -46,7 +37,7 @@ export async function ensureAgent(version = HOTSWAP_AGENT_VERSION): Promise<stri
   const expectedSha = HOTSWAP_AGENT_SHA256[version];
   if (expectedSha === undefined) {
     throw new Error(
-      `hotswap: no pinned SHA-256 for HotswapAgent ${version}; refusing to download an unverified agent. ` +
+      `No pinned SHA-256 for HotswapAgent ${version}; refusing to download an unverified agent. ` +
         `Add the expected hash to HOTSWAP_AGENT_SHA256 in src/dev/hotswap.ts.`,
     );
   }
@@ -69,14 +60,26 @@ export async function ensureAgent(version = HOTSWAP_AGENT_VERSION): Promise<stri
   log.step(`Downloading HotswapAgent ${version}…`);
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`hotswap: agent download failed (${res.status} ${res.statusText}): ${url}`);
+    throw new RuntimeError(
+      `HotswapAgent download failed (${res.status} ${res.statusText}): ${url}`,
+      {
+        code: "E_HOTSWAP_DOWNLOAD",
+        hint: "Check connectivity to github.com and retry.",
+        context: { status: res.status, statusText: res.statusText, url },
+      },
+    );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
   const actualSha = createHash("sha256").update(buf).digest("hex");
   if (actualSha !== expectedSha) {
-    throw new Error(
-      `hotswap: integrity check failed for hotswap-agent-${version}.jar: expected sha256 ${expectedSha}, got ${actualSha}. ` +
+    throw new RuntimeError(
+      `Integrity check failed for hotswap-agent-${version}.jar: expected sha256 ${expectedSha}, got ${actualSha}. ` +
         `Refusing to load an unverified javaagent; please report at https://github.com/pluggy-sh/pluggy/issues.`,
+      {
+        code: "E_HOTSWAP_INTEGRITY",
+        hint: "Wipe the agent cache and retry; if it persists, report at https://github.com/pluggy-sh/pluggy/issues.",
+        context: { version, expected: expectedSha, actual: actualSha },
+      },
     );
   }
   const tmp = `${dest}.partial`;

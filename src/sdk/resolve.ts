@@ -57,9 +57,9 @@ const MC_VERSION_TO_JAVA_FALLBACK: { prefix: string; major: number }[] = [
 export const DEFAULT_DISTRIBUTION = DEFAULT_DISTRIBUTION_SLUG;
 
 export interface ProjectJdkSelection {
-  /** Java major release, for example 21. */
+  /** Java major release, e.g. 21. */
   major: number;
-  /** Disco distribution slug, for example "temurin". */
+  /** Disco distribution slug, e.g. "temurin". */
   distribution: string;
   /** Where the value came from; for diagnostic logging. */
   source: "project-pin" | "spigot-manifest" | "fallback-table" | "fallback-default";

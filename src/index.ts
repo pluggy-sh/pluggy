@@ -3,6 +3,7 @@ import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
 
+import { auditCommand } from "./commands/audit.ts";
 import { buildCommand } from "./commands/build.ts";
 import { cacheCommand } from "./commands/cache.ts";
 import { completionsCommand } from "./commands/completions.ts";
@@ -13,12 +14,14 @@ import { infoCommand } from "./commands/info.ts";
 import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
 import { listCommand } from "./commands/list.ts";
+import { outdatedCommand } from "./commands/outdated.ts";
 import { removeCommand } from "./commands/remove.ts";
 import { searchCommand } from "./commands/search.ts";
 import { sdkCommand } from "./commands/sdk.ts";
 import { testCommand } from "./commands/test.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
-import { UserError } from "./errors.ts";
+import { whyCommand } from "./commands/why.ts";
+import { causeMessages, formatSource, isTypedError, UserError } from "./errors.ts";
 import { emitError, initLogging } from "./logging.ts";
 import { startUpdateCheck } from "./update-check.ts";
 
@@ -44,6 +47,9 @@ program.addCommand(removeCommand());
 program.addCommand(infoCommand());
 program.addCommand(searchCommand());
 program.addCommand(listCommand());
+program.addCommand(whyCommand());
+program.addCommand(outdatedCommand());
+program.addCommand(auditCommand());
 program.addCommand(buildCommand());
 program.addCommand(testCommand());
 program.addCommand(docsCommand());
@@ -123,7 +129,15 @@ try {
     process.exit(exitCode);
   }
 
-  const extra = error instanceof UserError ? error.extra : undefined;
-  emitError(error.message, exitCode, extra);
+  const details = isTypedError(error)
+    ? {
+        code: error.code,
+        hint: error.hint,
+        source: formatSource(error.source),
+        context: error.context,
+        causes: causeMessages(error),
+      }
+    : {};
+  emitError(error.message, exitCode, details);
   process.exit(exitCode);
 }

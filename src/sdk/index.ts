@@ -1,18 +1,7 @@
 /**
- * SDK orchestration layer. Public entry points for the rest of the codebase:
- *
- *   * `ensureJdk(major, opts?)`: return a usable JDK for the given Java
- *     major. Cache hit → return immediately; cache miss → install via Disco.
- *   * `ensureJdkForProject(project)`: combine `selectJdkForProject` with
- *     `ensureJdk`. The one call build/test/dev care about.
- *   * `getCachedJdk(major, distribution?)`: look up a cached JDK without
- *     installing. Returns `undefined` on miss.
- *   * `listInstalled()`: used by `pluggy sdk list`. Eviction lives in
- *     `pluggy cache prune` (see `src/cache/index.ts`).
- *
- * Auto-install is on by default. Set `PLUGGY_NO_AUTO_INSTALL=1` to make a
- * cache miss raise instead (CI escape hatch). The error points at the
- * concrete remediation command (`pluggy sdk install <major>`).
+ * SDK orchestration layer. Auto-install is on by default; set
+ * `PLUGGY_NO_AUTO_INSTALL=1` to make a cache miss raise instead (CI escape
+ * hatch).
  *
  * `JAVA_HOME` is consulted *before* the cache: if it points at a JDK whose
  * major matches what the project needs, that path wins. Lets users keep
@@ -176,7 +165,7 @@ export interface InstalledJdkInfo {
   lastUsed: number;
   /** Slot path on disk. Present even when the directory has been deleted out-of-band. */
   slotPath: string;
-  /** True iff the slot still exists on disk (that is, the entry isn't dangling). */
+  /** True iff the slot still exists on disk (i.e., the entry isn't dangling). */
   present: boolean;
 }
 

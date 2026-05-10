@@ -11,7 +11,7 @@ const PAPER_MAVEN_METADATA =
   "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/maven-metadata.xml";
 
 /**
- * Resolve an MC version (for example, `"1.21.8"`, `"26.1.2"`) to the Maven
+ * Resolve an MC version (e.g. `"1.21.8"`, `"26.1.2"`) to the Maven
  * coordinate Paper publishes for `paper-api`.
  *
  * Paper has two formats in the wild:

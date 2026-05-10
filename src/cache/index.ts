@@ -83,7 +83,7 @@ export interface CacheEntry {
   bytes: number;
   /** Epoch ms of most recent activity. JDKs use manifest `lastUsed`; everything else uses mtime. */
   lastUsedMs: number;
-  /** Sub-bucket key (for example, `"maven"` for dependencies). Optional. */
+  /** Sub-bucket key (e.g. `"maven"` for dependencies). Optional. */
   subcategory?: string;
 }
 
@@ -553,7 +553,7 @@ export async function pruneCache(opts: PruneOptions = {}): Promise<PruneResult> 
 /**
  * Pull the major release number out of a JDK cache key like
  * `temurin-21-macos-aarch64`. Returns `undefined` for archive entries
- * (for example, `archives/temurin-21-macos-aarch64.tar.gz`) or unrecognized shapes.
+ * (e.g. `archives/temurin-21-macos-aarch64.tar.gz`) or unrecognized shapes.
  */
 function parseMajorFromKey(key: string): number | undefined {
   if (key.includes("/")) return undefined;
@@ -635,8 +635,7 @@ export function formatBytes(n: number): string {
  */
 export function parseDurationMs(value: string): number {
   const m = value.trim().match(/^(\d+)\s*(s|m|h|d|w)?$/);
-  if (m === null)
-    throw new Error(`invalid duration "${value}" (expected for example 90d, 12h, 30m, 1w)`);
+  if (m === null) throw new Error(`invalid duration "${value}" (expected e.g. 90d, 12h, 30m, 1w)`);
   const n = Number.parseInt(m[1], 10);
   const unit = m[2] ?? "d";
   const ms =
@@ -661,7 +660,7 @@ export function parseSizeBytes(value: string): number {
     .trim()
     .toUpperCase()
     .match(/^(\d+)\s*(B|K|KB|M|MB|G|GB|T|TB)?$/);
-  if (m === null) throw new Error(`invalid size "${value}" (expected for example 5G, 500M, 1024K)`);
+  if (m === null) throw new Error(`invalid size "${value}" (expected e.g. 5G, 500M, 1024K)`);
   const n = Number.parseInt(m[1], 10);
   const unit = m[2] ?? "B";
   const factor =

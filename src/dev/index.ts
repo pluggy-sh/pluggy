@@ -302,7 +302,7 @@ function resolveHotswap(project: ResolvedProject, opts: DevOptions): ResolvedHot
     cfg = raw;
   }
 
-  // CLI flag wins. `--no-hotswap` sets opts.hotswap === false.
+  // CLI flag wins over project config.
   const enabled = opts.hotswap === false ? false : enabledFromProject;
 
   return {

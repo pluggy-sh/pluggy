@@ -5,7 +5,7 @@
  * Escape hatch: prefix a placeholder with a backslash to keep it literal.
  * `\${anything}` emits as `${anything}`, with the leading backslash stripped.
  * Useful for YAML / JSON files that legitimately contain `${...}` syntax
- * (for example, plugin configs that reference their own placeholders at runtime).
+ * (e.g. plugin configs that reference their own placeholders at runtime).
  */
 
 /**

@@ -33,9 +33,31 @@ Please do not co-author commits with AI assistants, as this can create confusion
 
 See `conventions/` for the full conventions with examples in both TypeScript and Go:
 
-- **`conventions/QUALITY.md`** -API design: verb+noun entry points, category objects, single call backbone, no global state, fail-early errors.
-- **`conventions/PERFORMANCE.md`** -Performance: data structure selection, bounded collections, early exits, signal over polling, hot-path allocations, batching, coordination.
-- **`conventions/DOCUMENTATION.md`** -Writing docs: lead with the answer, active voice, "must" vs "we recommend", show the artifact (code, tree, config) instead of describing it, rarely use em-dashes, sentence-case headings with intro paragraphs, descriptive links, no duplicated facts.
+- **`conventions/QUALITY.md`** - API design: verb+noun entry points, category objects, single call backbone, no global state, fail-early errors.
+- **`conventions/PERFORMANCE.md`** - Performance: data structure selection, bounded collections, early exits, signal over polling, hot-path allocations, batching, coordination.
+- **`conventions/DOCUMENTATION.md`** - Writing docs: lead with the answer, active voice, "must" vs "we recommend", show the artifact (code, tree, config) instead of describing it, rarely use em-dashes, sentence-case headings with intro paragraphs, descriptive links, no duplicated facts.
+
+If the contents of any of those three files are not visible in your current context, read the file before doing any task that touches code or prose. They are the source of truth; do not guess.
+
+## Comments
+
+Default to no comments. The codebase is for professional developers; the code is the source of truth.
+
+Add a comment ONLY for:
+
+- **Constraints**: hidden environmental requirements (`Bun's $bunfs is read-only at boot, so factories must defer I/O`).
+- **Workarounds**: "this looks wrong but isn't" notes (`AbortError name varies across platforms, hence the dual check`).
+- **Invariants**: subtle properties of the data the code relies on (`transitives is omitted, never []; keeps diffs clean`).
+- **Surprises**: behaviour a reader would otherwise misread (`Java's File accepts forward slashes on Windows`).
+
+Do NOT add a comment for:
+
+- Reasoning narratives about why a refactor was done. That belongs in the commit message or PR description.
+- Multi-paragraph file headers that list what the exports do. Each export's own JSDoc covers that.
+- Inline justifications of ordinary code shape (`we deliberately use a Map here because…`). If it's the obvious shape, don't justify it.
+- Restating what the next line does. Identifiers are self-documenting.
+
+When in doubt: delete the comment. If a future reader is confused without it, they can `git blame` to the commit message.
 
 ## Runtime & tooling
 

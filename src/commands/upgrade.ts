@@ -75,7 +75,7 @@ function printManualInstructions(repository: string, release: GithubRelease): vo
 
 /**
  * Returns true if the current process can replace the file at `path`
- * (that is, it can write to the containing directory). We probe the
+ * (i.e., it can write to the containing directory). We probe the
  * directory rather than the file itself because the in-place upgrade
  * works by renaming around the existing binary.
  */

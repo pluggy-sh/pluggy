@@ -8,19 +8,6 @@
  * defaulting to off, and a user who forgets to tick it gets a one-time
  * snapshot with no live updates.
  *
- * What's written:
- *
- *   <name>.iml         : `classpath="eclipse" classpath-dir="$MODULE_DIR$"`
- *                        the linked-mode flag pair
- *   .idea/modules.xml  : registers `<name>.iml` so IntelliJ skips the wizard
- *   .idea/misc.xml     : `languageLevel` derived from
- *                        `compatibility.versions[0]`; no `project-jdk-name`
- *                        (we can't predict the user's JDK installations, so
- *                        IntelliJ prompts on first open, the same one-time
- *                        setup any new IntelliJ project requires)
- *   .idea/.gitignore   : keeps per-machine state (`workspace.xml`, `shelf/`)
- *                        out of git
- *
  * Pluggy never rewrites these files after `init`. IntelliJ owns its own
  * config from then on, and the `.iml` will accumulate things like the
  * Minecraft Development plugin's facet entries which are none of pluggy's

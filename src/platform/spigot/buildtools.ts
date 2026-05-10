@@ -177,7 +177,7 @@ export async function compile(
 /**
  * Fetch a version's manifest from Spigot's hub and return the Java major
  * release range it declares (`javaVersions` is a class-file major range,
- * for example, `[65, 70]` meaning Java 21 to 26). Returns `undefined` when the
+ * e.g. `[65, 70]` meaning Java 21 to 26). Returns `undefined` when the
  * manifest is missing, malformed, omits `javaVersions`, or the request
  * fails for any reason; `init` treats this as "unknown, fall through"
  * rather than a hard error, so this function never throws.

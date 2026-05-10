@@ -62,7 +62,12 @@ export function readLock(rootDir: string): Lockfile | null {
     parsed = JSON.parse(raw);
   } catch (err) {
     const msg = (err as Error).message;
-    throw new UserError(`Failed to parse lockfile at ${path}: ${msg}`);
+    throw new UserError(`Failed to parse lockfile at ${path}: ${msg}`, {
+      code: "E_LOCKFILE_PARSE",
+      hint: "Restore from version control or delete pluggy.lock and rerun pluggy install.",
+      source: { file: path },
+      cause: err,
+    });
   }
 
   return validateLockfile(parsed, path);
@@ -201,18 +206,31 @@ export function pulledInBy(lock: Lockfile): Record<string, string[]> {
 
 function validateLockfile(parsed: unknown, path: string): Lockfile {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new UserError(`Invalid lockfile at ${path}: expected a JSON object`);
+    throw new UserError(`Invalid lockfile at ${path}: expected a JSON object`, {
+      code: "E_LOCKFILE_INVALID",
+      hint: "Delete pluggy.lock and rerun pluggy install to regenerate it.",
+      source: { file: path },
+    });
   }
   const obj = parsed as Record<string, unknown>;
 
   if (obj.version !== 2) {
     throw new UserError(
       `Unsupported lockfile version: ${String(obj.version)} (at ${path}; expected 2)`,
+      {
+        code: "E_LOCKFILE_VERSION",
+        hint: "Delete pluggy.lock and rerun pluggy install to regenerate it under the current version.",
+        source: { file: path, pointer: "/version" },
+      },
     );
   }
 
   if (obj.entries === null || typeof obj.entries !== "object" || Array.isArray(obj.entries)) {
-    throw new UserError(`Invalid lockfile at ${path}: "entries" must be an object`);
+    throw new UserError(`Invalid lockfile at ${path}: "entries" must be an object`, {
+      code: "E_LOCKFILE_INVALID",
+      hint: "Delete pluggy.lock and rerun pluggy install to regenerate it.",
+      source: { file: path, pointer: "/entries" },
+    });
   }
   const rawEntries = obj.entries as Record<string, unknown>;
 
@@ -225,25 +243,52 @@ function validateLockfile(parsed: unknown, path: string): Lockfile {
 }
 
 function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
+  const entryHint = "Delete pluggy.lock and rerun pluggy install to regenerate it.";
+  const entryPointer = `/entries/${key}`;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: expected an object`);
+    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: expected an object`, {
+      code: "E_LOCKFILE_INVALID_ENTRY",
+      hint: entryHint,
+      source: { file: path, pointer: entryPointer },
+    });
   }
   const entry = raw as Record<string, unknown>;
 
   if (entry.source === undefined) {
-    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: missing "source"`);
+    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: missing "source"`, {
+      code: "E_LOCKFILE_INVALID_ENTRY",
+      hint: entryHint,
+      source: { file: path, pointer: `${entryPointer}/source` },
+    });
   }
   if (typeof entry.resolvedVersion !== "string") {
     throw new UserError(
       `Invalid lockfile entry "${key}" at ${path}: "resolvedVersion" must be a string`,
+      {
+        code: "E_LOCKFILE_INVALID_ENTRY",
+        hint: entryHint,
+        source: { file: path, pointer: `${entryPointer}/resolvedVersion` },
+      },
     );
   }
   if (typeof entry.integrity !== "string") {
-    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: "integrity" must be a string`);
+    throw new UserError(
+      `Invalid lockfile entry "${key}" at ${path}: "integrity" must be a string`,
+      {
+        code: "E_LOCKFILE_INVALID_ENTRY",
+        hint: entryHint,
+        source: { file: path, pointer: `${entryPointer}/integrity` },
+      },
+    );
   }
   if (!Array.isArray(entry.declaredBy) || !entry.declaredBy.every((d) => typeof d === "string")) {
     throw new UserError(
       `Invalid lockfile entry "${key}" at ${path}: "declaredBy" must be an array of strings`,
+      {
+        code: "E_LOCKFILE_INVALID_ENTRY",
+        hint: entryHint,
+        source: { file: path, pointer: `${entryPointer}/declaredBy` },
+      },
     );
   }
 
@@ -263,6 +308,11 @@ function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
     ) {
       throw new UserError(
         `Invalid lockfile entry "${key}" at ${path}: "transitives" must be an array of strings`,
+        {
+          code: "E_LOCKFILE_INVALID_ENTRY",
+          hint: entryHint,
+          source: { file: path, pointer: `${entryPointer}/transitives` },
+        },
       );
     }
     if (entry.transitives.length > 0) {
@@ -278,62 +328,83 @@ function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
  * Centralized so the on-disk form stays in lock-step with `src/source.ts`.
  */
 function validateResolvedSource(raw: unknown, key: string, path: string): ResolvedSource {
+  const sourceHint = "Delete pluggy.lock and rerun pluggy install to regenerate it.";
+  const sourcePointer = `/entries/${key}/source`;
+  const fail = (message: string, pointer = sourcePointer): never => {
+    throw new UserError(message, {
+      code: "E_LOCKFILE_INVALID_SOURCE",
+      hint: sourceHint,
+      source: { file: path, pointer },
+    });
+  };
+
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new UserError(`Invalid lockfile entry "${key}" at ${path}: "source" must be an object`);
+    fail(`Invalid lockfile entry "${key}" at ${path}: "source" must be an object`);
   }
   const src = raw as Record<string, unknown>;
   if (typeof src.version !== "string" || src.version.length === 0) {
-    throw new UserError(
+    fail(
       `Invalid lockfile entry "${key}" at ${path}: "source.version" must be a non-empty string`,
+      `${sourcePointer}/version`,
     );
   }
 
   switch (src.kind) {
     case "modrinth": {
       if (typeof src.slug !== "string" || src.slug.length === 0) {
-        throw new UserError(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: modrinth source requires a non-empty "slug"`,
+          `${sourcePointer}/slug`,
         );
       }
-      return { kind: "modrinth", slug: src.slug, version: src.version };
+      return { kind: "modrinth", slug: src.slug as string, version: src.version as string };
     }
     case "maven": {
       if (typeof src.groupId !== "string" || src.groupId.length === 0) {
-        throw new UserError(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: maven source requires a non-empty "groupId"`,
+          `${sourcePointer}/groupId`,
         );
       }
       if (typeof src.artifactId !== "string" || src.artifactId.length === 0) {
-        throw new UserError(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: maven source requires a non-empty "artifactId"`,
+          `${sourcePointer}/artifactId`,
         );
       }
       return {
         kind: "maven",
-        groupId: src.groupId,
-        artifactId: src.artifactId,
-        version: src.version,
+        groupId: src.groupId as string,
+        artifactId: src.artifactId as string,
+        version: src.version as string,
       };
     }
     case "file": {
       if (typeof src.path !== "string" || src.path.length === 0) {
-        throw new UserError(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: file source requires a non-empty "path"`,
+          `${sourcePointer}/path`,
         );
       }
-      return { kind: "file", path: src.path, version: src.version };
+      return { kind: "file", path: src.path as string, version: src.version as string };
     }
     case "workspace": {
       if (typeof src.name !== "string" || src.name.length === 0) {
-        throw new UserError(
+        fail(
           `Invalid lockfile entry "${key}" at ${path}: workspace source requires a non-empty "name"`,
+          `${sourcePointer}/name`,
         );
       }
-      return { kind: "workspace", name: src.name, version: src.version };
+      return { kind: "workspace", name: src.name as string, version: src.version as string };
     }
     default:
       throw new UserError(
         `Invalid lockfile entry "${key}" at ${path}: unknown source kind "${String(src.kind)}" (expected "modrinth", "maven", "file", or "workspace")`,
+        {
+          code: "E_LOCKFILE_INVALID_SOURCE",
+          hint: 'Known source kinds: "modrinth", "maven", "file", "workspace".',
+          source: { file: path, pointer: `${sourcePointer}/kind` },
+        },
       );
   }
 }

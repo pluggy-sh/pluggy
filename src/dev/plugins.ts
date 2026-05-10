@@ -1,7 +1,7 @@
 /**
  * Runtime plugin detection + `dev/plugins/` population. A dependency is a
  * *runtime plugin* iff its jar contains the primary platform's descriptor
- * file (for example, `plugin.yml`); compile-time libraries are excluded from
+ * file (e.g. `plugin.yml`); compile-time libraries are excluded from
  * `dev/plugins/` but stay on the build classpath.
  */
 
@@ -57,7 +57,7 @@ export function isRuntimePlugin(jarPath: string, descriptor: DescriptorSpec): Pr
 /**
  * Populate `<devDir>/<pluginsDir>/` with the user's plugin jar, every
  * runtime-plugin dep, and the `extraPlugins` jars. `pluginsDir` is the
- * platform's `runtime.pluginsDir` (for example, `"plugins"` for bukkit,
+ * platform's `runtime.pluginsDir` (e.g. `"plugins"` for bukkit,
  * `"mods/plugins"` for sponge), forward-slashed and resolved relative to
  * `devDir`. Each jar is hardlinked (copy fallback) under its basename;
  * callers must ensure unique names.

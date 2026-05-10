@@ -1,12 +1,8 @@
 /**
- * JetBrains Runtime (JBR) provisioning. Downloads the `jbrsdk` archive for
- * the host OS/arch, extracts it under `<cachePath>/jbr/<key>/`, and exposes
- * the absolute path to the bundled `java` binary.
- *
- * JBR ships DCEVM enhanced class redefinition out of the box since 17. Pair
- * the resolved `java` with `-XX:+AllowEnhancedClassRedefinition` and a
- * `-javaagent:` pointing at HotswapAgent and class redefinitions stop being
- * limited to method bodies.
+ * JetBrains Runtime (JBR) provisioning. JBR ships DCEVM enhanced class
+ * redefinition out of the box since 17, so pairing the resolved `java` with
+ * `-XX:+AllowEnhancedClassRedefinition` and a `-javaagent:` pointing at
+ * HotswapAgent lifts class redefinitions beyond method bodies.
  */
 
 import { spawn } from "node:child_process";
@@ -17,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
+import { RuntimeError } from "../errors.ts";
 import { log } from "../logging.ts";
 import { getCachePath } from "../project.ts";
 
@@ -67,12 +64,12 @@ export function jbrTarget(): JbrTarget {
   if (platform === "darwin") os = "osx";
   else if (platform === "linux") os = "linux";
   else if (platform === "win32") os = "windows";
-  else throw new Error(`jbr: unsupported platform "${platform}"; JBR is not published for it`);
+  else throw new Error(`Unsupported platform "${platform}"; JBR is not published for it`);
 
   let normalizedArch: JbrTarget["arch"];
   if (arch === "arm64") normalizedArch = "aarch64";
   else if (arch === "x64") normalizedArch = "x64";
-  else throw new Error(`jbr: unsupported arch "${arch}"; JBR ships x64 and aarch64 only`);
+  else throw new Error(`Unsupported arch "${arch}"; JBR ships x64 and aarch64 only`);
 
   return { os, arch: normalizedArch };
 }
@@ -124,7 +121,7 @@ export async function ensureJbr(): Promise<string> {
     const cachedSha = await sha256OfFile(archivePath);
     if (cachedSha !== expectedSha) {
       log.warn(
-        `hotswap: cached JBR archive at ${archivePath} has unexpected sha256 ${cachedSha} (expected ${expectedSha}); re-downloading`,
+        `Cached JBR archive at ${archivePath} has unexpected sha256 ${cachedSha} (expected ${expectedSha}); re-downloading`,
       );
       await rm(archivePath, { force: true });
     }
@@ -136,8 +133,13 @@ export async function ensureJbr(): Promise<string> {
   await extractInto(archivePath, cacheRoot, extractedRoot);
 
   if (!existsSync(javaPath)) {
-    throw new Error(
-      `jbr: extraction completed but ${javaPath} is missing; archive layout may have changed`,
+    throw new RuntimeError(
+      `Extraction completed but ${javaPath} is missing; archive layout may have changed`,
+      {
+        code: "E_JBR_EXTRACT_LAYOUT",
+        hint: "Wipe the JBR cache slot and retry, or report at https://github.com/pluggy-sh/pluggy/issues.",
+        context: { javaPath, target: jbrCacheKey(target) },
+      },
     );
   }
   return javaPath;
@@ -148,7 +150,7 @@ function expectedShaFor(target: JbrTarget): string {
   const sha = JBR_SHA256[key];
   if (sha === undefined) {
     throw new Error(
-      `jbr: no pinned SHA-256 for ${key}; refusing to download an unverified runtime. ` +
+      `No pinned SHA-256 for ${key}; refusing to download an unverified runtime. ` +
         `Add the expected hash to JBR_SHA256 in src/dev/jbr.ts.`,
     );
   }
@@ -172,14 +174,23 @@ async function downloadArchive(
   log.step(`Downloading JetBrains Runtime (${archiveName})…`);
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`jbr: download failed (${res.status} ${res.statusText}): ${url}`);
+    throw new RuntimeError(`JBR download failed (${res.status} ${res.statusText}): ${url}`, {
+      code: "E_JBR_DOWNLOAD",
+      hint: "Check connectivity to https://cache-redirector.jetbrains.com and retry.",
+      context: { status: res.status, statusText: res.statusText, url },
+    });
   }
   const buf = new Uint8Array(await res.arrayBuffer());
   const actualSha = createHash("sha256").update(buf).digest("hex");
   if (actualSha !== expectedSha) {
-    throw new Error(
-      `jbr: integrity check failed for ${archiveName}: expected sha256 ${expectedSha}, got ${actualSha}. ` +
+    throw new RuntimeError(
+      `Integrity check failed for ${archiveName}: expected sha256 ${expectedSha}, got ${actualSha}. ` +
         `Refusing to extract an unverified runtime; please report at https://github.com/pluggy-sh/pluggy/issues.`,
+      {
+        code: "E_JBR_INTEGRITY",
+        hint: "Wipe the JBR cache and retry; if it persists, report at https://github.com/pluggy-sh/pluggy/issues.",
+        context: { archiveName, expected: expectedSha, actual: actualSha },
+      },
     );
   }
   const tmpPath = `${destPath}.partial`;
@@ -214,12 +225,23 @@ async function extractInto(
   const entries = await readdir(stagingDir, { withFileTypes: true });
   const dirs = entries.filter((e) => e.isDirectory());
   if (dirs.length === 0) {
-    throw new Error(`jbr: tar produced no directories inside ${stagingDir}`);
+    throw new RuntimeError(`JBR tar produced no directories inside ${stagingDir}`, {
+      code: "E_JBR_EXTRACT_LAYOUT",
+      hint: "Wipe the JBR cache and retry; if it persists, report at https://github.com/pluggy-sh/pluggy/issues.",
+      context: { stagingDir },
+    });
   }
   // Conventional layout: a single top-level dir. If JBR ever ships multiple
   // directories at the root we'd need to revisit; surface that explicitly.
   if (dirs.length > 1) {
-    throw new Error(`jbr: tar produced ${dirs.length} top-level directories; expected exactly one`);
+    throw new RuntimeError(
+      `JBR tar produced ${dirs.length} top-level directories; expected exactly one`,
+      {
+        code: "E_JBR_EXTRACT_LAYOUT",
+        hint: "Wipe the JBR cache and retry; if it persists, report at https://github.com/pluggy-sh/pluggy/issues.",
+        context: { stagingDir, dirs: dirs.map((d) => d.name) },
+      },
+    );
   }
 
   const extractedSrc = join(stagingDir, dirs[0].name);
@@ -232,7 +254,7 @@ async function extractInto(
   await rm(stagingDir, { recursive: true, force: true });
   log.debug(`JBR ready at ${expectedRoot}`);
   // `cacheRoot` is unused in this branch but kept for symmetry with future
-  // multi-target layouts (for example, side-by-side build IDs).
+  // multi-target layouts (e.g. side-by-side build IDs).
   void cacheRoot;
 }
 
@@ -246,14 +268,14 @@ function runTar(archivePath: string, destDir: string): Promise<void> {
       stderr += chunk.toString();
     });
     child.once("error", (err) => {
-      rejectPromise(new Error(`jbr: failed to spawn tar: ${err.message}`));
+      rejectPromise(new Error(`Failed to spawn tar: ${err.message}`));
     });
     child.once("exit", (code) => {
       if (code === 0) {
         resolvePromise();
         return;
       }
-      rejectPromise(new Error(`jbr: tar exited with code ${code}: ${stderr.trim()}`));
+      rejectPromise(new Error(`tar exited with code ${code}: ${stderr.trim()}`));
     });
   });
 }

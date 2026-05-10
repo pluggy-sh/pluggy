@@ -34,7 +34,7 @@ export interface ManifestEntry {
   lastUsed: number;
   /** epoch ms; set when the slot is first populated. */
   installedAt: number;
-  /** Full Disco version string (for example, "21.0.11+10"). */
+  /** Full Disco version string (e.g. "21.0.11+10"). */
   fullVersion: string;
   /** Distribution slug snapshot (so callers can list installed JDKs without parsing the key). */
   distribution: string;
@@ -99,7 +99,7 @@ export function archivePath(key: string, archiveType: "tar.gz" | "zip"): string 
  * ship as Mac app bundles (`Contents/Home/bin/java`); Linux, Windows, and a
  * few flattened macOS distros are flat (`bin/java`).
  *
- * `slotRoot` is the directory the archive extracted *into* (that is, our cache
+ * `slotRoot` is the directory the archive extracted *into* (i.e., our cache
  * slot directory after the install pipeline renamed the inner top-level dir
  * into place).
  */

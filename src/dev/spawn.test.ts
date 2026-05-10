@@ -177,7 +177,7 @@ describe("spawnServer", () => {
     expect(args).toEqual(["-Xmx1G", "-jar", "velocity.jar"]);
   });
 
-  test("serverArgs supports multi-value lists (for example, sponge --nogui)", () => {
+  test("serverArgs supports multi-value lists (e.g. sponge --nogui)", () => {
     const fake = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
 

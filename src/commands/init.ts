@@ -183,7 +183,7 @@ function deriveClassName(name: string): string {
 
 /**
  * Derive `api-version` from a full Minecraft version: `1.21.8` → `1.21`.
- * Used to interpolate `${project.apiVersion}` into template extras (for example,
+ * Used to interpolate `${project.apiVersion}` into template extras (e.g.
  * the MockBukkit artifact id `mockbukkit-v1.21`).
  */
 function deriveApiVersion(version: string | undefined): string | undefined {
@@ -266,7 +266,6 @@ export function initCommand(): Command {
 
       const TARGET_PATH = resolve(process.cwd(), path || ".");
 
-      // Single guard for non-empty dir or existing project
       let warned = false;
       try {
         const entries = await readdir(TARGET_PATH);
@@ -346,7 +345,7 @@ export function initCommand(): Command {
 
       if (!projectMain || !/^[a-zA-Z0-9_.]+$/.test(projectMain) || !projectMain.includes(".")) {
         throw new InvalidArgumentError(
-          `Invalid main class: "${projectMain}". It must be a valid Java classpath (for example, com.example.Main).`,
+          `Invalid main class: "${projectMain}". It must be a valid Java classpath (e.g. com.example.Main).`,
         );
       }
 

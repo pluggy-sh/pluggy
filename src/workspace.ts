@@ -103,8 +103,13 @@ export function topologicalOrder(workspaces: WorkspaceNode[]): WorkspaceNode[] {
     const current = state.get(node.name);
     if (current === "done") return;
     if (current === "visiting") {
-      const cycle = [...stack.slice(stack.indexOf(node.name)), node.name].join(" -> ");
-      throw new UserError(`workspace dependency cycle detected: ${cycle}`);
+      const cyclePath = [...stack.slice(stack.indexOf(node.name)), node.name];
+      const cycle = cyclePath.join(" -> ");
+      throw new UserError(`workspace dependency cycle detected: ${cycle}`, {
+        code: "E_WORKSPACE_CYCLE",
+        hint: 'Break the cycle by removing one of the "workspace:" dependencies in this loop.',
+        context: { cycle: cyclePath },
+      });
     }
 
     state.set(node.name, "visiting");
@@ -130,7 +135,14 @@ export function findWorkspace(context: WorkspaceContext, name: string): Workspac
   if (hit !== undefined) return hit;
   const known = context.workspaces.map((w) => w.name);
   const list = known.length > 0 ? known.join(", ") : "(none)";
-  throw new UserError(`workspace not found: "${name}". known workspaces: ${list}`);
+  throw new UserError(`workspace not found: "${name}". known workspaces: ${list}`, {
+    code: "E_WORKSPACE_NOT_FOUND",
+    hint:
+      known.length > 0
+        ? `Known workspaces: ${known.join(", ")}`
+        : "This project declares no workspaces.",
+    context: { name, known },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +171,7 @@ export interface ScopeOptions {
  *   - In a standalone context: root project name + root project.
  *
  * Use `ResolvedScope.spansAllWorkspaces` to tell which form a target list
- * represents. The `name` is always meaningful as a human label, for example
+ * represents. The `name` is always meaningful as a human label, e.g.
  * for lockfile `declaredBy` or per-target output, regardless of source.
  */
 export interface ScopeTarget {
@@ -285,6 +297,12 @@ function enumerateWorkspaces(root: ResolvedProject): WorkspaceNode[] {
     if (!existsSync(projectFile)) {
       throw new UserError(
         `workspace declared in ${root.projectFile} is missing project.json: ${wsDir}`,
+        {
+          code: "E_WORKSPACE_MISSING_PROJECT_JSON",
+          hint: `Create ${projectFile} or remove the entry from "workspaces" in ${root.projectFile}.`,
+          source: { file: root.projectFile, pointer: "/workspaces" },
+          context: { workspaceDir: wsDir, expected: projectFile },
+        },
       );
     }
     const raw = readFileSync(projectFile, "utf8");

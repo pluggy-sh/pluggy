@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
 
 import { Command } from "commander";
 
+import { cachedJarPathForEntry } from "../cache/dependency-paths.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import { writeFileLF } from "../portable.ts";
-import { getCachePath, type Project } from "../project.ts";
+import { type Project } from "../project.ts";
 import { resolveDependency } from "../resolver/index.ts";
 import type { ResolvedDependency } from "../resolver/index.ts";
 import {
@@ -87,7 +87,7 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
       existing.source.version !== resolvedSource.version
     ) {
       throw new Error(
-        `install: conflicting declarations of "${name}" across workspaces: ${stringifySource(existing.source)}@${existing.source.version} vs ${stringifySource(resolvedSource)}@${resolvedSource.version}`,
+        `Conflicting declarations of "${name}" across workspaces: ${stringifySource(existing.source)}@${existing.source.version} vs ${stringifySource(resolvedSource)}@${resolvedSource.version}`,
       );
     }
     if (!existing.declaredBy.includes(declaredBy)) {
@@ -164,13 +164,21 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
 async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promise<InstallResult> {
   if (scope.context.atRoot && scope.context.workspaces.length > 0 && opts.workspace === undefined) {
     throw new UserError(
-      `install: at the workspace root. Pass --workspace <name> to pick a target for "${opts.plugin}"`,
+      `At the workspace root. Pass --workspace <name> to pick a target for "${opts.plugin}"`,
+      {
+        code: "E_INSTALL_AT_ROOT_AMBIGUOUS",
+        hint: "Pass --workspace <name> to choose a workspace, or cd into one first.",
+      },
     );
   }
 
   if (scope.targets.length !== 1) {
     throw new UserError(
-      `install: --workspaces and a specific [plugin] are mutually exclusive. Pick one workspace with --workspace <name>`,
+      "--workspaces and a specific [plugin] are mutually exclusive. Pick one workspace with --workspace <name>",
+      {
+        code: "E_INSTALL_WORKSPACES_WITH_PLUGIN",
+        hint: "Drop --workspaces and pass --workspace <name> to install into a single workspace.",
+      },
     );
   }
 
@@ -241,7 +249,7 @@ async function verifyCachedIntegrity(
     const actual = `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
     if (actual !== entry.integrity) {
       log.warn(
-        `install: cached "${name}" at ${jarPath} has unexpected integrity ${actual} (lockfile expects ${entry.integrity}); will re-resolve`,
+        `Cached "${name}" at ${jarPath} has unexpected integrity ${actual} (lockfile expects ${entry.integrity}); will re-resolve`,
       );
       drift.push(name);
     }
@@ -255,58 +263,6 @@ async function fileExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
-  }
-}
-
-/**
- * Locate the cached jar for a lockfile entry. Mirrors each resolver's cache
- * layout. Returns `undefined` for `workspace:` (built locally) and refuses
- * to construct paths whose components contain traversal characters, so a
- * lockfile crafted by a hostile clone can't escape the cache root.
- */
-function cachedJarPathForEntry(entry: LockfileEntry): string | undefined {
-  const base = join(getCachePath(), "dependencies");
-  const src = entry.source;
-  switch (src.kind) {
-    case "modrinth":
-      assertSafeName(src.slug, "source.slug");
-      assertSafeName(entry.resolvedVersion, "resolvedVersion");
-      return join(base, "modrinth", src.slug, `${entry.resolvedVersion}.jar`);
-    case "maven":
-      assertSafeName(src.groupId, "source.groupId");
-      assertSafeName(src.artifactId, "source.artifactId");
-      assertSafeName(entry.resolvedVersion, "resolvedVersion");
-      return join(base, "maven", src.groupId, src.artifactId, `${entry.resolvedVersion}.jar`);
-    case "file": {
-      const hex = entry.integrity.startsWith("sha256-")
-        ? entry.integrity.slice("sha256-".length)
-        : entry.integrity;
-      assertSafeName(hex, "integrity");
-      return join(base, "file", `${hex}.jar`);
-    }
-    case "workspace":
-      return undefined;
-  }
-}
-
-// Permits the union of characters seen in legit Maven coordinates and
-// Modrinth version strings: alphanumerics plus `.`, `_`, `-`, `+`, `~`.
-// `+` is load-bearing: Modrinth `version_number` regularly contains it
-// (for example, `1.20.1+forge`), and Maven versions allow it too. Path separators
-// (`/`, `\`), null bytes, and traversal-special components (`..`, `.`)
-// are explicitly rejected below.
-const SAFE_NAME_RE = /^[A-Za-z0-9._+~-]+$/;
-
-function assertSafeName(value: string, field: string): void {
-  if (typeof value !== "string" || value.length === 0 || !SAFE_NAME_RE.test(value)) {
-    throw new Error(
-      `install: refusing unsafe lockfile ${field} ${JSON.stringify(value)}: won't construct a cache path that could escape the cache root`,
-    );
-  }
-  if (value === "." || value === "..") {
-    throw new Error(
-      `install: refusing reserved lockfile ${field} ${JSON.stringify(value)}: would traverse the cache root`,
-    );
   }
 }
 
@@ -410,13 +366,13 @@ async function writeDependencyToProject(
   try {
     raw = await readFile(path, "utf8");
   } catch (err) {
-    throw new Error(`install: failed to read ${path}: ${(err as Error).message}`);
+    throw new Error(`Failed to read ${path}: ${(err as Error).message}`);
   }
   let parsed: Project;
   try {
     parsed = JSON.parse(raw) as Project;
   } catch (err) {
-    throw new Error(`install: failed to parse ${path}: ${(err as Error).message}`);
+    throw new Error(`Failed to parse ${path}: ${(err as Error).message}`);
   }
 
   const deps: Record<string, string | { source: string; version: string }> = {

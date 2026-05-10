@@ -34,7 +34,7 @@ export interface Project {
 }
 
 export interface JdkConfig {
-  /** Java major release, for example 21. When omitted, derived from MC version. */
+  /** Java major release, e.g. 21. When omitted, derived from MC version. */
   major?: number;
   /** Disco distribution slug. Default `"temurin"`. */
   distribution?: string;
@@ -94,7 +94,7 @@ export interface HotswapConfig {
  * Linux/other: `$XDG_CACHE_HOME/pluggy` (defaulting to `~/.cache/pluggy`).
  *
  * Cache contents are *reproducible*: wiping this directory only forces
- * re-downloads. State that must survive `pluggy cache clean` (for example,
+ * re-downloads. State that must survive `pluggy cache clean` (e.g.
  * the update-check timestamp) belongs under `getStatePath` instead.
  */
 export function getCachePath(): string {
@@ -110,7 +110,7 @@ export function getCachePath(): string {
 
 /**
  * OS-appropriate user *state* directory for pluggy. Distinct from the
- * cache: state is small, non-regenerable metadata (for example, the cached
+ * cache: state is small, non-regenerable metadata (e.g. the cached
  * latest-release tag from the update checker) that must survive
  * `pluggy cache clean`.
  *
@@ -181,8 +181,17 @@ export function getCurrentProject(cwd?: string): ResolvedProject | undefined {
 export function primaryPlatform(project: Project): string {
   const list = project.compatibility?.platforms ?? [];
   if (list.length === 0) {
+    const projectFile = (project as Partial<ResolvedProject>).projectFile;
     throw new UserError(
       `project "${project.name}" has no compatibility.platforms. Declare at least one platform.`,
+      {
+        code: "E_PROJECT_NO_PLATFORMS",
+        hint: 'Add at least one platform to "compatibility.platforms" in project.json.',
+        source:
+          projectFile !== undefined
+            ? { file: projectFile, pointer: "/compatibility/platforms" }
+            : undefined,
+      },
     );
   }
   return list[0];
@@ -199,8 +208,17 @@ export function primaryPlatform(project: Project): string {
 export function primaryVersion(project: Project): string {
   const list = project.compatibility?.versions ?? [];
   if (list.length === 0) {
+    const projectFile = (project as Partial<ResolvedProject>).projectFile;
     throw new UserError(
       `project "${project.name}" has no compatibility.versions. Declare at least one Minecraft version.`,
+      {
+        code: "E_PROJECT_NO_VERSIONS",
+        hint: 'Add at least one Minecraft version to "compatibility.versions" in project.json.',
+        source:
+          projectFile !== undefined
+            ? { file: projectFile, pointer: "/compatibility/versions" }
+            : undefined,
+      },
     );
   }
   return list[0];

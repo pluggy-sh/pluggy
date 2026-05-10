@@ -49,7 +49,7 @@ interface VersionDetail {
   assets: Asset[];
 }
 
-/** Version key produced by the Sponge dl-api, for example `1.21.8-12.0.0-RC2627`. */
+/** Version key produced by the Sponge dl-api, e.g. `1.21.8-12.0.0-RC2627`. */
 interface ResolvedArtifact {
   key: string;
   api: string;

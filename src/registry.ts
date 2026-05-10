@@ -1,5 +1,5 @@
 /**
- * Registry URL handling: scheme aliases (for example, `github:owner/repo` →
+ * Registry URL handling: scheme aliases (e.g. `github:owner/repo` →
  * `https://maven.pkg.github.com/owner/repo`) and the Maven registries
  * appended by default to every project's effective list.
  */

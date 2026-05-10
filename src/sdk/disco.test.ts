@@ -34,6 +34,6 @@ describe("resolveJdk (live)", () => {
 
   test("propagates a clean error for a non-existent distribution+major combo", async () => {
     // Major 7 is below Temurin's published range; Disco returns no matches.
-    await expect(resolveJdk({ major: 7 })).rejects.toThrow(/no temurin JDK 7/);
+    await expect(resolveJdk({ major: 7 })).rejects.toThrow(/[Nn]o temurin JDK 7/);
   }, 15_000);
 });

@@ -36,7 +36,7 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
   const sources = await findJavaSources(opts.sourceDir);
   if (sources.length === 0) {
     throw new Error(
-      `compile: no .java sources found under "${opts.sourceDir}" for project "${project.name}"`,
+      `No .java sources found under "${opts.sourceDir}" for project "${project.name}"`,
     );
   }
 
@@ -76,9 +76,7 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
 
     child.once("error", (err) => {
       rejectPromise(
-        new Error(
-          `compile: failed to spawn javac for project "${project.name}": ${(err as Error).message}`,
-        ),
+        new Error(`Failed to spawn javac for project "${project.name}": ${(err as Error).message}`),
       );
     });
 
@@ -91,7 +89,7 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
       const suffix = stderrBuf.length > MAX_STDERR_LINES ? ` (last ${MAX_STDERR_LINES} lines)` : "";
       rejectPromise(
         new Error(
-          `compile: javac exited with code ${code} for project "${project.name}"${suffix}:\n${tail}`,
+          `javac exited with code ${code} for project "${project.name}"${suffix}:\n${tail}`,
         ),
       );
     });
@@ -101,7 +99,7 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
 /**
  * Recursively collect every `.java` file under `dir`, sorted for deterministic
  * argv ordering. Exported for reuse by tooling that drives `javac`/`javadoc`
- * outside the build pipeline (for example, `pluggy docs`).
+ * outside the build pipeline (e.g. `pluggy docs`).
  */
 export async function findJavaSources(dir: string): Promise<string[]> {
   const results: string[] = [];
@@ -110,12 +108,10 @@ export async function findJavaSources(dir: string): Promise<string[]> {
   try {
     info = await stat(dir);
   } catch (err) {
-    throw new Error(
-      `compile: source directory "${dir}" is not accessible: ${(err as Error).message}`,
-    );
+    throw new Error(`Source directory "${dir}" is not accessible: ${(err as Error).message}`);
   }
   if (!info.isDirectory()) {
-    throw new Error(`compile: source path "${dir}" is not a directory`);
+    throw new Error(`Source path "${dir}" is not a directory`);
   }
 
   async function walk(current: string): Promise<void> {

@@ -68,7 +68,7 @@ async function migrateLegacyState(stateFile: string): Promise<void> {
 }
 
 /**
- * Compare two semver-ish version strings (for example, `0.2.0`, `v0.2.1-beta`).
+ * Compare two semver-ish version strings (e.g. `0.2.0`, `v0.2.1-beta`).
  * Returns -1 if `a < b`, 0 if equal, 1 if `a > b`. Pre-release suffixes
  * are ignored for the comparison; close enough for "you are outdated".
  */
