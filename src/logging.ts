@@ -71,11 +71,11 @@ export const brightBlue = color(pc.blueBright);
  * stays the only thing on stdout.
  *
  * Glyph budget:
- *   `✓` green   — success / done
- *   `✗` red     — error
- *   `!` yellow  — warning
- *   `›` dim     — step (indented progress)
- *   `·` dim     — debug
+ *   `✓` green   success / done
+ *   `✗` red     error
+ *   `!` yellow  warning
+ *   `›` dim     step (indented progress)
+ *   `·` dim     debug
  *
  * Compose with `tag(scope)` to label which subsystem produced the line:
  * `log.step(`${tag("dev")} change detected`)`.

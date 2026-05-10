@@ -34,7 +34,7 @@ describe("detectInstallMethod", () => {
       expected: "manual",
     },
 
-    // Unrecognised — anything else (e.g. dropped into /tmp by hand).
+    // Unrecognised: anything else (e.g. dropped into /tmp by hand).
     { path: "/tmp/pluggy", expected: "unknown" },
     { path: "/some/random/place/pluggy", expected: "unknown" },
   ];

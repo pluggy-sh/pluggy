@@ -10,7 +10,7 @@ import org.spongepowered.plugin.builtin.jvm.Plugin;
 /**
  * Main plugin class for ${project.name}
  *
- * Sponge constructs this class via Guice — the constructor's parameters are
+ * Sponge constructs this class via Guice. The constructor's parameters are
  * dependency-injected. {@code @Listener} methods on the plugin class are
  * auto-registered against the plugin container. {@link ConstructPluginEvent}
  * is the canonical startup hook; later lifecycle events

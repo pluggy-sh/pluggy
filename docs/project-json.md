@@ -126,16 +126,16 @@ the array by hand to add or remove editors later.
 
 The full platform roster ships with the binary:
 
-| id           | descriptor                     | Maven coordinate                           |
-| ------------ | ------------------------------ | ------------------------------------------ |
-| `paper`      | `plugin.yml`                   | `io.papermc.paper:paper-api`               |
-| `folia`      | `plugin.yml`                   | `dev.folia:folia-api`                      |
-| `spigot`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)       |
-| `bukkit`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)       |
-| `velocity`   | `velocity-plugin.json`         | `com.velocitypowered:velocity-api`         |
-| `waterfall`  | `bungee.yml`                   | `io.github.waterfallmc:waterfall-api`      |
-| `travertine` | `bungee.yml`                   | (no Maven API — compile against waterfall) |
-| `sponge`     | `META-INF/sponge_plugins.json` | `org.spongepowered:spongeapi`              |
+| id           | descriptor                     | Maven coordinate                          |
+| ------------ | ------------------------------ | ----------------------------------------- |
+| `paper`      | `plugin.yml`                   | `io.papermc.paper:paper-api`              |
+| `folia`      | `plugin.yml`                   | `dev.folia:folia-api`                     |
+| `spigot`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)      |
+| `bukkit`     | `plugin.yml`                   | `org.spigotmc:spigot-api` (SNAPSHOT)      |
+| `velocity`   | `velocity-plugin.json`         | `com.velocitypowered:velocity-api`        |
+| `waterfall`  | `bungee.yml`                   | `io.github.waterfallmc:waterfall-api`     |
+| `travertine` | `bungee.yml`                   | (no Maven API; compile against waterfall) |
+| `sponge`     | `META-INF/sponge_plugins.json` | `org.spongepowered:spongeapi`             |
 
 Paper handles version strings in two formats. For 1.17 to 1.21.x the artifact is `<version>-R0.1-SNAPSHOT`. For 26.x and later (Mojang's calendar scheme: 26.1, 26.1.1, 26.1.2) it's `<version>.build.<N>-alpha`. pluggy fetches PaperMC's `maven-metadata.xml` and picks the highest matching entry, so you write the plain Minecraft version and pluggy works out the rest.
 

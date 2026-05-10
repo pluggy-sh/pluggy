@@ -93,7 +93,7 @@ If a name appears in both `dependencies` and `testDependencies`, the `testDepend
 ```java
 @Test
 void warnsWhenWorldEditMissing() {
-    // No extra plugins loaded — your plugin should detect the absence
+    // No extra plugins loaded. Your plugin should detect the absence
     // and fall back gracefully.
     plugin = MockBukkit.loadJar(new File(System.getProperty("pluggy.test.mainJar")));
     server.getPluginManager().enablePlugin(plugin);

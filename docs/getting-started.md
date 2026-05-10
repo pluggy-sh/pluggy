@@ -50,7 +50,7 @@ Homebrew:
 brew install pluggy-sh/tap/pluggy
 ```
 
-This taps `pluggy-sh/homebrew-tap` and installs the matching precompiled binary for your platform. Upgrade with `brew upgrade pluggy`. `pluggy upgrade` will refuse to self-update on Homebrew installs and tell you to use `brew upgrade`.
+This taps `pluggy-sh/homebrew-tap` and installs the matching precompiled binary for your platform. Upgrade with `brew upgrade pluggy`. `pluggy upgrade` refuses to self-update on Homebrew installs and tells you to use `brew upgrade`.
 
 ### Windows
 

@@ -12,7 +12,7 @@ import org.slf4j.Logger;
  * Main plugin class for ${project.name}
  *
  * Velocity discovers this class through the {@code @Plugin} annotation, then
- * builds it via Guice — the constructor's parameters are dependency-injected.
+ * builds it via Guice. The constructor's parameters are dependency-injected.
  * Lifecycle is event-driven: subscribe to {@code ProxyInitializeEvent} for
  * startup work and {@code ProxyShutdownEvent} for teardown.
  */
