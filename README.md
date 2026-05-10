@@ -23,12 +23,18 @@ You don't need a JDK, a build tool, or an IDE installed up front. pluggy provisi
 
 ## Install
 
-Pick the script for your operating system. Both scripts drop the binary on your `PATH` without asking for an admin password.
+Pick whichever method matches your platform. None require admin privileges.
 
-On macOS and Linux:
+On macOS and Linux (install script):
 
 ```bash
 curl -fsSL https://pluggy.sh/install.sh | sh
+```
+
+On macOS and Linux (Homebrew):
+
+```bash
+brew install pluggy-sh/tap/pluggy
 ```
 
 On Windows (PowerShell):
@@ -43,7 +49,7 @@ Open a new terminal and verify:
 pluggy -V
 ```
 
-To upgrade in place later, run `pluggy upgrade`.
+To upgrade later: `pluggy upgrade` (install script), or `brew upgrade pluggy` (Homebrew). `pluggy doctor` shows which install method you're on.
 
 ## Quick start
 

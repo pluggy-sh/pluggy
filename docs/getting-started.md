@@ -26,13 +26,15 @@ Manage it later with [`pluggy cache`](./commands/cache.md) or [`pluggy sdk`](./c
 
 ### macOS and Linux
 
-Run the install script:
+Pick either the install script or Homebrew. Both drop a single binary on your `PATH` and don't need `sudo`.
+
+Install script:
 
 ```bash
 curl -fsSL https://pluggy.sh/install.sh | sh
 ```
 
-The script downloads the binary for your operating system into `~/.pluggy/bin/pluggy` and adds that directory to your `PATH` by appending an `export` line to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, `~/.profile`, or `~/.config/fish/config.fish`, whichever exist). It does not need `sudo`.
+The script downloads the binary for your operating system into `~/.pluggy/bin/pluggy` and adds that directory to your `PATH` by appending an `export` line to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, `~/.profile`, or `~/.config/fish/config.fish`, whichever exist).
 
 To put pluggy somewhere else, set `PLUGGY_HOME`:
 
@@ -41,6 +43,14 @@ PLUGGY_HOME=/opt/pluggy curl -fsSL https://pluggy.sh/install.sh | sh
 ```
 
 Open a new terminal, or run `source` on the profile that was updated, to pick up the new `PATH` in your current session.
+
+Homebrew:
+
+```bash
+brew install pluggy-sh/tap/pluggy
+```
+
+This taps `pluggy-sh/homebrew-tap` and installs the matching precompiled binary for your platform. Upgrade with `brew upgrade pluggy`. `pluggy upgrade` will refuse to self-update on Homebrew installs and tell you to use `brew upgrade`.
 
 ### Windows
 
