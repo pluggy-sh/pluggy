@@ -71,7 +71,7 @@ Workspaces inherit the following fields from the root when unset:
 
 `registries` are **unioned** across the root and every workspace. Duplicates drop by URL. This is so a workspace can declare its own registry without re-declaring the root's.
 
-Everything else (`name`, `version`, `main`, `dependencies`, `shading`, `resources`, `dev`, `ide`) is workspace-local. A workspace's own `compatibility` wins over the root's when both declare it.
+Everything else (`name`, `version`, `main`, `dependencies`, `shading`, `resources`, `dev`) is workspace-local. A workspace's own `compatibility` wins over the root's when both declare it.
 
 ### What "inherited" looks like
 

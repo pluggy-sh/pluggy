@@ -11,13 +11,13 @@ pluggy b     [options]
 
 ## Flags
 
-| Flag                 | Default                                | Notes                                                                                  |
-| -------------------- | -------------------------------------- | -------------------------------------------------------------------------------------- |
-| `--output <path>`    | `<workspace>/bin/<name>-<version>.jar` | Output jar destination.                                                                |
-| `--clean`            | off                                    | Wipe the staging directory before building.                                            |
-| `--skip-classpath`   | off                                    | Don't regenerate IDE project files (`.classpath`, `.vscode/settings.json`, `.idea/*`). |
-| `--workspace <name>` | none                                   | Build only this workspace.                                                             |
-| `--workspaces`       | off                                    | Explicit all-workspaces build from the root.                                           |
+| Flag                 | Default                                | Notes                                                        |
+| -------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| `--output <path>`    | `<workspace>/bin/<name>-<version>.jar` | Output jar destination.                                      |
+| `--clean`            | off                                    | Wipe the staging directory before building.                  |
+| `--skip-classpath`   | off                                    | Don't regenerate `.classpath` and `.project` for this build. |
+| `--workspace <name>` | none                                   | Build only this workspace.                                   |
+| `--workspaces`       | off                                    | Explicit all-workspaces build from the root.                 |
 
 ## Scope rules
 
@@ -39,7 +39,7 @@ For each target workspace, pluggy runs the steps below in order. Every step live
 1. **Pick the descriptor.** Check that every declared platform shares the same [descriptor family](../glossary.md#descriptor-family). Errors with "Split them into separate workspaces, one per family." if they don't.
 2. **Stage directory.** Under `<workspace>/.pluggy-build/<hash>/`, where `<hash>` is the first 12 hex chars of `sha256(name \0 version \0 rootDir)`. `--clean` wipes this first.
 3. **Resolve dependencies.** Every declared dep, plus the primary platform's `api()` Maven coordinate. Registries are the platform's own repos first, followed by `project.registries`, with order-preserving dedup.
-4. **Write IDE files.** Only if `project.ide` is set. Failures are logged at debug but don't abort the build.
+4. **Write IDE files.** Writes `.classpath` and `.project` at the project root unless `--skip-classpath` was passed. Failures are logged at debug but don't abort the build.
 5. **Stage resources.** Copy `project.resources` into the staging dir, and run `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, and `.md` files through the `${project.x}` template substitution.
 6. **Generate the descriptor.** Unless a resource entry already claims the descriptor path (`plugin.yml` and friends), pluggy writes the generated one to the staging dir.
 7. **Compile.** `javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`. The classpath separator is `:` on POSIX and `;` on Windows, handled by Node's `path.delimiter`.
@@ -138,5 +138,5 @@ the full list):
 ## See also
 
 - [Build pipeline](../build-pipeline.md): the same steps with more depth.
-- [IDE integration](../ide.md): what the `ide` field generates.
+- [IDE integration](../ide.md): which IDEs consume the generated `.classpath`.
 - [Workspaces](../workspaces.md): topological build order.

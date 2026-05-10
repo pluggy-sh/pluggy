@@ -78,9 +78,9 @@ The classpath is the flattened list of jar paths: dep jars first, then the platf
 
 ## 4. Write IDE files
 
-Only if `project.ide` is set. Failures are caught and logged at `--verbose` (`build: IDE scaffolding failed (non-fatal): ...`) so a broken IDE integration doesn't block the build.
+Writes `.classpath` and `.project` at the project root, populated from the resolved classpath. Skipped when `--skip-classpath` is passed. Failures are caught and logged at `--verbose` (`build: IDE scaffolding failed (non-fatal): ...`) so a broken IDE integration doesn't block the build.
 
-See [IDE integration](./ide.md) for what each `ide` value writes.
+See [IDE integration](./ide.md) for which IDEs consume these files.
 
 ## 5. Stage resources
 
@@ -214,5 +214,5 @@ Exactly what you'd expect from a shaded plugin jar.
 
 - [`pluggy build` reference](./commands/build.md): flags and output.
 - [Dependencies](./dependencies.md): how the classpath gets populated.
-- [IDE integration](./ide.md): how the classpath ends up in your editor.
+- [IDE integration](./ide.md): how `.classpath` ends up in your editor.
 - [Workspaces](./workspaces.md): topological build ordering.
