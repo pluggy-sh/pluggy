@@ -1,6 +1,6 @@
 # Uninstalling pluggy
 
-pluggy has no `pluggy uninstall` command. The install script drops a single binary on your `PATH`, edits one shell profile, and writes a cache the first time you build. To remove pluggy you reverse those three steps. This page lists the exact paths for each install method.
+pluggy has no `pluggy uninstall` command. The install script drops the `pluggy` binary on your `PATH`, edits one shell profile, and writes a cache the first time you build. To remove pluggy you reverse those three steps. This page lists the exact paths for each install method.
 
 If you only want to free disk space without removing the CLI, run [`pluggy cache clean`](./commands/cache.md) instead. That wipes the download cache and leaves the binary in place.
 
