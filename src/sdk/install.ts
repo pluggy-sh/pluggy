@@ -128,7 +128,7 @@ async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
   await mkdir(dirname(destPath), { recursive: true });
   const tmpPath = `${destPath}.partial`;
   // We allocate a single buffer rather than streaming to disk because Bun's
-  // single-file binary doesn't ship a `Readable.fromWeb` polyfill that's
+  // standalone binary doesn't ship a `Readable.fromWeb` polyfill that's
   // reliable across platforms; and JDK archives are bounded (≈200 MB).
   // Worth revisiting if we ever cache larger artifacts.
   const buf = new Uint8Array(await res.arrayBuffer());

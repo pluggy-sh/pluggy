@@ -26,7 +26,7 @@ Manage it later with [`pluggy cache`](./commands/cache.md) or [`pluggy sdk`](./c
 
 ### macOS and Linux
 
-Pick either the install script or Homebrew. Both drop a single binary on your `PATH` and don't need `sudo`.
+Pick either the install script or Homebrew. Both drop the `pluggy` binary on your `PATH` and don't need `sudo`.
 
 Install script:
 

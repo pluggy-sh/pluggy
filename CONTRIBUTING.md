@@ -8,7 +8,7 @@ By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) 1.3 or later (for producing the single-file binary via `bun build --compile`).
+- [Bun](https://bun.sh/) 1.3 or later (for producing the standalone binary via `bun build --compile`).
 - [Vite+](https://vite.plus/) (`vp`) for the day-to-day dev loop: install, check, lint, format, test.
 - Git.
 - A text editor or IDE.
@@ -43,7 +43,7 @@ By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md
    vp test
    ```
 
-4. Build and smoke-test the single-file binary:
+4. Build and smoke-test the standalone binary:
 
    ```bash
    bun build --compile --outfile=bin/pluggy ./src/index.ts

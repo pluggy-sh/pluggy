@@ -1,6 +1,6 @@
 # pluggy docs
 
-pluggy is a single-binary toolchain for Minecraft plugin development. Scaffold a project, install dependencies from Modrinth, Maven, local jars, or sibling workspaces, build a real plugin jar, and boot a live Paper, Spigot, Velocity, or Sponge server that rebuilds when you save.
+pluggy is a self-contained toolchain for Minecraft plugin development. Scaffold a project, install dependencies from Modrinth, Maven, local jars, or sibling workspaces, build a real plugin jar, and boot a live Paper, Spigot, Velocity, or Sponge server that rebuilds when you save.
 
 No global JVM toolchain, no Gradle wrapper, no `pom.xml`. One `project.json` per project.
 

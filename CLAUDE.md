@@ -69,7 +69,7 @@ Vite+ (`vp`) drives the development loop. Bun produces the shipped CLI binary. S
 - `vp dev` / `vp pack` - library build during development
 - `bun build --compile --outfile=bin/pluggy ./src/index.ts` - standalone CLI binary for releases
 
-Vite+'s `pack` only emits JavaScript. The single-file executable is always produced with Bun's `--compile` flag, which is what ships to users via the install scripts.
+Vite+'s `pack` only emits JavaScript. The standalone executable is always produced with Bun's `--compile` flag, which is what ships to users via the install scripts.
 
 ### Testing
 
