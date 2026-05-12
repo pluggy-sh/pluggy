@@ -178,6 +178,60 @@ describe("runDocsCommand", () => {
     expect(res.results[1].ok).toBe(true);
   });
 
+  test("sweep skips workspaces with docs:false; explicit --workspace overrides", async () => {
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await mkdir(join(rootDir, "modules", "impl"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./modules/api", "./modules/impl"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({ name: "suite_api", version: "0.1.0", main: "a.M" }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "impl", "project.json"),
+      JSON.stringify({
+        name: "suite_impl",
+        version: "0.1.0",
+        main: "i.M",
+        docs: false,
+        dependencies: { suite_api: { source: "workspace:suite_api", version: "*" } },
+      }),
+    );
+    vi.mocked(generateDocs).mockResolvedValue({
+      outputPath: "/tmp/docs/x",
+      fileCount: 1,
+      sizeBytes: 1,
+      warnings: 0,
+      durationMs: 1,
+    });
+
+    // Sweep: impl is skipped.
+    const sweep = await runDocsCommand({ cwd: rootDir });
+    expect(sweep.results).toHaveLength(1);
+    expect(sweep.results[0].workspace).toBe("suite_api");
+
+    vi.mocked(generateDocs).mockClear();
+    vi.mocked(generateDocs).mockResolvedValue({
+      outputPath: "/tmp/docs/impl",
+      fileCount: 1,
+      sizeBytes: 1,
+      warnings: 0,
+      durationMs: 1,
+    });
+
+    // Explicit --workspace overrides the flag.
+    const explicit = await runDocsCommand({ cwd: rootDir, workspace: ["suite_impl"] });
+    expect(explicit.results).toHaveLength(1);
+    expect(explicit.results[0].workspace).toBe("suite_impl");
+  });
+
   test("--json success → single JSON object on stdout", async () => {
     await writeStandalone();
     vi.mocked(generateDocs).mockResolvedValueOnce({

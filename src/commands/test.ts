@@ -6,25 +6,30 @@ import { runTests, type TestRunOutcome } from "../test/index.ts";
 import { bold, dim, emit, emitErr, green, log, red, yellow } from "../logging.ts";
 import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
+import { runWorkspaces } from "../runner.ts";
 import type { TestCase } from "../test/runner.ts";
 import {
-  findWorkspace,
   resolveWorkspaceContext,
-  topologicalOrder,
+  selectWorkspaceTargets,
+  workspaceListOption,
   type WorkspaceContext,
+  type WorkspaceNode,
 } from "../workspace.ts";
 
 export interface TestCommandOptions {
   filter?: string;
   failFast?: boolean;
   clean?: boolean;
-  workspace?: string;
+  workspace?: string[];
+  exclude?: string[];
   workspaces?: boolean;
   cwd?: string;
   /** Narrow the matrix to one or more MC versions. Empty = no filter. */
   mcVersions?: string[];
   /** Narrow the matrix to one or more platform ids. Empty = no filter. */
   platforms?: string[];
+  /** Cap on workspaces running simultaneously. Forced to 1 under `--fail-fast`. */
+  concurrency?: number;
 }
 
 export interface TestCellResult {
@@ -76,21 +81,19 @@ export interface TestCommandResult {
   }>;
 }
 
+interface WorkspaceTestOutcome {
+  workspaceOk: boolean;
+  cells: TestCellResult[];
+  /** True when the workspace bailed out under `--fail-fast`. */
+  bailed?: boolean;
+}
+
 /**
  * Run `pluggy test` across the resolved target set.
  *
- * Each project expands into a matrix of `(mcVersion × platformId)` cells:
- * every entry of `compatibility.versions` paired with every entry of
- * `compatibility.platforms`. All platforms must share one family (bukkit,
- * velocity, bungee); mixing families fails matrix expansion before any
- * cell runs. `--mc-version` and `--platform` narrow the matrix down for
- * fast iteration.
- *
- * Compile errors and launcher failures rethrow only when there is exactly
- * one cell across the entire run so the top-level handler formats them;
- * otherwise the error is captured into the per-cell result and the next
- * cell continues. Test *failures* (asserts) never throw; they surface
- * via `ok: false` + `failures[]` on the cell.
+ * Each project expands into a matrix of `(mcVersion × platformId)` cells.
+ * Workspaces with no shared graph dep run concurrently; under `--fail-fast`
+ * the run is serialized so a bail can actually stop the rest of the matrix.
  */
 export async function runTestCommand(opts: TestCommandOptions): Promise<TestCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
@@ -99,189 +102,210 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
     throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
 
-  const targets = selectTestTargets(context, opts);
+  const allTargets = selectTestTargets(context, opts);
+  // Sweep (no explicit --workspace): honor each workspace's `test: false`
+  // opt-out. Explicit --workspace overrides because the user named it.
+  const isSweep = (opts.workspace?.length ?? 0) === 0;
+  const targets = isSweep ? allTargets.filter((node) => node.project.test !== false) : allTargets;
+  for (const skipped of allTargets) {
+    if (targets.includes(skipped)) continue;
+    log.info(`${bold("test")} ${skipped.name} ${dim("(skipped: test:false)")}`);
+  }
 
-  const results: TestCommandResult["results"] = [];
-  let anyFailed = false;
-  // Track the total cell count across all targets so we know whether to
-  // rethrow on a single-cell run (matches the prior single-target rethrow).
-  // Keep the raw error around so InvalidArgumentError keeps its type when
-  // a single-target rethrow surfaces it to the top-level handler.
-  const matrices: {
-    project: ResolvedProject;
-    cells: MatrixCell[];
-    error?: { message: string; original: unknown };
-  }[] = [];
-  for (const target of targets) {
+  // Pre-build matrices so single-cell rethrow can be decided up front and so
+  // a matrix-expansion error surfaces in the workspace's result.
+  const matrices: { project: ResolvedProject; cells: MatrixCell[]; error?: Error }[] = [];
+  for (const node of targets) {
+    const project = node.project;
     try {
-      matrices.push({ project: target, cells: buildMatrix(target, opts) });
+      matrices.push({ project, cells: buildMatrix(project, opts) });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      matrices.push({ project: target, cells: [], error: { message, original: err } });
+      const error = err instanceof Error ? err : new Error(String(err));
+      matrices.push({ project, cells: [], error });
     }
   }
   const totalCellCount = matrices.reduce((n, m) => n + m.cells.length, 0);
-  let anyCellFailed = false;
 
-  let stopAfterWorkspace = false;
-  for (const { project, cells, error } of matrices) {
-    if (stopAfterWorkspace) break;
-    const label = project.name;
-    const rootDir = project.rootDir;
-    const workspaceStarted = Date.now();
+  // Fail-fast can't cleanly cancel in-flight workspaces, so serialize.
+  const concurrency = opts.failFast === true ? 1 : opts.concurrency;
+  let bailed = false;
 
-    if (error !== undefined) {
-      anyFailed = true;
-      results.push({
-        workspace: label,
-        rootDir,
-        ok: false,
-        durationMs: 0,
-        cells: [],
-        error: error.message,
-      });
-      log.error(`${label}: ${error.message}`);
-      if (targets.length === 1) {
-        throw error.original;
+  const runResults = await runWorkspaces<WorkspaceTestOutcome>(
+    targets,
+    async (node) => {
+      const project = node.project;
+      const matrix = matrices.find((m) => m.project.rootDir === project.rootDir);
+      if (matrix === undefined) {
+        // Defensive: shouldn't happen since matrices and targets are 1:1.
+        throw new Error(`internal: no matrix entry for workspace "${project.name}"`);
       }
-      continue;
-    }
+      if (matrix.error !== undefined) throw matrix.error;
+      if (matrix.cells.length === 0) {
+        throw new InvalidArgumentError(
+          "no matrix cells matched. Check --mc-version / --platform against compatibility.",
+        );
+      }
 
-    if (cells.length === 0) {
-      // Matrix filters excluded everything: surface a clear error rather
-      // than silently passing.
-      anyFailed = true;
-      const message =
-        "no matrix cells matched. Check --mc-version / --platform against compatibility.";
-      results.push({
-        workspace: label,
-        rootDir,
-        ok: false,
-        durationMs: 0,
-        cells: [],
-        error: message,
-      });
-      log.error(`${label}: ${message}`);
-      continue;
-    }
+      if (bailed) {
+        return { workspaceOk: true, cells: [], bailed: true };
+      }
 
-    log.info(
-      `${bold("test")} ${label} ${dim(`(${cells.length} cell${cells.length === 1 ? "" : "s"})`)}`,
-    );
+      log.info(
+        `${bold("test")} ${project.name} ${dim(
+          `(${matrix.cells.length} cell${matrix.cells.length === 1 ? "" : "s"})`,
+        )}`,
+      );
 
-    const cellResults: TestCellResult[] = [];
-    let workspaceOk = true;
+      const cellResults: TestCellResult[] = [];
+      let workspaceOk = true;
 
-    for (const cell of cells) {
-      const cellLabel = formatCellLabel(cell);
-      const cellStarted = Date.now();
+      for (const cell of matrix.cells) {
+        if (bailed) break;
+        const cellLabel = formatCellLabel(cell);
+        const cellStarted = Date.now();
+        log.info(`  ${dim("→")} ${cellLabel}`);
 
-      log.info(`  ${dim("→")} ${cellLabel}`);
+        try {
+          const outcome: TestRunOutcome = await runTests(project, {
+            filter: opts.filter,
+            failFast: opts.failFast,
+            clean: opts.clean,
+            mcVersion: cell.mcVersion,
+            platformId: cell.platformId,
+          });
 
-      try {
-        const outcome: TestRunOutcome = await runTests(project, {
-          filter: opts.filter,
-          failFast: opts.failFast,
-          clean: opts.clean,
-          mcVersion: cell.mcVersion,
-          platformId: cell.platformId,
-        });
+          if (outcome.status === "no-tests") {
+            cellResults.push({
+              mcVersion: cell.mcVersion,
+              platformId: cell.platformId,
+              ok: true,
+              durationMs: outcome.durationMs,
+              skipped: outcome.reason,
+            });
+            log.warn(
+              outcome.reason === "no-test-dir"
+                ? `    no test/ directory; nothing to run`
+                : `    test/ contains no .java sources`,
+            );
+            // No-tests is workspace-wide; re-running the matrix would
+            // produce identical output.
+            break;
+          }
 
-        if (outcome.status === "no-tests") {
+          const { result, durationMs, jdkMajor } = outcome;
+          const ok = result.failed === 0;
+          if (!ok) workspaceOk = false;
+
+          const failures = result.cases
+            .filter((c) => c.status === "failed")
+            .map((c) => ({
+              class: c.suite,
+              test: c.name,
+              durationMs: c.durationMs,
+              message: c.message,
+              stackTrace: c.stackTrace,
+            }));
+
           cellResults.push({
             mcVersion: cell.mcVersion,
             platformId: cell.platformId,
-            ok: true,
-            durationMs: outcome.durationMs,
-            skipped: outcome.reason,
+            jdkMajor,
+            ok,
+            durationMs,
+            tests: {
+              total: result.total,
+              passed: result.passed,
+              failed: result.failed,
+              skipped: result.skipped,
+            },
+            failures: failures.length > 0 ? failures : undefined,
           });
-          log.warn(
-            outcome.reason === "no-test-dir"
-              ? `    no test/ directory; nothing to run`
-              : `    test/ contains no .java sources`,
-          );
-          // No-tests is the same across every cell (it's a workspace fact),
-          // so once we see it we can break out: re-running the matrix would
-          // produce identical output.
-          break;
-        }
 
-        const { result, durationMs, jdkMajor } = outcome;
-        const ok = result.failed === 0;
-        if (!ok) {
+          renderHumanResult(result.cases, result);
+
+          if (!ok && opts.failFast === true) {
+            bailed = true;
+            break;
+          }
+        } catch (err) {
           workspaceOk = false;
-          anyCellFailed = true;
-        }
-
-        const failures = result.cases
-          .filter((c) => c.status === "failed")
-          .map((c) => ({
-            class: c.suite,
-            test: c.name,
-            durationMs: c.durationMs,
-            message: c.message,
-            stackTrace: c.stackTrace,
-          }));
-
-        cellResults.push({
-          mcVersion: cell.mcVersion,
-          platformId: cell.platformId,
-          jdkMajor,
-          ok,
-          durationMs,
-          tests: {
-            total: result.total,
-            passed: result.passed,
-            failed: result.failed,
-            skipped: result.skipped,
-          },
-          failures: failures.length > 0 ? failures : undefined,
-        });
-
-        renderHumanResult(result.cases, result);
-
-        if (!ok && opts.failFast === true) {
-          // Stop the whole run: the user asked to bail on first failure.
-          anyFailed = true;
-          stopAfterWorkspace = true;
-          break;
-        }
-      } catch (err) {
-        workspaceOk = false;
-        anyCellFailed = true;
-        const message = err instanceof Error ? err.message : String(err);
-        cellResults.push({
-          mcVersion: cell.mcVersion,
-          platformId: cell.platformId,
-          ok: false,
-          durationMs: Date.now() - cellStarted,
-          error: message,
-        });
-        log.error(`    ${message}`);
-        if (totalCellCount === 1) {
-          throw err;
-        }
-        if (opts.failFast === true) {
-          anyFailed = true;
-          stopAfterWorkspace = true;
-          break;
+          const message = err instanceof Error ? err.message : String(err);
+          cellResults.push({
+            mcVersion: cell.mcVersion,
+            platformId: cell.platformId,
+            ok: false,
+            durationMs: Date.now() - cellStarted,
+            error: message,
+          });
+          log.error(`    ${message}`);
+          if (totalCellCount === 1) throw err;
+          if (opts.failFast === true) {
+            bailed = true;
+            break;
+          }
         }
       }
-    }
 
-    if (!workspaceOk) anyFailed = true;
+      return { workspaceOk, cells: cellResults };
+    },
+    { concurrency, skipOnUpstreamFailure: false },
+  );
 
-    results.push({
-      workspace: label,
-      rootDir,
-      ok: workspaceOk,
-      durationMs: Date.now() - workspaceStarted,
-      ...rollupCells(cellResults),
-      cells: cellResults,
-    });
+  // Single-target failures rethrow so the CLI's top-level handler can format
+  // them (matches the pre-runner behavior; preserves InvalidArgumentError
+  // type for matrix-expansion errors).
+  if (targets.length === 1 && runResults[0]?.status === "failed") {
+    throw runResults[0].error ?? new Error("test failed");
   }
 
-  if (anyCellFailed) anyFailed = true;
+  const results: TestCommandResult["results"] = [];
+  let anyFailed = false;
+  for (const r of runResults) {
+    const project = r.workspace.project;
+    if (r.status === "failed") {
+      anyFailed = true;
+      const message = r.error?.message ?? "unknown error";
+      results.push({
+        workspace: project.name,
+        rootDir: project.rootDir,
+        ok: false,
+        durationMs: r.durationMs,
+        cells: [],
+        error: message,
+      });
+      log.error(`${project.name}: ${message}`);
+      continue;
+    }
+    if (r.status === "skipped-upstream-failed") {
+      // Not reachable with `skipOnUpstreamFailure: false`, but kept for
+      // type-narrowing.
+      results.push({
+        workspace: project.name,
+        rootDir: project.rootDir,
+        ok: false,
+        durationMs: r.durationMs,
+        cells: [],
+        error: "skipped: an upstream workspace failed",
+      });
+      anyFailed = true;
+      continue;
+    }
+    const outcome = r.value as WorkspaceTestOutcome;
+    if (outcome.bailed && outcome.cells.length === 0) {
+      // Workspace was queued but never started because an earlier
+      // workspace bailed under --fail-fast.
+      continue;
+    }
+    if (!outcome.workspaceOk) anyFailed = true;
+    results.push({
+      workspace: project.name,
+      rootDir: project.rootDir,
+      ok: outcome.workspaceOk,
+      durationMs: r.durationMs,
+      ...rollupCells(outcome.cells),
+      cells: outcome.cells,
+    });
+  }
 
   const exitCode: 0 | 1 = anyFailed ? 1 : 0;
   const status: TestCommandResult["status"] = anyFailed ? "partial" : "success";
@@ -328,7 +352,6 @@ export function buildMatrix(project: ResolvedProject, opts: TestCommandOptions):
   const declaredPlatforms = project.compatibility?.platforms ?? [];
 
   if (declaredPlatforms.length > 0) {
-    // Throws if platforms come from more than one family; caller catches.
     platforms.assertSameFamily(declaredPlatforms);
   }
 
@@ -357,9 +380,6 @@ export function buildMatrix(project: ResolvedProject, opts: TestCommandOptions):
   const usedVersions = versionFilter.length > 0 ? versionFilter : versions;
   const usedPlatforms = platformFilter.length > 0 ? platformFilter : declaredPlatforms;
 
-  // If a project has no compatibility entries at all, emit a single "default"
-  // cell. Preserves the prior behaviour of testing whatever the project is
-  // shaped like (compile-only suites without a platform classpath still work).
   if (usedVersions.length === 0 && usedPlatforms.length === 0) {
     return [{}];
   }
@@ -382,41 +402,14 @@ export function buildMatrix(project: ResolvedProject, opts: TestCommandOptions):
 /**
  * Pick the workspaces `pluggy test` should cover. Mirrors `selectBuildTargets`
  * exactly: root with workspaces → all in topo order, `--workspace` narrows,
- * inside a workspace → just that one.
+ * inside a workspace → just that one. Returns `WorkspaceNode[]` so the parallel
+ * runner can read the workspace dep graph.
  */
 export function selectTestTargets(
   context: WorkspaceContext,
-  opts: Pick<TestCommandOptions, "workspace" | "workspaces">,
-): ResolvedProject[] {
-  if (context.atRoot && context.workspaces.length > 0) {
-    if (opts.workspace !== undefined) {
-      const node = findWorkspace(context, opts.workspace);
-      return [node.project];
-    }
-    return topologicalOrder(context.workspaces).map((n) => n.project);
-  }
-
-  if (context.current !== undefined) {
-    if (opts.workspace !== undefined && opts.workspace !== context.current.name) {
-      throw new InvalidArgumentError(
-        `--workspace "${opts.workspace}" does not match the current workspace "${context.current.name}". Run from the root to test a different workspace.`,
-      );
-    }
-    if (opts.workspaces === true) {
-      throw new InvalidArgumentError(
-        "--workspaces is only valid at the repo root; you're inside workspace " +
-          `"${context.current.name}".`,
-      );
-    }
-    return [context.current.project];
-  }
-
-  if (opts.workspace !== undefined) {
-    throw new InvalidArgumentError(
-      `--workspace "${opts.workspace}" given but this project declares no workspaces.`,
-    );
-  }
-  return [context.root];
+  opts: Pick<TestCommandOptions, "workspace" | "exclude" | "workspaces">,
+): WorkspaceNode[] {
+  return selectWorkspaceTargets(context, opts, "test");
 }
 
 interface CellRollup {
@@ -511,7 +504,6 @@ function renderHumanResult(
   cases: TestCase[],
   totals: { total: number; passed: number; failed: number; skipped: number },
 ): void {
-  // Group cases by suite classname, preserving discovery order.
   const bySuite = new Map<string, TestCase[]>();
   for (const c of cases) {
     const bucket = bySuite.get(c.suite);
@@ -565,7 +557,18 @@ export function testCommand(): Command {
     )
     .option("--fail-fast", "Stop after the first test or matrix-cell failure.")
     .option("--clean", "Wipe the test build cache before running.")
-    .option("--workspace <name>", "Test a single workspace.")
+    .option(
+      "--workspace <names>",
+      "Test one or more workspaces (repeatable; comma-separated).",
+      workspaceListOption,
+      [] as string[],
+    )
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from the default sweep (repeatable; comma-separated).",
+      workspaceListOption,
+      [] as string[],
+    )
     .option("--workspaces", "Explicit all-workspaces test.")
     .option(
       "--mc-version <version>",
@@ -577,15 +580,28 @@ export function testCommand(): Command {
       "Narrow the matrix to one platform id (repeatable, comma-separated).",
       parseList,
     )
+    .option(
+      "--concurrency <n>",
+      "Cap on workspaces running simultaneously. Ignored under --fail-fast.",
+      (raw: string) => {
+        const n = Number.parseInt(raw, 10);
+        if (!Number.isFinite(n) || n < 1) {
+          throw new InvalidArgumentError("--concurrency must be a positive integer");
+        }
+        return n;
+      },
+    )
     .action(async function action(this: Command, options) {
       const result = await runTestCommand({
         filter: options.filter,
         failFast: options.failFast === true,
         clean: options.clean === true,
-        workspace: options.workspace,
+        workspace: options.workspace as string[],
+        exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
         mcVersions: options.mcVersion,
         platforms: options.platform,
+        concurrency: options.concurrency,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

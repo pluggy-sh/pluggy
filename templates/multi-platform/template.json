@@ -1,0 +1,9 @@
+{
+  "id": "multi-platform",
+  "name": "Multi-platform (api + core + paper + velocity + bungee + sponge)",
+  "description": "A LuckPerms-shaped layout: one api workspace, one platform-agnostic core, and one shipping workspace per server family (paper, velocity, bungee, sponge). Each platform shades api + core into its own jar.",
+  "family": "bukkit",
+  "projectJsonExtras": {
+    "workspaces": ["./api", "./core", "./paper", "./velocity", "./bungee", "./sponge"]
+  }
+}

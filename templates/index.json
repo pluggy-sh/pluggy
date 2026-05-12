@@ -42,6 +42,18 @@
       "name": "Sponge plugin (basic)",
       "description": "SpongeVanilla plugin with `@Plugin` lifecycle, a join listener, and a Brigadier-parameterized `/hello` command.",
       "family": "sponge"
+    },
+    {
+      "id": "multi-module",
+      "name": "Multi-module (api + core + plugin)",
+      "description": "Three workspaces wired together: a public api, an internal core, and a shipping plugin that loads them.",
+      "family": "bukkit"
+    },
+    {
+      "id": "multi-platform",
+      "name": "Multi-platform (api + core + paper + velocity + bungee + sponge)",
+      "description": "A LuckPerms-shaped layout: shared api + core consumed by per-platform shipping workspaces (paper, velocity, bungee, sponge).",
+      "family": "bukkit"
     }
   ]
 }

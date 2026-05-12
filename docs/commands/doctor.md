@@ -15,6 +15,7 @@ pluggy doctor [options]
 | Flag       | Default | Notes                                                                          |
 | ---------- | ------- | ------------------------------------------------------------------------------ |
 | `--report` | off     | Print a paste-friendly markdown block wrapped in `<details>` for issue filing. |
+| `--fix`    | off     | Apply safe, non-destructive remediations after the checks run. See below.      |
 
 `--json` works as a global flag.
 
@@ -105,6 +106,28 @@ Checks
 ```
 
 The summary line is always `<n> passed, <n> warned, <n> failed`. The exit code reflects only the failed count.
+
+## `--fix` output
+
+`--fix` applies the safe remediations the checks would otherwise just report. It never deletes source code, downloads anything new, or touches the user cache. Today's set:
+
+| Fix id            | What it does                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `lockfile-prune`  | Removes orphan transitive entries from `pluggy.lock`.                                   |
+| `workspace-prune` | Drops `workspaces[]` entries in the root `project.json` that point at a missing folder. |
+
+`workspace-prune` runs before any other check so an unloadable workspace context (caused by a deleted folder) doesn't block the rest of doctor. The applied fixes are reported in a `Fixes applied` block at the bottom of the output.
+
+```text
+$ pluggy doctor --fix
+... checks ...
+
+Fixes applied
+  › ✓ removed 1 missing workspace from root project.json (./old-module)
+  › ✓ pruned 3 orphan entries from pluggy.lock
+
+✓ 14 passed, 0 warned, 0 failed
+```
 
 ## `--report` output
 

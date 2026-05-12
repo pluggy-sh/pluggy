@@ -170,7 +170,7 @@ describe("selectDevTarget", () => {
     expect(target.name).toBe("solo");
   });
 
-  test("root + workspaces: without --workspace throws InvalidArgumentError", async () => {
+  test("root + workspaces: one shipping workspace → auto-picks it", async () => {
     await mkdir(join(rootDir, "modules", "a"), { recursive: true });
     await writeFile(
       join(rootDir, "project.json"),
@@ -186,7 +186,76 @@ describe("selectDevTarget", () => {
       JSON.stringify({ name: "a", version: "0.1.0", main: "a.M" }),
     );
     const ctx = resolveWorkspaceContext(rootDir)!;
-    expect(() => selectDevTarget(ctx, {})).toThrow(/--workspace/);
+    const target = selectDevTarget(ctx, {});
+    expect(target.name).toBe("a");
+  });
+
+  test("root + workspaces: zero shipping → enriched error", async () => {
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await mkdir(join(rootDir, "modules", "core"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "r",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./modules/api", "./modules/core"],
+      }),
+    );
+    // Both internal: no `main` declared.
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({ name: "api", version: "0.1.0" }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "core", "project.json"),
+      JSON.stringify({ name: "core", version: "0.1.0" }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    expect(() => selectDevTarget(ctx, {})).toThrow(/no workspace declares.*main/);
+  });
+
+  test("root + workspaces: multiple shipping → enriched error lists each", async () => {
+    await mkdir(join(rootDir, "modules", "paper"), { recursive: true });
+    await mkdir(join(rootDir, "modules", "sponge"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "r",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./modules/paper", "./modules/sponge"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "paper", "project.json"),
+      JSON.stringify({
+        name: "ws_paper",
+        version: "0.1.0",
+        main: "p.M",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "sponge", "project.json"),
+      JSON.stringify({
+        name: "ws_sponge",
+        version: "0.1.0",
+        main: "s.M",
+        compatibility: { versions: ["1.21.8"], platforms: ["sponge"] },
+      }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    let caught: Error | undefined;
+    try {
+      selectDevTarget(ctx, {});
+    } catch (err) {
+      caught = err as Error;
+    }
+    expect(caught).toBeDefined();
+    expect(caught?.message).toMatch(/2 workspaces declare/);
+    expect(caught?.message).toContain("ws_paper");
+    expect(caught?.message).toContain("ws_sponge");
   });
 
   test("root + workspaces: unknown --workspace name throws", async () => {

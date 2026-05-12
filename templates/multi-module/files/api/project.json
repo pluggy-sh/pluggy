@@ -1,0 +1,5 @@
+{
+  "name": "${project.name}-api",
+  "version": "0.1.0",
+  "description": "${project.name} public API — what addon authors compile against."
+}

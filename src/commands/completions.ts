@@ -1,5 +1,9 @@
+import process from "node:process";
+
 import type { Command, Option } from "commander";
 import { Command as CommanderCommand, InvalidArgumentError } from "commander";
+
+import { resolveWorkspaceContext } from "../workspace.ts";
 
 type Shell = "bash" | "zsh" | "fish" | "pwsh";
 
@@ -50,6 +54,32 @@ export function completionsCommand(program: Command): Command {
     .action((shell: Shell) => {
       const snapshot = introspect(program);
       console.log(renderScript(shell, snapshot));
+    });
+}
+
+/**
+ * Hidden helper used by shell completion scripts to enumerate workspace
+ * names in the current directory. Emits one name per line on stdout so
+ * `compgen -W "$(pluggy __complete-workspaces)"` works in bash and the zsh
+ * `compadd` / fish `complete` machinery can consume it too.
+ *
+ * Exits 0 with no output when no project is found — shell completion must
+ * not crash the user's shell session.
+ */
+export function completeWorkspacesCommand(): Command {
+  return new CommanderCommand("__complete-workspaces")
+    .description("(internal) List workspace names for shell completion.")
+    .helpCommand(false)
+    .action(() => {
+      try {
+        const ctx = resolveWorkspaceContext(process.cwd());
+        if (ctx === undefined) return;
+        for (const node of ctx.workspaces) {
+          process.stdout.write(`${node.name}\n`);
+        }
+      } catch {
+        // Shell completion must never fail loudly. Stay silent on errors.
+      }
     });
 }
 
@@ -118,13 +148,26 @@ function renderBash(snap: Snapshot): string {
 
   return `# bash completion for ${snap.program}
 _${snap.program}() {
-  local cur words cword
+  local cur prev words cword
   cur="\${COMP_WORDS[COMP_CWORD]}"
+  prev="\${COMP_WORDS[COMP_CWORD-1]}"
   words=("\${COMP_WORDS[@]}")
   cword=$COMP_CWORD
 
   local commands="${commandList}"
   local global_opts="${globalFlagList}"
+
+  # Workspace-name completion: when the previous token is --workspace or
+  # --exclude (or any of their value-receiving siblings), enumerate
+  # workspaces in the local project.
+  case "$prev" in
+    --workspace|--exclude)
+      local ws
+      ws=$(${snap.program} __complete-workspaces 2>/dev/null)
+      COMPREPLY=( $(compgen -W "$ws" -- "$cur") )
+      return
+      ;;
+  esac
 
   if [ "$cword" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$commands $global_opts" -- "$cur") )

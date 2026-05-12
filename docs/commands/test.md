@@ -11,13 +11,17 @@ pluggy t    [options]
 
 ## Flags
 
-| Flag                 | Default | Notes                                                                         |
-| -------------------- | ------- | ----------------------------------------------------------------------------- |
-| `--filter <pattern>` | none    | Restrict which tests run. See [Filter syntax](#filter-syntax) below.          |
-| `--fail-fast`        | off     | Stop after the first test failure (passed through to the JUnit launcher).     |
-| `--clean`            | off     | Wipe the test staging dir before running (compiled classes + cached reports). |
-| `--workspace <name>` | none    | Test only this workspace.                                                     |
-| `--workspaces`       | off     | Explicit all-workspaces test from the root.                                   |
+| Flag                  | Default        | Notes                                                                              |
+| --------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| `--filter <pattern>`  | none           | Restrict which tests run. See [Filter syntax](#filter-syntax) below.               |
+| `--fail-fast`         | off            | Stop after the first test failure (passed through to the JUnit launcher).          |
+| `--clean`             | off            | Wipe the test staging dir before running (compiled classes + cached reports).      |
+| `--workspace <names>` | none           | Test one or more workspaces. Repeatable; comma-separated. Overrides `test: false`. |
+| `--exclude <names>`   | none           | Subtract one or more workspaces from the default sweep.                            |
+| `--workspaces`        | off            | Explicit all-workspaces test from the root.                                        |
+| `--concurrency <n>`   | `min(cpus, 4)` | Cap on workspaces running simultaneously. Forced to `1` under `--fail-fast`.       |
+
+A workspace can opt out of the default sweep by setting `"test": false` in its `project.json`. See [Workspaces: per-workspace opt-out](../workspaces.md#per-workspace-opt-out).
 
 ## Scope rules
 

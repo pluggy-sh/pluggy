@@ -3,13 +3,14 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { generateDocs, type DocsResult } from "../docs/index.ts";
-import { bold, emit, emitErr, log } from "../logging.ts";
-import type { ResolvedProject } from "../project.ts";
+import { bold, dim, emit, emitErr, log } from "../logging.ts";
+import { runWorkspaces } from "../runner.ts";
 import {
-  findWorkspace,
   resolveWorkspaceContext,
-  topologicalOrder,
+  selectWorkspaceTargets,
+  workspaceListOption,
   type WorkspaceContext,
+  type WorkspaceNode,
 } from "../workspace.ts";
 
 export interface DocsCommandOptions {
@@ -17,8 +18,11 @@ export interface DocsCommandOptions {
   clean?: boolean;
   private?: boolean;
   links?: string[];
-  workspace?: string;
+  workspace?: string[];
+  exclude?: string[];
   workspaces?: boolean;
+  /** Cap on workspaces documenting simultaneously. */
+  concurrency?: number;
   cwd?: string;
 }
 
@@ -42,7 +46,9 @@ export interface DocsCommandResult {
 /**
  * Run `pluggy docs` against the resolved target set. Mirrors `build`'s
  * orchestration: single-target failures rethrow for the top-level handler,
- * multi-workspace failures continue and surface via `exitCode === 1`.
+ * multi-workspace failures continue (no skip-on-upstream since javadoc for
+ * `impl` doesn't depend on api's docs succeeding) and surface via
+ * `exitCode === 1`.
  */
 export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
@@ -51,27 +57,50 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
     throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
 
-  const targets = selectDocsTargets(context, opts);
+  const allTargets = selectDocsTargets(context, opts);
+  // Sweep (no explicit --workspace): honor each workspace's `docs: false`
+  // opt-out. Explicit --workspace overrides because the user named it.
+  const isSweep = (opts.workspace?.length ?? 0) === 0;
+  const targets = isSweep ? allTargets.filter((node) => node.project.docs !== false) : allTargets;
+  for (const skipped of allTargets) {
+    if (targets.includes(skipped)) continue;
+    log.info(`${bold("docs")} ${skipped.name} ${dim("(skipped: docs:false)")}`);
+  }
 
-  const results: DocsCommandResult["results"] = [];
-  let anyFailed = false;
-
-  for (const target of targets) {
-    const label = target.name;
-    const rootDir = target.rootDir;
-    const started = Date.now();
-    try {
-      log.info(`${bold("docs")} ${label}`);
-      const res: DocsResult = await generateDocs(target, {
+  const runResults = await runWorkspaces<DocsResult>(
+    targets,
+    async (node) => {
+      const target = node.project;
+      log.info(`${bold("docs")} ${target.name}`);
+      const res = await generateDocs(target, {
         output: opts.output,
         clean: opts.clean,
         access: opts.private === true ? "private" : "protected",
         links: opts.links,
       });
+      const warnSuffix =
+        res.warnings > 0 ? `, ${res.warnings} warning${res.warnings === 1 ? "" : "s"}` : "";
+      log.success(
+        `${target.name}: ${res.outputPath} (${res.fileCount} files, ${formatBytes(res.sizeBytes)}${warnSuffix}, ${res.durationMs}ms)`,
+      );
+      return res;
+    },
+    { concurrency: opts.concurrency, skipOnUpstreamFailure: false },
+  );
 
+  if (targets.length === 1 && runResults[0]?.status === "failed") {
+    throw runResults[0].error ?? new Error("docs failed");
+  }
+
+  const results: DocsCommandResult["results"] = [];
+  let anyFailed = false;
+  for (const r of runResults) {
+    const target = r.workspace.project;
+    if (r.status === "ok") {
+      const res = r.value as DocsResult;
       results.push({
-        workspace: label,
-        rootDir,
+        workspace: target.name,
+        rootDir: target.rootDir,
         ok: true,
         outputPath: res.outputPath,
         fileCount: res.fileCount,
@@ -79,27 +108,21 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
         warnings: res.warnings,
         durationMs: res.durationMs,
       });
-
-      const warnSuffix =
-        res.warnings > 0 ? `, ${res.warnings} warning${res.warnings === 1 ? "" : "s"}` : "";
-      log.success(
-        `${label}: ${res.outputPath} (${res.fileCount} files, ${formatBytes(res.sizeBytes)}${warnSuffix}, ${res.durationMs}ms)`,
-      );
-    } catch (err) {
-      anyFailed = true;
-      const message = err instanceof Error ? err.message : String(err);
-      results.push({
-        workspace: label,
-        rootDir,
-        ok: false,
-        durationMs: Date.now() - started,
-        error: message,
-      });
-      log.error(`${label}: ${message}`);
-      if (targets.length === 1) {
-        throw err;
-      }
+      continue;
     }
+    anyFailed = true;
+    const message =
+      r.status === "skipped-upstream-failed"
+        ? "skipped: an upstream workspace failed"
+        : (r.error?.message ?? "unknown error");
+    results.push({
+      workspace: target.name,
+      rootDir: target.rootDir,
+      ok: false,
+      durationMs: r.durationMs,
+      error: message,
+    });
+    log.error(`${target.name}: ${message}`);
   }
 
   const exitCode: 0 | 1 = anyFailed ? 1 : 0;
@@ -141,43 +164,14 @@ export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsComm
 
 /**
  * Pick which workspaces `pluggy docs` should cover. Identical contract to
- * `selectBuildTargets` / `selectTestTargets`: root with workspaces → all in
- * topological order, `--workspace` narrows, inside a workspace → just that
- * one.
+ * `selectBuildTargets` / `selectTestTargets`. Returns `WorkspaceNode[]` so
+ * the parallel runner can read the workspace dep graph.
  */
 export function selectDocsTargets(
   context: WorkspaceContext,
-  opts: Pick<DocsCommandOptions, "workspace" | "workspaces">,
-): ResolvedProject[] {
-  if (context.atRoot && context.workspaces.length > 0) {
-    if (opts.workspace !== undefined) {
-      const node = findWorkspace(context, opts.workspace);
-      return [node.project];
-    }
-    return topologicalOrder(context.workspaces).map((n) => n.project);
-  }
-
-  if (context.current !== undefined) {
-    if (opts.workspace !== undefined && opts.workspace !== context.current.name) {
-      throw new InvalidArgumentError(
-        `--workspace "${opts.workspace}" does not match the current workspace "${context.current.name}". Run from the root to document a different workspace.`,
-      );
-    }
-    if (opts.workspaces === true) {
-      throw new InvalidArgumentError(
-        "--workspaces is only valid at the repo root; you're inside workspace " +
-          `"${context.current.name}".`,
-      );
-    }
-    return [context.current.project];
-  }
-
-  if (opts.workspace !== undefined) {
-    throw new InvalidArgumentError(
-      `--workspace "${opts.workspace}" given but this project declares no workspaces.`,
-    );
-  }
-  return [context.root];
+  opts: Pick<DocsCommandOptions, "workspace" | "exclude" | "workspaces">,
+): WorkspaceNode[] {
+  return selectWorkspaceTargets(context, opts, "document");
 }
 
 function formatBytes(n: number): string {
@@ -199,16 +193,36 @@ export function docsCommand(): Command {
       (value: string, prev: string[]) => prev.concat(value),
       [] as string[],
     )
-    .option("--workspace <name>", "Document a single workspace.")
+    .option(
+      "--workspace <names>",
+      "Document one or more workspaces (repeatable; comma-separated).",
+      workspaceListOption,
+      [] as string[],
+    )
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from the default sweep (repeatable; comma-separated).",
+      workspaceListOption,
+      [] as string[],
+    )
     .option("--workspaces", "Explicit all-workspaces docs run.")
+    .option("--concurrency <n>", "Cap on workspaces documenting simultaneously.", (raw: string) => {
+      const n = Number.parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        throw new InvalidArgumentError("--concurrency must be a positive integer");
+      }
+      return n;
+    })
     .action(async function action(this: Command, options) {
       const result = await runDocsCommand({
         output: options.output,
         clean: options.clean === true,
         private: options.private === true,
         links: options.link as string[] | undefined,
-        workspace: options.workspace,
+        workspace: options.workspace as string[],
+        exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
+        concurrency: options.concurrency,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

@@ -11,13 +11,18 @@ pluggy b     [options]
 
 ## Flags
 
-| Flag                 | Default                                | Notes                                                        |
-| -------------------- | -------------------------------------- | ------------------------------------------------------------ |
-| `--output <path>`    | `<workspace>/bin/<name>-<version>.jar` | Output jar destination.                                      |
-| `--clean`            | off                                    | Wipe the staging directory before building.                  |
-| `--skip-classpath`   | off                                    | Don't regenerate `.classpath` and `.project` for this build. |
-| `--workspace <name>` | none                                   | Build only this workspace.                                   |
-| `--workspaces`       | off                                    | Explicit all-workspaces build from the root.                 |
+| Flag                  | Default                                | Notes                                                                       |
+| --------------------- | -------------------------------------- | --------------------------------------------------------------------------- |
+| `--output <path>`     | `<workspace>/bin/<name>-<version>.jar` | Output jar destination.                                                     |
+| `--clean`             | off                                    | Wipe the staging directory before building.                                 |
+| `--skip-classpath`    | off                                    | Don't regenerate `.classpath` and `.project` for this build.                |
+| `--workspace <names>` | none                                   | Build one or more workspaces. Repeatable; comma-separated.                  |
+| `--exclude <names>`   | none                                   | Subtract one or more workspaces from the default sweep.                     |
+| `--workspaces`        | off                                    | Explicit all-workspaces build from the root.                                |
+| `--concurrency <n>`   | `min(cpus, 4)`                         | Cap on workspaces building simultaneously. Use `1` for serial, live output. |
+| `--watch`             | off                                    | After the initial build, rebuild changed workspaces and dependents on save. |
+
+See [Workspaces: selection flags](../workspaces.md#selection-flags) for the shared `--workspace` / `--exclude` syntax.
 
 ## Scope rules
 
@@ -31,6 +36,32 @@ pluggy b     [options]
 | Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error**. Run from the root.           |
 
 [Topological order](../glossary.md#topological-order) is driven by `workspace:` dependencies. A sibling's built jar must exist before a workspace that shades it builds. Running from the root handles this for you.
+
+If you build a workspace whose `workspace:` dep hasn't been produced yet (typical for `pluggy build --workspace plugin` without building `api` first), pluggy stops with a clear error pointing at the missing sibling: `workspace dependency "api" has not been built yet`. Run `pluggy build --workspace api` first or omit `--workspace` to build the whole graph.
+
+## Parallel execution
+
+At `--concurrency > 1`, independent workspaces build simultaneously. The runner respects the workspace dependency graph: a workspace whose upstream failed is settled as `skipped-upstream-failed` without trying to compile (its dep jar wouldn't exist). Output is buffered per workspace and flushed as a block when that workspace finishes, so multi-workspace runs stay readable.
+
+For live, interleaved output (long single-workspace iteration), pass `--concurrency 1`.
+
+## Watch mode
+
+`pluggy build --watch` runs an initial build, then watches `src/`, the paths referenced by `project.resources`, and `project.json` across every selected workspace. On change, the affected workspace and every transitive downstream dependent rebuild in topological order. Changes during a build queue and drain once the in-flight rebuild finishes; bursts of saves don't stack.
+
+```text
+$ pluggy build --watch
+✓ api → /repo/api/bin/api-0.1.0.jar (0.3 KB, 1802ms)
+✓ core → /repo/core/bin/core-0.1.0.jar (0.5 KB, 1903ms)
+✓ plugin → /repo/plugin/bin/plugin-1.0.0.jar (1.8 KB, 2210ms)
+  → watching 3 workspaces (api, core, plugin); ctrl-c to stop
+
+Rebuild triggered for 2 workspaces (core, plugin)
+✓ core → /repo/core/bin/core-0.1.0.jar (0.5 KB, 1745ms)
+✓ plugin → /repo/plugin/bin/plugin-1.0.0.jar (1.8 KB, 2102ms)
+```
+
+`--watch` is for tight iteration loops. For a running test server that reloads on rebuild, use [`pluggy dev`](./dev.md).
 
 ## Pipeline
 

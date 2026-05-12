@@ -32,6 +32,12 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 | [`test`](./commands/test.md)               | Compile and run JUnit Platform tests under `test/`.      |
 | [`docs`](./commands/docs.md)               | Generate Javadoc HTML against the resolved classpath.    |
 | [`dev`](./commands/dev.md)                 | Boot a live server with the plugin and its runtime deps. |
+| [`run`](./commands/run.md)                 | Invoke a named script across the selected workspaces.    |
+| [`clean`](./commands/clean.md)             | Remove `bin/` build outputs across workspaces.           |
+| [`workspaces`](./commands/workspaces.md)   | List every workspace's role, platforms, and output path. |
+| [`workspace`](./commands/workspace.md)     | Add, remove, or rename a workspace.                      |
+| [`graph`](./commands/graph.md)             | Render the workspace dependency graph.                   |
+| [`explain`](./commands/explain.md)         | Show one workspace's post-inheritance view.              |
 | [`sdk`](./commands/sdk.md)                 | Manage the JDKs pluggy provisions for builds.            |
 | [`cache`](./commands/cache.md)             | Inspect and prune the download cache.                    |
 | [`doctor`](./commands/doctor.md)           | Check the environment and every workspace.               |

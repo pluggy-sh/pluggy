@@ -66,14 +66,19 @@ So `pluggy init --yes --platform velocity` produces a Velocity-correct stub that
 
 The current lineup:
 
-| ID                 | Family   | Notes                                                                                    |
-| ------------------ | -------- | ---------------------------------------------------------------------------------------- |
-| `paper-basic`      | bukkit   | Paper + a sample `JoinListener`. Smallest non-empty scaffold.                            |
-| `paper-mockbukkit` | bukkit   | Paper + listener + a JUnit/MockBukkit lifecycle harness driven by `pluggy test`.         |
-| `paper-adventure`  | bukkit   | Paper using Adventure `Component`s + a MockBukkit test for the listener.                 |
-| `folia-regions`    | bukkit   | Folia plugin showing `getAsyncScheduler()` / `getRegionScheduler()` patterns.            |
-| `velocity-proxy`   | velocity | Velocity with `@Inject` lifecycle, `ServerPostConnectEvent` listener, Brigadier command. |
-| `bungee-proxy`     | bungee   | BungeeCord with a `PostLoginEvent` listener and a registered `Command`.                  |
+| ID                 | Family   | Notes                                                                                                                             |
+| ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `paper-basic`      | bukkit   | Paper + a sample `JoinListener`. Smallest non-empty scaffold.                                                                     |
+| `paper-mockbukkit` | bukkit   | Paper + listener + a JUnit/MockBukkit lifecycle harness driven by `pluggy test`.                                                  |
+| `paper-adventure`  | bukkit   | Paper using Adventure `Component`s + a MockBukkit test for the listener.                                                          |
+| `folia-regions`    | bukkit   | Folia plugin showing `getAsyncScheduler()` / `getRegionScheduler()` patterns.                                                     |
+| `velocity-proxy`   | velocity | Velocity with `@Inject` lifecycle, `ServerPostConnectEvent` listener, Brigadier command.                                          |
+| `bungee-proxy`     | bungee   | BungeeCord with a `PostLoginEvent` listener and a registered `Command`.                                                           |
+| `sponge-basic`     | sponge   | SpongeVanilla `@Plugin` with a join listener and a Brigadier `/hello` command.                                                    |
+| `multi-module`     | bukkit   | Workspace-root scaffold: `api` + `core` + `plugin`. The shipping `plugin` workspace shades api + core in.                         |
+| `multi-platform`   | bukkit   | LuckPerms-shaped scaffold: shared `api` + `core` plus one shipping workspace per server family (paper, velocity, bungee, sponge). |
+
+The last two are workspace-root templates: they scaffold a multi-workspace repo instead of a single project. `pluggy init` detects them by their `template.json` (any template that declares a non-empty `projectJsonExtras.workspaces` is treated this way), skips the `main` prompt, and writes per-workspace `project.json` files alongside the root.
 
 Picking interactively without `--template` shows the same list filtered to
 your platform's family. Selecting "Default" falls through to the embedded

@@ -65,13 +65,46 @@ Scope-aware commands (`install`, `remove`, `build`, `list`) use this classificat
 
 Workspaces inherit the following fields from the root when unset:
 
-- `compatibility`
+- `compatibility` (field-by-field: a workspace overriding only `platforms` still inherits `versions`, and vice versa)
 - `authors`
 - `description`
+- `jdk`
 
-`registries` are **unioned** across the root and every workspace. Duplicates drop by URL. This is so a workspace can declare its own registry without re-declaring the root's.
+`registries`, `dependencies`, and `scripts` are **unioned** across the root and every workspace. For `registries`, duplicates drop by URL. For `dependencies` and `scripts`, root entries land first and the workspace's own entries overwrite same-named keys; a workspace value of `null` opts out of an inherited entry. The opt-out is parse-time only; downstream consumers never see `null`.
 
-Everything else (`name`, `version`, `main`, `dependencies`, `shading`, `resources`, `dev`) is workspace-local. A workspace's own `compatibility` wins over the root's when both declare it.
+Everything else (`name`, `version`, `main`, `shading`, `resources`, `dev`) is workspace-local.
+
+## Per-workspace opt-out
+
+Two boolean fields let a workspace opt out of the default sweep for specific commands:
+
+- `"docs": false` — `pluggy docs` at the root skips this workspace.
+- `"test": false` — `pluggy test` at the root skips this workspace.
+
+Explicit `--workspace <name>` overrides the flag. Internal workspaces (api, core, shared libraries that have nothing meaningful to document or test) are the typical use case.
+
+`pluggy why`, `pluggy outdated`, and `pluggy audit` ignore both flags: they operate on the lockfile, which is repo-wide.
+
+## Selection flags
+
+`build`, `test`, `docs`, `clean`, and `run` share the same workspace selection grammar:
+
+| Flag                  | Effect                                                                 |
+| --------------------- | ---------------------------------------------------------------------- |
+| `--workspace <names>` | Limit to one or more workspaces. Repeatable; comma-separated; deduped. |
+| `--exclude <names>`   | Subtract from the default sweep. Repeatable; comma-separated.          |
+| `--workspaces`        | Explicit "every workspace" at the root.                                |
+
+`--workspace api,core` and `--workspace api --workspace core` produce the same selection. The list is deduped while preserving first-occurrence order.
+
+The conflict matrix is enforced up front:
+
+| Combination                                   | Behaviour                                                                              |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `--workspace api --exclude api`               | Empty selection. Hard error.                                                           |
+| `--exclude <unknown>`                         | Not-found error listing the known names.                                               |
+| `--exclude core` with `plugin` still in scope | Error: `"plugin" depends on "core"; pass --workspace core too or also exclude plugin.` |
+| `--exclude` inside a workspace                | Not allowed; the scope is already one workspace.                                       |
 
 ### What "inherited" looks like
 
@@ -167,16 +200,29 @@ Cycles throw from `topologicalOrder`. Break them by extracting a third workspace
 
 ## Common commands in a monorepo
 
-| You want to...              | Run                                                                   |
-| --------------------------- | --------------------------------------------------------------------- |
-| Build everything            | `pluggy build` at the root                                            |
-| Build one workspace         | `pluggy build --workspace impl` at the root                           |
-| Add a dep to one workspace  | `pluggy install --workspace impl worldedit`                           |
-| Refresh the shared lockfile | `pluggy install` at the root (defaults to all workspaces)             |
-| List aggregated deps        | `pluggy list --workspaces` at the root                                |
-| Run the dev server          | `cd impl && pluggy dev`, or `pluggy dev --workspace impl` at the root |
+| You want to...                       | Run                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| Scaffold a multi-module repo         | `pluggy init --template multi-module --name my-plugin`                |
+| Scaffold a multi-platform repo       | `pluggy init --template multi-platform --name my-plugin`              |
+| List workspaces with role and output | `pluggy workspaces`                                                   |
+| Render the workspace dep graph       | `pluggy graph` (or `pluggy graph --mermaid` to paste into docs)       |
+| Inspect one workspace's inheritance  | `pluggy explain core`                                                 |
+| Add a workspace                      | `pluggy workspace add core --depends api`                             |
+| Remove a workspace                   | `pluggy workspace remove core` (add `--delete` to wipe files)         |
+| Rename a workspace                   | `pluggy workspace rename api shared`                                  |
+| Build everything                     | `pluggy build` at the root                                            |
+| Build everything in parallel         | `pluggy build --concurrency 4` at the root                            |
+| Watch and rebuild on save            | `pluggy build --watch` at the root                                    |
+| Build a subset of workspaces         | `pluggy build --workspace api,core` at the root                       |
+| Build everything except one          | `pluggy build --exclude sponge` at the root                           |
+| Clean every `bin/`                   | `pluggy clean` at the root                                            |
+| Add a dep to one workspace           | `pluggy install --workspace impl worldedit`                           |
+| Refresh the shared lockfile          | `pluggy install` at the root (defaults to all workspaces)             |
+| List aggregated deps                 | `pluggy list --workspaces` at the root                                |
+| Run a script across workspaces       | `pluggy run lint` at the root                                         |
+| Boot a dev server                    | `cd impl && pluggy dev`, or `pluggy dev --workspace impl` at the root |
 
-`dev` is always one-at-a-time. There's no `--workspaces` equivalent for live servers. Pick the workspace you're iterating on.
+At the root with workspaces, `pluggy dev` auto-picks the single workspace that declares `main`. With two or more shipping workspaces, pass `--workspace <name>` explicitly. `dev` itself is always one-at-a-time; there's no `--workspaces` equivalent for live servers.
 
 ## Shading across workspaces
 
@@ -219,6 +265,12 @@ build: project "mixed" declares platforms from different descriptor families ("p
 
 ## See also
 
-- [`pluggy build`](./commands/build.md): scope rules and topological ordering.
+- [`pluggy workspaces`](./commands/workspaces.md): list every workspace with role, platforms, and output path.
+- [`pluggy workspace`](./commands/workspace.md): add, remove, and rename workspaces.
+- [`pluggy graph`](./commands/graph.md): render the workspace dependency graph.
+- [`pluggy explain`](./commands/explain.md): show one workspace's post-inheritance view.
+- [`pluggy build`](./commands/build.md): scope rules, topological ordering, parallel execution, watch mode.
+- [`pluggy clean`](./commands/clean.md): sweep `bin/` outputs.
+- [`pluggy run`](./commands/run.md): named scripts across workspaces.
 - [`pluggy install`](./commands/install.md): conflict detection when two workspaces declare the same dep with different versions.
 - [Dependencies](./dependencies.md#source-kinds): the `workspace:` source in the full grammar.
