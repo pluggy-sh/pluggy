@@ -124,7 +124,7 @@ describe("runBuildCommand", () => {
     expect(calls[1][0].name).toBe("suite_impl");
   });
 
-  test("one workspace fails: continues through the rest but exits 1", async () => {
+  test("upstream failure skips dependents and exits 1", async () => {
     await writeMultiWorkspace();
     vi.mocked(buildProject).mockRejectedValueOnce(new Error("boom on api")).mockResolvedValueOnce({
       outputPath: "/tmp/impl.jar",
@@ -140,8 +140,10 @@ describe("runBuildCommand", () => {
     expect(res.results).toHaveLength(2);
     expect(res.results[0].ok).toBe(false);
     expect(res.results[0].error).toContain("boom on api");
-    expect(res.results[1].ok).toBe(true);
-    expect(buildProject).toHaveBeenCalledTimes(2);
+    expect(res.results[1].ok).toBe(false);
+    expect(res.results[1].error).toContain("upstream");
+    // suite_impl is skipped (not built) because its workspace dep failed.
+    expect(buildProject).toHaveBeenCalledTimes(1);
   });
 
   test("--workspace narrows to one even at root", async () => {
@@ -153,7 +155,7 @@ describe("runBuildCommand", () => {
       stagingDir: "/tmp/staging",
     });
 
-    const res = await runBuildCommand({ cwd: rootDir, workspace: "suite_impl" });
+    const res = await runBuildCommand({ cwd: rootDir, workspace: ["suite_impl"] });
 
     expect(res.results).toHaveLength(1);
     expect(res.results[0].workspace).toBe("suite_impl");
@@ -200,7 +202,9 @@ describe("runBuildCommand", () => {
     const parsed = JSON.parse(stderrSpy.mock.calls[0][0] as string);
     expect(parsed.status).toBe("error");
     expect(parsed.results[0].ok).toBe(false);
-    expect(parsed.results[1].ok).toBe(true);
+    // Dependent workspace skipped because its upstream failed.
+    expect(parsed.results[1].ok).toBe(false);
+    expect(parsed.results[1].error).toContain("upstream");
   });
 });
 
@@ -278,7 +282,7 @@ describe("selectBuildTargets", () => {
       JSON.stringify({ name: "a", version: "0.1.0", main: "a.M" }),
     );
     const ctx = resolveWorkspaceContext(rootDir)!;
-    expect(() => selectBuildTargets(ctx, { workspace: "does-not-exist" })).toThrow(
+    expect(() => selectBuildTargets(ctx, { workspace: ["does-not-exist"] })).toThrow(
       /workspace not found/,
     );
   });

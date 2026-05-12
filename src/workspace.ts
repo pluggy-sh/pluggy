@@ -10,7 +10,7 @@ import process from "node:process";
 import { InvalidArgumentError } from "commander";
 
 import { UserError } from "./errors.ts";
-import type { Project, Registry, ResolvedProject } from "./project.ts";
+import type { Dependency, Project, Registry, ResolvedProject } from "./project.ts";
 
 const PROJECT_FILE_NAME = "project.json";
 
@@ -127,6 +127,163 @@ export function topologicalOrder(workspaces: WorkspaceNode[]): WorkspaceNode[] {
     visit(ws, []);
   }
   return result;
+}
+
+/**
+ * Parse a list of workspace names from commander's repeated-option
+ * accumulator. Supports both `--workspace api --workspace core` (one entry
+ * per flag) and `--workspace api,core` (comma-separated). Trims, drops
+ * empties, and de-duplicates while preserving first-occurrence order.
+ */
+export function parseWorkspaceList(input: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    for (const part of raw.split(",")) {
+      const trimmed = part.trim();
+      if (trimmed.length === 0) continue;
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  }
+  return out;
+}
+
+/** Commander callback that funnels into `parseWorkspaceList`. */
+export function workspaceListOption(value: string, prev: string[]): string[] {
+  return parseWorkspaceList([...prev, value]);
+}
+
+export interface WorkspaceFilterOptions {
+  /** Limit the sweep to these workspaces (by name). Repeated/comma-separated. */
+  workspace?: string[];
+  /** Subtract these workspaces from the default sweep. Repeated/comma-separated. */
+  exclude?: string[];
+  /** Explicit all-workspaces flag (only meaningful at the repo root). */
+  workspaces?: boolean;
+}
+
+/**
+ * Pick which workspaces a sweep command (`build`, `test`, `docs`, `clean`,
+ * `run`) should act on. Returns `WorkspaceNode[]` so callers can feed the
+ * result into `runWorkspaces` directly.
+ *
+ * Conflict matrix (all hard errors via `InvalidArgumentError`):
+ *   • `--workspace api --exclude api` → empty selection.
+ *   • Excluding a workspace whose dependents remain in the selection
+ *     (the runner needs the dep built; failing fast beats a confusing
+ *     "skipped-upstream-failed" run).
+ *   • `--exclude` inside a single-workspace scope (no list to subtract from).
+ *
+ * `actionVerb` is interpolated into "Run from the root to <verb> a different
+ * workspace." style errors.
+ */
+export function selectWorkspaceTargets(
+  context: WorkspaceContext,
+  opts: WorkspaceFilterOptions,
+  actionVerb: string,
+): WorkspaceNode[] {
+  const includes = opts.workspace ?? [];
+  const excludes = opts.exclude ?? [];
+
+  if (context.atRoot && context.workspaces.length > 0) {
+    if (includes.length > 0) {
+      const picked = includes.map((name) => findWorkspace(context, name));
+      const excluded = applyExcludes(picked, excludes, context);
+      return ensureNonEmpty(topologicalOrder(excluded), includes, excludes);
+    }
+    if (excludes.length > 0) {
+      const remaining = applyExcludes(context.workspaces, excludes, context);
+      const ordered = topologicalOrder(remaining);
+      assertNoOrphanedDependents(ordered, context);
+      return ensureNonEmpty(ordered, includes, excludes);
+    }
+    return topologicalOrder(context.workspaces);
+  }
+
+  if (context.current !== undefined) {
+    if (excludes.length > 0) {
+      throw new InvalidArgumentError(
+        `--exclude is only valid at the repo root; you're inside workspace "${context.current.name}".`,
+      );
+    }
+    if (includes.length > 0) {
+      const others = includes.filter((n) => n !== context.current!.name);
+      if (others.length > 0) {
+        throw new InvalidArgumentError(
+          `--workspace ${others.map((n) => `"${n}"`).join(", ")} does not match the current workspace "${context.current.name}". Run from the root to ${actionVerb} a different workspace.`,
+        );
+      }
+    }
+    if (opts.workspaces === true) {
+      throw new InvalidArgumentError(
+        "--workspaces is only valid at the repo root; you're inside workspace " +
+          `"${context.current.name}".`,
+      );
+    }
+    return [context.current];
+  }
+
+  if (excludes.length > 0) {
+    throw new InvalidArgumentError(`--exclude given but this project declares no workspaces.`);
+  }
+  if (includes.length > 0) {
+    throw new InvalidArgumentError(
+      `--workspace ${includes.map((n) => `"${n}"`).join(", ")} given but this project declares no workspaces.`,
+    );
+  }
+  return [{ name: context.root.name, root: context.root.rootDir, project: context.root }];
+}
+
+function applyExcludes(
+  nodes: WorkspaceNode[],
+  excludes: string[],
+  context: WorkspaceContext,
+): WorkspaceNode[] {
+  if (excludes.length === 0) return nodes;
+  const excludeSet = new Set(excludes);
+  // Validate every excluded name actually exists in the project.
+  for (const name of excludes) {
+    if (!context.workspaces.some((w) => w.name === name)) {
+      findWorkspace(context, name); // throws with the known-names hint
+    }
+  }
+  return nodes.filter((n) => !excludeSet.has(n.name));
+}
+
+function assertNoOrphanedDependents(selected: WorkspaceNode[], context: WorkspaceContext): void {
+  const selectedSet = new Set(selected.map((n) => n.name));
+  const allByName = new Map(context.workspaces.map((n) => [n.name, n]));
+  for (const node of selected) {
+    for (const depName of workspaceDependencyNames(node)) {
+      if (!allByName.has(depName)) continue; // external workspace dep, not our problem
+      if (!selectedSet.has(depName)) {
+        throw new InvalidArgumentError(
+          `"${node.name}" depends on "${depName}"; pass --workspace ${depName} too or also exclude ${node.name}.`,
+        );
+      }
+    }
+  }
+}
+
+function ensureNonEmpty(
+  selected: WorkspaceNode[],
+  includes: string[],
+  excludes: string[],
+): WorkspaceNode[] {
+  if (selected.length > 0) return selected;
+  if (includes.length > 0 && excludes.length > 0) {
+    throw new InvalidArgumentError(
+      `selection is empty: every --workspace name (${includes.join(", ")}) was also in --exclude.`,
+    );
+  }
+  if (excludes.length > 0) {
+    throw new InvalidArgumentError(
+      `selection is empty: --exclude ${excludes.join(", ")} removed every workspace.`,
+    );
+  }
+  return selected;
 }
 
 /** Look up a workspace by name within a context. Throws if not found. */
@@ -320,25 +477,114 @@ function enumerateWorkspaces(root: ResolvedProject): WorkspaceNode[] {
 
 /**
  * Merge root fields into a workspace project: `compatibility`, `authors`,
- * `description` inherit from the root when the workspace hasn't declared
- * them; `registries` are merged (root first, de-duped by URL); everything
- * else (including `version`) stays workspace-local.
+ * `description`, and `jdk` inherit from the root when the workspace hasn't
+ * declared them; `registries` and `dependencies` merge (root first,
+ * workspace wins on collision; a workspace value of `null` opts out of an
+ * inherited dependency entry); everything else (including `version`) stays
+ * workspace-local.
  */
 function mergeInheritance(root: ResolvedProject, own: Project): Project {
   const merged: Project = { ...own };
 
-  if (own.compatibility === undefined || own.compatibility === null) {
-    merged.compatibility = root.compatibility;
-  }
+  const mergedCompat = mergeCompatibility(root.compatibility, own.compatibility);
+  if (mergedCompat !== undefined) merged.compatibility = mergedCompat;
   if (own.authors === undefined) {
     merged.authors = root.authors;
   }
   if (own.description === undefined) {
     merged.description = root.description;
   }
+  if (own.jdk === undefined || own.jdk === null) {
+    merged.jdk = root.jdk;
+  }
   merged.registries = mergeRegistries(root.registries, own.registries);
+  merged.dependencies = mergeDependencies(
+    root.dependencies as Record<string, string | Dependency | null> | undefined,
+    own.dependencies as Record<string, string | Dependency | null> | undefined,
+  );
+  merged.scripts = mergeScripts(
+    root.scripts as Record<string, string | null> | undefined,
+    own.scripts as Record<string, string | null> | undefined,
+  );
 
   return merged;
+}
+
+/**
+ * Merge `scripts` from root and workspace. Same shape as `mergeDependencies`:
+ * additive, workspace wins on collision, `null` opts out of an inherited
+ * entry. Returns `undefined` when neither side declares anything so projects
+ * without scripts stay in their unscripted shape.
+ */
+function mergeScripts(
+  rootScripts: Record<string, string | null> | undefined,
+  wsScripts: Record<string, string | null> | undefined,
+): Record<string, string> | undefined {
+  if (rootScripts === undefined && wsScripts === undefined) return undefined;
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(rootScripts ?? {})) {
+    if (value === null) continue;
+    out[name] = value;
+  }
+  for (const [name, value] of Object.entries(wsScripts ?? {})) {
+    if (value === null) {
+      delete out[name];
+      continue;
+    }
+    out[name] = value;
+  }
+  return out;
+}
+
+/**
+ * Field-by-field compatibility merge. A workspace that overrides only
+ * `platforms` (the multi-platform template's pattern) still inherits
+ * `versions` from the root, and vice versa. When both fields are
+ * overridden, behavior matches the old deep-replace.
+ */
+function mergeCompatibility(
+  rootC: Project["compatibility"] | undefined,
+  wsC: Project["compatibility"] | undefined,
+): Project["compatibility"] | undefined {
+  if ((rootC === undefined || rootC === null) && (wsC === undefined || wsC === null)) {
+    return undefined;
+  }
+  if (wsC === undefined || wsC === null) return rootC;
+  if (rootC === undefined || rootC === null) return wsC;
+  return {
+    versions: wsC.versions ?? rootC.versions,
+    platforms: wsC.platforms ?? rootC.platforms,
+  };
+}
+
+/**
+ * Merge dependency maps from root and workspace. Root keys go in first;
+ * workspace keys overwrite same-named entries. A workspace value of `null`
+ * removes the inherited entry (so a workspace can opt out of a dep its
+ * siblings need). Returns `undefined` when neither side declares anything.
+ *
+ * The `null` sentinel is a parse-time-only feature: this function strips
+ * nulls so downstream consumers (`resolveDeclaredDependencies`, `pluggy
+ * why`, …) iterate a clean `Record<string, string | Dependency>`.
+ */
+function mergeDependencies(
+  rootDeps: Record<string, string | Dependency | null> | undefined,
+  wsDeps: Record<string, string | Dependency | null> | undefined,
+): Record<string, string | Dependency> | undefined {
+  if (rootDeps === undefined && wsDeps === undefined) return undefined;
+  const out: Record<string, string | Dependency> = {};
+  for (const [name, value] of Object.entries(rootDeps ?? {})) {
+    if (value === null) continue;
+    out[name] = value;
+  }
+  for (const [name, value] of Object.entries(wsDeps ?? {})) {
+    if (value === null) {
+      delete out[name];
+      continue;
+    }
+    out[name] = value;
+  }
+  return out;
 }
 
 function mergeRegistries(
@@ -372,7 +618,7 @@ function findCurrentWorkspace(workspaces: WorkspaceNode[], cwd: string): Workspa
   return best;
 }
 
-function workspaceDependencyNames(node: WorkspaceNode): string[] {
+export function workspaceDependencyNames(node: WorkspaceNode): string[] {
   const deps = node.project.dependencies;
   if (deps === undefined) return [];
   const names: string[] = [];

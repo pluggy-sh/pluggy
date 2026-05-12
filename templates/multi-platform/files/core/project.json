@@ -1,0 +1,8 @@
+{
+  "name": "${project.name}-core",
+  "version": "0.1.0",
+  "description": "${project.name} shared platform-agnostic implementation. Each platform shades this jar in.",
+  "dependencies": {
+    "${project.name}-api": { "source": "workspace:${project.name}-api", "version": "*" }
+  }
+}

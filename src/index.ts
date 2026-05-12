@@ -6,21 +6,27 @@ import { Command, InvalidArgumentError } from "commander";
 import { auditCommand } from "./commands/audit.ts";
 import { buildCommand } from "./commands/build.ts";
 import { cacheCommand } from "./commands/cache.ts";
-import { completionsCommand } from "./commands/completions.ts";
+import { cleanCommand } from "./commands/clean.ts";
+import { completeWorkspacesCommand, completionsCommand } from "./commands/completions.ts";
 import { devCommand } from "./commands/dev.ts";
 import { docsCommand } from "./commands/docs.ts";
 import { doctorCommand } from "./commands/doctor.ts";
+import { explainCommand } from "./commands/explain.ts";
+import { graphCommand } from "./commands/graph.ts";
 import { infoCommand } from "./commands/info.ts";
 import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
 import { listCommand } from "./commands/list.ts";
 import { outdatedCommand } from "./commands/outdated.ts";
 import { removeCommand } from "./commands/remove.ts";
+import { runCommand } from "./commands/run.ts";
 import { searchCommand } from "./commands/search.ts";
 import { sdkCommand } from "./commands/sdk.ts";
 import { testCommand } from "./commands/test.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { whyCommand } from "./commands/why.ts";
+import { workspaceCommand } from "./commands/workspace.ts";
+import { workspacesCommand } from "./commands/workspaces.ts";
 import { causeMessages, formatSource, isTypedError, UserError } from "./errors.ts";
 import { emitError, initLogging } from "./logging.ts";
 import { startUpdateCheck } from "./update-check.ts";
@@ -50,6 +56,7 @@ program.addCommand(listCommand());
 program.addCommand(whyCommand());
 program.addCommand(outdatedCommand());
 program.addCommand(auditCommand());
+program.addCommand(runCommand());
 program.addCommand(buildCommand());
 program.addCommand(testCommand());
 program.addCommand(docsCommand());
@@ -57,8 +64,16 @@ program.addCommand(doctorCommand({ pluggyVersion: CLI_VERSION, repository: REPOS
 program.addCommand(devCommand());
 program.addCommand(sdkCommand());
 program.addCommand(cacheCommand());
+program.addCommand(cleanCommand());
 program.addCommand(upgradeCommand({ repository: REPOSITORY }));
+program.addCommand(workspaceCommand());
+program.addCommand(workspacesCommand());
+program.addCommand(explainCommand());
+program.addCommand(graphCommand());
 program.addCommand(completionsCommand(program));
+// Hidden helper used by shell completion scripts. Lives at the top level so
+// it's invokable as `pluggy __complete-workspaces`; not surfaced in --help.
+program.addCommand(completeWorkspacesCommand(), { hidden: true });
 
 program.exitOverride();
 

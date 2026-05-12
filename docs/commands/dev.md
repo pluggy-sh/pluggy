@@ -10,19 +10,19 @@ pluggy dev [options]
 
 ## Flags
 
-| Flag                 | Default                              | Notes                                                                |
-| -------------------- | ------------------------------------ | -------------------------------------------------------------------- |
-| `--workspace <name>` | none                                 | **Required** at a multi-workspace root.                              |
-| `--platform <id>`    | `project.compatibility.platforms[0]` | Override the platform (for example `paper` to `spigot`).             |
-| `--version <semver>` | `project.compatibility.versions[0]`  | Override the Minecraft version.                                      |
-| `--port <n>`         | `project.dev.port` or `25565`        | Written into `server.properties`.                                    |
-| `--memory <x>`       | `project.dev.memory` or `2G`         | JVM heap size; becomes `-Xmx<value>`.                                |
-| `--clean`            | off                                  | Wipe `dev/` before staging.                                          |
-| `--fresh-world`      | off                                  | Keep `dev/` but delete every `dev/world*` subdirectory.              |
-| `--no-watch`         | watch on                             | Run once. Don't restart on change.                                   |
-| `--reload`           | off                                  | Prefer Bukkit's `/reload confirm` when hotswap can't apply a change. |
-| `--no-hotswap`       | hotswap on                           | Disable HotswapAgent and JBR. Use `/reload` or restart only.         |
-| `--offline`          | off                                  | Force `online-mode=false` in `server.properties`.                    |
+| Flag                 | Default                              | Notes                                                                           |
+| -------------------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| `--workspace <name>` | none                                 | Pick a workspace at the root. Required when more than one workspace has `main`. |
+| `--platform <id>`    | `project.compatibility.platforms[0]` | Override the platform (for example `paper` to `spigot`).                        |
+| `--version <semver>` | `project.compatibility.versions[0]`  | Override the Minecraft version.                                                 |
+| `--port <n>`         | `project.dev.port` or `25565`        | Written into `server.properties`.                                               |
+| `--memory <x>`       | `project.dev.memory` or `2G`         | JVM heap size; becomes `-Xmx<value>`.                                           |
+| `--clean`            | off                                  | Wipe `dev/` before staging.                                                     |
+| `--fresh-world`      | off                                  | Keep `dev/` but delete every `dev/world*` subdirectory.                         |
+| `--no-watch`         | watch on                             | Run once. Don't restart on change.                                              |
+| `--reload`           | off                                  | Prefer Bukkit's `/reload confirm` when hotswap can't apply a change.            |
+| `--no-hotswap`       | hotswap on                           | Disable HotswapAgent and JBR. Use `/reload` or restart only.                    |
+| `--offline`          | off                                  | Force `online-mode=false` in `server.properties`.                               |
 
 ## What it does
 
@@ -136,12 +136,12 @@ This is designed for CI and process supervisors. After the envelope line, the re
 
 ## Error cases
 
-| Trigger                                 | Message                                                                                                         |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Multi-workspace root, no `--workspace`  | `dev requires --workspace <name> at a root that declares workspaces. Known workspaces: ...`                     |
-| `--workspace X` from inside workspace Y | `--workspace "X" does not match the current workspace "Y". Run from the root to target a different workspace.`  |
-| No platforms declared                   | `runDev: no platform configured, set compatibility.platforms[0] or pass --platform`                             |
-| `java` not on PATH                      | Standard `spawn ENOENT`. See [Troubleshooting](../troubleshooting.md#java-not-found-from-the-dev-server-spawn). |
+| Trigger                                 | Message                                                                                                                                                                                                        |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Multi-workspace root, no `--workspace`  | If exactly one workspace declares `main`, `dev` auto-picks it and logs the choice. Otherwise it errors with a table listing each workspace's `main` and `compatibility.platforms` so the ambiguity is obvious. |
+| `--workspace X` from inside workspace Y | `--workspace "X" does not match the current workspace "Y". Run from the root to target a different workspace.`                                                                                                 |
+| No platforms declared                   | `runDev: no platform configured, set compatibility.platforms[0] or pass --platform`                                                                                                                            |
+| `java` not on PATH                      | Standard `spawn ENOENT`. See [Troubleshooting](../troubleshooting.md#java-not-found-from-the-dev-server-spawn).                                                                                                |
 
 ## See also
 

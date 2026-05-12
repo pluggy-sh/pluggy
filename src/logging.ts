@@ -7,8 +7,14 @@
  * `emit` is the single output backbone: every command-layer success or
  * error result goes through it, and it routes between human-readable
  * formatting and `--json` mode based on the mode set at startup.
+ *
+ * Per-workspace buffering: the parallel runner wraps each per-workspace
+ * task in `withLogBuffer(label, fn)` so log lines emitted from that task
+ * land in a buffer instead of stdout. The buffer is flushed as a block
+ * when the task settles, keeping parallel output readable.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import process from "node:process";
 import pc from "picocolors";
 
@@ -54,6 +60,73 @@ export function isJsonMode(): boolean {
   return state.json;
 }
 
+interface BufferedLine {
+  stream: "stdout" | "stderr";
+  text: string;
+}
+
+interface BufferContext {
+  label: string;
+  lines: BufferedLine[];
+}
+
+const bufferStorage = new AsyncLocalStorage<BufferContext>();
+
+/**
+ * Run `fn` with log output captured into a per-task buffer instead of
+ * written directly to stdout/stderr. Returns a result envelope with the
+ * captured buffer alongside either the resolved value OR a thrown error.
+ * Never throws: callers always get the buffer to flush, even on failure.
+ *
+ * Useful for the parallel runner: it can capture a workspace's full
+ * output and emit it as a block once that workspace settles, avoiding
+ * interleaved chatter when concurrency > 1.
+ *
+ * `--json` mode bypasses the buffer entirely (no human output is produced
+ * in the first place).
+ */
+export async function withLogBuffer<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<{ value?: T; error?: Error; buffer: BufferedLine[] }> {
+  if (state.json) {
+    try {
+      const value = await fn();
+      return { value, buffer: [] };
+    } catch (err) {
+      return { error: err instanceof Error ? err : new Error(String(err)), buffer: [] };
+    }
+  }
+  const context: BufferContext = { label, lines: [] };
+  try {
+    const value = await bufferStorage.run(context, fn);
+    return { value, buffer: context.lines };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err : new Error(String(err)),
+      buffer: context.lines,
+    };
+  }
+}
+
+/** Flush a buffer captured by `withLogBuffer` to the live console streams. */
+export function flushLogBuffer(buffer: BufferedLine[]): void {
+  for (const { stream, text } of buffer) {
+    if (stream === "stderr") console.error(text);
+    else console.log(text);
+  }
+}
+
+function writeLine(stream: "stdout" | "stderr", text: string): void {
+  const ctx = bufferStorage.getStore();
+  if (ctx !== undefined) {
+    ctx.lines.push({ stream, text });
+    return;
+  }
+  if (stream === "stderr") console.error(text);
+  else console.log(text);
+}
+
 function color(fn: (s: string) => string): (s: string) => string {
   return (s) => (state.noColor ? s : fn(s));
 }
@@ -84,49 +157,49 @@ export const log = {
   /** Section heading. Adds a blank line above and bolds the text. */
   heading(msg: string): void {
     if (state.json) return;
-    console.log(`\n${bold(msg)}`);
+    writeLine("stdout", `\n${bold(msg)}`);
   },
 
   /** Plain informational line. */
   info(msg: string): void {
     if (state.json) return;
-    console.log(msg);
+    writeLine("stdout", msg);
   },
 
   /** Indented progress line. Use for sub-steps under a heading or task. */
   step(msg: string): void {
     if (state.json) return;
-    console.log(`  ${dim("›")} ${msg}`);
+    writeLine("stdout", `  ${dim("›")} ${msg}`);
   },
 
   /** Debug-only line. Hidden unless `-v` / `--verbose` / `DEBUG`. */
   debug(msg: string): void {
     if (state.json) return;
-    if (state.verbose) console.log(dim(`  · ${msg}`));
+    if (state.verbose) writeLine("stdout", dim(`  · ${msg}`));
   },
 
   /** Non-fatal warning. */
   warn(msg: string): void {
     if (state.json) return;
-    console.warn(`${yellow("!")} ${msg}`);
+    writeLine("stderr", `${yellow("!")} ${msg}`);
   },
 
   /** Recoverable error (the command may continue). */
   error(msg: string): void {
     if (state.json) return;
-    console.error(`${red("✗")} ${msg}`);
+    writeLine("stderr", `${red("✗")} ${msg}`);
   },
 
   /** Fatal error. Same render as `error`; reserved for command-aborting failures. */
   critical(msg: string): void {
     if (state.json) return;
-    console.error(`${red("✗")} ${msg}`);
+    writeLine("stderr", `${red("✗")} ${msg}`);
   },
 
   /** Success / completion line. */
   success(msg: string): void {
     if (state.json) return;
-    console.log(`${green("✓")} ${msg}`);
+    writeLine("stdout", `${green("✓")} ${msg}`);
   },
 };
 

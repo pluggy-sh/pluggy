@@ -1,0 +1,9 @@
+{
+  "id": "multi-module",
+  "name": "Multi-module (api + core + plugin)",
+  "description": "An api / core / plugin layout demonstrating workspaces. The root declares three child workspaces; `plugin` is the shipping workspace and depends on `core`, which depends on `api`.",
+  "family": "bukkit",
+  "projectJsonExtras": {
+    "workspaces": ["./api", "./core", "./plugin"]
+  }
+}

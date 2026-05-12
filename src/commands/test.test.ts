@@ -260,7 +260,7 @@ describe("runTestCommand", () => {
       result: { total: 0, passed: 0, failed: 0, skipped: 0, cases: [] },
     });
 
-    const res = await runTestCommand({ cwd: rootDir, workspace: "suite_impl" });
+    const res = await runTestCommand({ cwd: rootDir, workspace: ["suite_impl"] });
 
     expect(res.results).toHaveLength(1);
     expect(res.results[0].workspace).toBe("suite_impl");
@@ -441,7 +441,7 @@ describe("selectTestTargets", () => {
       JSON.stringify({ name: "a", version: "0.1.0", main: "a.M" }),
     );
     const ctx = resolveWorkspaceContext(rootDir)!;
-    expect(() => selectTestTargets(ctx, { workspace: "does-not-exist" })).toThrow(
+    expect(() => selectTestTargets(ctx, { workspace: ["does-not-exist"] })).toThrow(
       /workspace not found/,
     );
   });

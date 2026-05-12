@@ -6,8 +6,7 @@ import { Command } from "commander";
 import { cachedJarPathForEntry } from "../cache/dependency-paths.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
-import { writeFileLF } from "../portable.ts";
-import { type Project } from "../project.ts";
+import { type Project, writeProjectFile } from "../project.ts";
 import { resolveDependency } from "../resolver/index.ts";
 import type { ResolvedDependency } from "../resolver/index.ts";
 import {
@@ -381,7 +380,7 @@ async function writeDependencyToProject(
   deps[name] = entry;
   parsed.dependencies = deps;
 
-  await writeFileLF(path, `${JSON.stringify(parsed, null, 2)}\n`);
+  await writeProjectFile(path, parsed);
 }
 
 function emitInstallResult(

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { UserError } from "./errors.ts";
+import { writeFileLF } from "./portable.ts";
 
 /** Parsed `project.json`. */
 export interface Project {
@@ -24,6 +25,32 @@ export interface Project {
   resources?: Record<string, string>;
   workspaces?: string[];
   dev?: DevConfig;
+  /**
+   * Opt out of `pluggy docs` for this workspace. The command at the repo
+   * root silently skips workspaces with `docs: false`; an explicit
+   * `--workspace <name>` still documents it. Ignored by lockfile-wide
+   * commands (`why`, `outdated`, `audit`). Defaults to `true`.
+   */
+  docs?: boolean;
+  /**
+   * Opt out of `pluggy test` for this workspace. Same semantics as `docs`:
+   * sweeps skip; explicit `--workspace <name>` still runs. Defaults to
+   * `true`.
+   */
+  test?: boolean;
+  /**
+   * Named shell tasks invokable via `pluggy run <name>`. Values follow the
+   * `cmd arg arg` shape; pluggy never spawns through a shell, so complex
+   * pipelines belong in a script file (`./scripts/check.sh`) referenced by
+   * one of these entries. `${project.x}` / `${workspace.x}` substitution
+   * runs before tokenization.
+   *
+   * Scripts cascade additively from the root. A workspace can override a
+   * root-defined script (later wins on collision) or opt out by setting the
+   * value to `null` (parsed at the schema boundary; downstream consumers
+   * never see `null`).
+   */
+  scripts?: Record<string, string>;
   /**
    * Optional JDK pin. When omitted, pluggy derives the required major from
    * `compatibility.versions[0]` and downloads the default distribution
@@ -161,6 +188,20 @@ export function resolveProjectFile(path: string): ResolvedProject | undefined {
     return project;
   }
   return undefined;
+}
+
+/**
+ * Serialize and persist a `project.json`. Strips `ResolvedProject`-only fields
+ * (`rootDir`, `projectFile`) so they don't leak into the file. Two-space JSON
+ * indent and a trailing newline, written with LF endings via `writeFileLF`.
+ *
+ * Use this anywhere we mutate an existing `project.json` (e.g. `install`,
+ * `workspace add`) so indent, line endings, and field ordering stay
+ * consistent across commands.
+ */
+export async function writeProjectFile(path: string, project: Project): Promise<void> {
+  const { rootDir: _rootDir, projectFile: _projectFile, ...rest } = project as ResolvedProject;
+  await writeFileLF(path, `${JSON.stringify(rest, null, 2)}\n`);
 }
 
 /** `resolveProject` starting from `cwd` (or `process.cwd()` by default). */

@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import { arch, platform, release } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { Command } from "commander";
@@ -11,7 +12,7 @@ import { pickDescriptor } from "../build/descriptor.ts";
 import { HOTSWAP_AGENT_VERSION } from "../dev/hotswap.ts";
 import { JBR_VERSION, jbrCacheKey, jbrJavaPath, jbrTarget } from "../dev/jbr.ts";
 import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
-import { type LockfileEntry, pruneOrphans, readLock } from "../lockfile.ts";
+import { type LockfileEntry, pruneOrphans, readLock, writeLock } from "../lockfile.ts";
 import {
   type InstallMethod,
   describeInstallMethod,
@@ -25,12 +26,15 @@ import {
   getStatePath,
   primaryPlatform,
   primaryVersion,
+  type Project,
+  resolveProjectFile,
   type ResolvedProject,
+  writeProjectFile,
 } from "../project.ts";
 import { registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { getCachedJdk } from "../sdk/index.ts";
-import { selectJdkForProject } from "../sdk/resolve.ts";
+import { selectJdkForProject, selectJdkForVersion } from "../sdk/resolve.ts";
 import { compareVersions, getCachedLatestVersion } from "../update-check.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";
 
@@ -77,6 +81,13 @@ export interface EnvironmentInfo {
 
 export interface DoctorCommandOptions {
   cwd?: string;
+  /**
+   * Apply safe remediations after running checks. Currently:
+   *   • prune orphan transitive entries from `pluggy.lock`.
+   *   • drop `workspaces[]` entries that point at a missing folder.
+   * Never deletes user code; only edits metadata files.
+   */
+  fix?: boolean;
   /** Current pluggy CLI version (without leading `v`). Used by the `pluggy-version` check. */
   pluggyVersion?: string;
   /** GitHub `owner/repo` slug used by the `pluggy-version` check. */
@@ -93,6 +104,8 @@ export interface DoctorCommandOptions {
     workspace?: (ctx: WorkspaceContext) => CheckResult;
     descriptor?: (ctx: WorkspaceContext) => CheckResult[];
     versions?: (project: ResolvedProject) => Promise<CheckResult[]>;
+    jdkPin?: (project: ResolvedProject) => Promise<CheckResult | undefined>;
+    docsFlag?: (project: ResolvedProject) => CheckResult | undefined;
     outdated?: () => Promise<CheckResult>;
     dependencyJars?: () => Promise<CheckResult>;
     pluggyVersion?: () => Promise<CheckResult>;
@@ -105,6 +118,8 @@ export interface DoctorCommandResult {
   environment: EnvironmentInfo;
   checks: CheckResult[];
   summary: { passed: number; warned: number; failed: number };
+  /** Populated when `fix: true` and at least one remediation ran. */
+  fixes?: Array<{ id: string; detail: string }>;
 }
 
 /** Env var names that influence pluggy's behaviour. Names only; never values. */
@@ -135,6 +150,13 @@ export async function runDoctorCommand(
   opts: DoctorCommandOptions = {},
 ): Promise<DoctorCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
+
+  // When `--fix` is set, run the structural-repair pass FIRST so the rest of
+  // doctor can resolve the workspace context. `resolveWorkspaceContext`
+  // hard-fails on a declared-but-missing workspace folder; pruning those
+  // entries up front lets the rest of doctor proceed.
+  const preFixes = opts.fix === true ? prefixMissingWorkspaces(cwd) : [];
+
   const context = resolveWorkspaceContext(cwd);
 
   if (context === undefined) {
@@ -188,6 +210,16 @@ export async function runDoctorCommand(
     all.push(...verResults);
   }
 
+  for (const project of toValidate) {
+    const jdkResult = await (hooks.jdkPin ? hooks.jdkPin(project) : checkJdkPin(project));
+    if (jdkResult !== undefined) all.push(jdkResult);
+  }
+
+  for (const project of toValidate) {
+    const docsResult = hooks.docsFlag ? hooks.docsFlag(project) : checkDocsFlag(project);
+    if (docsResult !== undefined) all.push(docsResult);
+  }
+
   all.push(hooks.workspace ? hooks.workspace(context) : checkWorkspaceGraph(context));
 
   const descResults = hooks.descriptor ? hooks.descriptor(context) : checkDescriptors(context);
@@ -215,23 +247,128 @@ export async function runDoctorCommand(
 
   const environment = await collectEnvironmentInfoForContext(context, opts.pluggyVersion);
 
-  return finalizeAndEmit({ opts, environment, checks: all });
+  const inlineFixes = opts.fix === true ? await applyFixes(context) : undefined;
+  const fixes = combineFixes(preFixes, inlineFixes);
+
+  return finalizeAndEmit({ opts, environment, checks: all, fixes });
+}
+
+function combineFixes(
+  pre: Array<{ id: string; detail: string }>,
+  post: DoctorCommandResult["fixes"],
+): DoctorCommandResult["fixes"] {
+  const combined: Array<{ id: string; detail: string }> = [...pre, ...(post ?? [])];
+  return combined.length > 0 ? combined : undefined;
+}
+
+/**
+ * Synchronously prune missing-folder workspace entries from the root
+ * `project.json`. Runs before `resolveWorkspaceContext` so the rest of
+ * doctor can proceed even when the user has deleted a workspace folder
+ * by hand.
+ */
+function prefixMissingWorkspaces(cwd: string): Array<{ id: string; detail: string }> {
+  const fixes: Array<{ id: string; detail: string }> = [];
+  // Walk upward to the nearest project.json (matches resolveWorkspaceContext).
+  let dir = cwd;
+  while (true) {
+    const candidate = join(dir, "project.json");
+    if (existsSync(candidate)) {
+      const raw = resolveProjectFile(candidate);
+      if (raw === undefined || !Array.isArray(raw.workspaces)) return fixes;
+      const kept: string[] = [];
+      const dropped: string[] = [];
+      for (const rel of raw.workspaces) {
+        const wsPath = rel.startsWith("./") ? rel.slice(2) : rel;
+        const abs = join(dir, wsPath);
+        if (existsSync(join(abs, "project.json"))) kept.push(rel);
+        else dropped.push(rel);
+      }
+      if (dropped.length > 0) {
+        const { rootDir: _r, projectFile: _p, ...rest } = raw;
+        const next: Project = { ...rest, workspaces: kept };
+        writeFileSync(candidate, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+        fixes.push({
+          id: "workspace-prune",
+          detail: `removed ${dropped.length} missing workspace${dropped.length === 1 ? "" : "s"} from root project.json (${dropped.join(", ")})`,
+        });
+      }
+      return fixes;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return fixes;
+    dir = parent;
+  }
+}
+
+/**
+ * Apply safe, mechanical remediations to the project's metadata. Each fix
+ * is non-destructive: edits `pluggy.lock` or `project.json` only, never
+ * removes source files.
+ */
+async function applyFixes(context: WorkspaceContext): Promise<DoctorCommandResult["fixes"]> {
+  const fixes: NonNullable<DoctorCommandResult["fixes"]> = [];
+
+  // Fix 1: prune orphan transitive entries from the lockfile.
+  const lock = readLock(context.root.rootDir);
+  if (lock !== null) {
+    const before = Object.keys(lock.entries).length;
+    pruneOrphans(lock.entries);
+    const after = Object.keys(lock.entries).length;
+    if (before !== after) {
+      await writeLock(context.root.rootDir, lock);
+      fixes.push({
+        id: "lockfile-prune",
+        detail: `pruned ${before - after} orphan entr${before - after === 1 ? "y" : "ies"} from pluggy.lock`,
+      });
+    }
+  }
+
+  // Fix 2: drop `workspaces[]` entries that point at a missing folder.
+  // The folder might have been deleted by hand; pluggy should adapt rather
+  // than refusing to do anything until the user edits the root.
+  const rootRaw = resolveProjectFile(context.root.projectFile);
+  if (rootRaw !== undefined && Array.isArray(rootRaw.workspaces)) {
+    const kept: string[] = [];
+    const dropped: string[] = [];
+    for (const rel of rootRaw.workspaces) {
+      const wsPath = rel.startsWith("./") ? rel.slice(2) : rel;
+      const abs = join(context.root.rootDir, wsPath);
+      if (existsSync(join(abs, "project.json"))) {
+        kept.push(rel);
+      } else {
+        dropped.push(rel);
+      }
+    }
+    if (dropped.length > 0) {
+      const { rootDir: _r, projectFile: _p, ...rest } = rootRaw;
+      const next: Project = { ...rest, workspaces: kept };
+      await writeProjectFile(context.root.projectFile, next);
+      fixes.push({
+        id: "workspace-prune",
+        detail: `removed ${dropped.length} missing workspace${dropped.length === 1 ? "" : "s"} from root project.json (${dropped.join(", ")})`,
+      });
+    }
+  }
+
+  return fixes.length > 0 ? fixes : undefined;
 }
 
 interface FinalizeArgs {
   opts: DoctorCommandOptions;
   environment: EnvironmentInfo;
   checks: CheckResult[];
+  fixes?: DoctorCommandResult["fixes"];
 }
 
 function finalizeAndEmit(args: FinalizeArgs): DoctorCommandResult {
-  const { opts, environment, checks } = args;
+  const { opts, environment, checks, fixes } = args;
   const summary = summarize(checks);
   const ok = summary.failed === 0;
   const exitCode: 0 | 1 = ok ? 0 : 1;
 
   const failures = checks.filter((c) => c.status === "fail");
-  const result: DoctorCommandResult = { ok, exitCode, environment, checks, summary };
+  const result: DoctorCommandResult = { ok, exitCode, environment, checks, summary, fixes };
 
   // `--report` short-circuits the human renderer, but `--json` still wins.
   if (opts.report === true && !isJsonMode()) {
@@ -246,6 +383,7 @@ function finalizeAndEmit(args: FinalizeArgs): DoctorCommandResult {
     checks,
     summary,
     failures,
+    fixes,
   };
   const printHuman = (): void => printHumanReport(result);
   if (ok) emit(payload, printHuman);
@@ -461,11 +599,95 @@ export function checkLockfile(context: WorkspaceContext): CheckResult {
     };
   }
 
+  // Coverage: every declared dep (post-inheritance) must have a lockfile entry.
+  // Without this, a workspace that inherits a dep but was never re-installed
+  // can silently drift and only surface as a build error later.
+  const missing: Array<{ workspace: string; name: string }> = [];
+  const lockEntryNames = new Set(Object.keys(lock.entries));
+  for (const node of context.workspaces.length > 0 ? context.workspaces : []) {
+    for (const depName of Object.keys(node.project.dependencies ?? {})) {
+      if (!lockEntryNames.has(depName)) {
+        missing.push({ workspace: node.name, name: depName });
+      }
+    }
+  }
+  if (context.workspaces.length === 0) {
+    for (const depName of Object.keys(context.root.dependencies ?? {})) {
+      if (!lockEntryNames.has(depName)) {
+        missing.push({ workspace: context.root.name, name: depName });
+      }
+    }
+  }
+  if (missing.length > 0) {
+    const sample = missing
+      .slice(0, 3)
+      .map((m) => `${m.workspace}:${m.name}`)
+      .join(", ");
+    const ellipsis = missing.length > 3 ? `, +${missing.length - 3} more` : "";
+    return {
+      id,
+      label,
+      status: "warn",
+      detail: `${missing.length} declared dep${missing.length === 1 ? "" : "s"} missing from lockfile (${sample}${ellipsis}); run pluggy install`,
+    };
+  }
+
   return {
     id,
     label,
     status: "pass",
     detail: `${total} entr${total === 1 ? "y" : "ies"}, no orphans`,
+  };
+}
+
+/**
+ * Warn when a shipping workspace (one with `main`) has `docs: false`. The
+ * combination is legal but usually a mistake — a published plugin typically
+ * wants Javadoc generated. Internal workspaces (no `main`) with `docs: false`
+ * are silent: that's the intended use case.
+ */
+export function checkDocsFlag(project: ResolvedProject): CheckResult | undefined {
+  if (project.docs !== false) return undefined;
+  if (project.main === undefined) return undefined;
+  return {
+    id: "docs-flag",
+    label: `Docs flag (${project.name})`,
+    status: "warn",
+    detail: `shipping workspace declares "docs": false; pluggy docs at the root will skip it`,
+  };
+}
+
+/**
+ * Compare a workspace's pinned `jdk.major` against what its primary MC version
+ * would select on its own. A mismatch is a common foot-gun when a workspace
+ * inherits a root-level `jdk` pin but targets a different MC version. Returns
+ * `undefined` when there's no pin to check or no MC version to compare to.
+ */
+export async function checkJdkPin(project: ResolvedProject): Promise<CheckResult | undefined> {
+  const pinned = project.jdk?.major;
+  if (pinned === undefined) return undefined;
+
+  const mcVersion = project.compatibility?.versions?.[0];
+  if (mcVersion === undefined) return undefined;
+
+  const implied = await selectJdkForVersion(
+    { ...project, jdk: undefined } as ResolvedProject,
+    mcVersion,
+  );
+  const label = `JDK pin (${project.name})`;
+  if (implied.major !== pinned) {
+    return {
+      id: "jdk-pin",
+      label,
+      status: "warn",
+      detail: `pinned major ${pinned} differs from MC ${mcVersion} default (${implied.major}); confirm the pin is intentional`,
+    };
+  }
+  return {
+    id: "jdk-pin",
+    label,
+    status: "pass",
+    detail: `major ${pinned} matches MC ${mcVersion} default`,
   };
 }
 
@@ -1246,6 +1468,13 @@ function printHumanReport(result: DoctorCommandResult): void {
     printCheck(c);
   }
 
+  if (result.fixes !== undefined && result.fixes.length > 0) {
+    log.heading("Fixes applied");
+    for (const f of result.fixes) {
+      log.step(`${green("✓")} ${f.detail}`);
+    }
+  }
+
   log.info("");
   const { passed, warned, failed } = result.summary;
   const summaryLine = `${passed} passed, ${warned} warned, ${failed} failed`;
@@ -1333,11 +1562,16 @@ export function doctorCommand(options: { pluggyVersion: string; repository: stri
   return new Command("doctor")
     .description("Check your environment and project for common issues.")
     .option("--report", "Print a paste-friendly markdown report for issue filing.")
-    .action(async function action(this: Command, cmdOptions: { report?: boolean }) {
+    .option(
+      "--fix",
+      "Apply safe, non-destructive remediations (lockfile prune, missing workspaces).",
+    )
+    .action(async function action(this: Command, cmdOptions: { report?: boolean; fix?: boolean }) {
       const result = await runDoctorCommand({
         pluggyVersion: options.pluggyVersion,
         repository: options.repository,
         report: cmdOptions.report === true,
+        fix: cmdOptions.fix === true,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

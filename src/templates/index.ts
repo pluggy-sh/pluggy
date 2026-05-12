@@ -130,6 +130,70 @@ export async function loadTemplate(
   return extractFromZip(buffer, id, context);
 }
 
+/**
+ * Fetch ONLY a template's metadata (`template.json`) without instantiating
+ * its `files/` tree. Cheaper than `loadTemplate` when callers only need to
+ * peek at flags like `projectJsonExtras.workspaces` before deciding how to
+ * run the rest of `pluggy init`. No substitution runs.
+ */
+export async function getTemplateMetadata(id: string): Promise<TemplateMetadata> {
+  const source = resolveSource();
+  if (source.kind === "local") {
+    const metaPath = join(source.dir!, id, "template.json");
+    if (!existsSync(metaPath)) {
+      throw new Error(`Template "${id}" not found at ${metaPath}`);
+    }
+    return JSON.parse(await readFile(metaPath, "utf8")) as TemplateMetadata;
+  }
+  const buffer = await fetchRepoZip(source.repo!, source.ref!);
+  return extractMetadataFromZip(buffer, id);
+}
+
+/**
+ * Pull only the `template.json` entry out of a remote-fetched zip. Mirrors
+ * `extractFromZip` but skips the file tree.
+ */
+function extractMetadataFromZip(buffer: Buffer, id: string): Promise<TemplateMetadata> {
+  return new Promise((resolveP, rejectP) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) {
+        rejectP(err ?? new Error("Failed to open template zip"));
+        return;
+      }
+      let rootPrefix: string | undefined;
+      let found = false;
+      const targetSuffix = `templates/${id}/template.json`;
+      zip.on("entry", (entry: Entry) => {
+        if (rootPrefix === undefined) {
+          const slash = entry.fileName.indexOf("/");
+          rootPrefix = slash >= 0 ? entry.fileName.slice(0, slash + 1) : "";
+        }
+        const inside =
+          rootPrefix.length > 0 ? entry.fileName.slice(rootPrefix.length) : entry.fileName;
+        if (inside !== targetSuffix) {
+          zip.readEntry();
+          return;
+        }
+        found = true;
+        readZipEntry(zip, entry)
+          .then((bytes) => {
+            zip.close();
+            resolveP(JSON.parse(bytes.toString("utf8")) as TemplateMetadata);
+          })
+          .catch(rejectP);
+      });
+      zip.on("end", () => {
+        if (!found) {
+          zip.close();
+          rejectP(new Error(`Template "${id}" not found in fetched zip`));
+        }
+      });
+      zip.on("error", rejectP);
+      zip.readEntry();
+    });
+  });
+}
+
 async function loadFromLocal(
   dir: string,
   id: string,

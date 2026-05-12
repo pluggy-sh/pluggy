@@ -1,0 +1,5 @@
+{
+  "name": "${project.name}-api",
+  "version": "0.1.0",
+  "description": "${project.name} public API — platform-agnostic interfaces consumed by addon authors."
+}

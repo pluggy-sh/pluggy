@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import type { ResolvedProject } from "./project.ts";
 import {
   findWorkspace,
+  parseWorkspaceList,
   resolveWorkspaceContext,
+  selectWorkspaceTargets,
   topologicalOrder,
   type WorkspaceContext,
   type WorkspaceNode,
@@ -157,6 +159,148 @@ describe("resolveWorkspaceContext", () => {
       "https://shared.example/",
       "https://repo.ws.example/",
     ]);
+  });
+
+  test("dependencies merge: root first, workspace wins on collision", async () => {
+    await mkdir(join(rootDir, "modules", "core"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: {
+          "paper-api": "1.21-R0.1-SNAPSHOT",
+          shared: "1.0.0",
+        },
+        workspaces: ["./modules/core"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "core", "project.json"),
+      JSON.stringify({
+        name: "suite-core",
+        version: "0.1.0",
+        main: "com.example.core.Plugin",
+        dependencies: {
+          shared: "2.0.0",
+          caffeine: "3.1.8",
+        },
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir);
+    expect(ctx!.workspaces[0].project.dependencies).toEqual({
+      "paper-api": "1.21-R0.1-SNAPSHOT",
+      shared: "2.0.0",
+      caffeine: "3.1.8",
+    });
+  });
+
+  test("dependencies: null in workspace removes inherited entry", async () => {
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: {
+          "paper-api": "1.21-R0.1-SNAPSHOT",
+          caffeine: "3.1.8",
+        },
+        workspaces: ["./modules/api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({
+        name: "suite-api",
+        version: "0.1.0",
+        main: "com.example.api.Plugin",
+        dependencies: { caffeine: null },
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir);
+    expect(ctx!.workspaces[0].project.dependencies).toEqual({
+      "paper-api": "1.21-R0.1-SNAPSHOT",
+    });
+  });
+
+  test("dependencies: undefined when neither root nor workspace declares any", async () => {
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./modules/api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({
+        name: "suite-api",
+        version: "0.1.0",
+        main: "com.example.api.Plugin",
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir);
+    expect(ctx!.workspaces[0].project.dependencies).toBeUndefined();
+  });
+
+  test("jdk inherits from root when workspace omits it", async () => {
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        jdk: { major: 21, distribution: "temurin" },
+        workspaces: ["./modules/api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({
+        name: "suite-api",
+        version: "0.1.0",
+        main: "com.example.api.Plugin",
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir);
+    expect(ctx!.workspaces[0].project.jdk).toEqual({ major: 21, distribution: "temurin" });
+  });
+
+  test("workspace jdk overrides inherited root jdk", async () => {
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        jdk: { major: 21 },
+        workspaces: ["./modules/api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({
+        name: "suite-api",
+        version: "0.1.0",
+        main: "com.example.api.Plugin",
+        jdk: { major: 17 },
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir);
+    expect(ctx!.workspaces[0].project.jdk).toEqual({ major: 17 });
   });
 
   test("version is not inherited", async () => {
@@ -312,6 +456,142 @@ describe("topologicalOrder", () => {
 
   test("empty input returns empty output", () => {
     expect(topologicalOrder([])).toEqual([]);
+  });
+});
+
+describe("parseWorkspaceList", () => {
+  test("single value passes through unchanged", () => {
+    expect(parseWorkspaceList(["api"])).toEqual(["api"]);
+  });
+
+  test("repeated flag values combine in order", () => {
+    expect(parseWorkspaceList(["api", "core"])).toEqual(["api", "core"]);
+  });
+
+  test("comma-separated values split", () => {
+    expect(parseWorkspaceList(["api,core"])).toEqual(["api", "core"]);
+  });
+
+  test("mixed repeat + comma combine into one list", () => {
+    expect(parseWorkspaceList(["api,core", "paper"])).toEqual(["api", "core", "paper"]);
+  });
+
+  test("deduplicates while preserving first-occurrence order", () => {
+    expect(parseWorkspaceList(["api", "api,core", "api"])).toEqual(["api", "core"]);
+  });
+
+  test("trims whitespace and drops empty parts", () => {
+    expect(parseWorkspaceList(["api, core, "])).toEqual(["api", "core"]);
+    expect(parseWorkspaceList(["api,,core"])).toEqual(["api", "core"]);
+  });
+
+  test("empty input → empty output", () => {
+    expect(parseWorkspaceList([])).toEqual([]);
+    expect(parseWorkspaceList([""])).toEqual([]);
+  });
+});
+
+describe("selectWorkspaceTargets", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-select-"));
+  });
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  async function writeTrio(): Promise<void> {
+    await mkdir(join(rootDir, "api"), { recursive: true });
+    await mkdir(join(rootDir, "core"), { recursive: true });
+    await mkdir(join(rootDir, "plugin"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./api", "./core", "./plugin"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "api", "project.json"),
+      JSON.stringify({ name: "api", version: "0.1.0", main: "a.M" }),
+    );
+    await writeFile(
+      join(rootDir, "core", "project.json"),
+      JSON.stringify({
+        name: "core",
+        version: "0.1.0",
+        main: "c.M",
+        dependencies: { api: { source: "workspace:api", version: "*" } },
+      }),
+    );
+    await writeFile(
+      join(rootDir, "plugin", "project.json"),
+      JSON.stringify({
+        name: "plugin",
+        version: "0.1.0",
+        main: "p.M",
+        dependencies: {
+          api: { source: "workspace:api", version: "*" },
+          core: { source: "workspace:core", version: "*" },
+        },
+      }),
+    );
+  }
+
+  test("default sweep returns all in topo order", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const targets = selectWorkspaceTargets(ctx, {}, "build");
+    expect(targets.map((t) => t.name)).toEqual(["api", "core", "plugin"]);
+  });
+
+  test("multi-value --workspace narrows to listed names", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const targets = selectWorkspaceTargets(ctx, { workspace: ["api", "core"] }, "build");
+    expect(targets.map((t) => t.name)).toEqual(["api", "core"]);
+  });
+
+  test("--exclude removes from the default sweep", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const targets = selectWorkspaceTargets(ctx, { exclude: ["plugin"] }, "build");
+    expect(targets.map((t) => t.name)).toEqual(["api", "core"]);
+  });
+
+  test("excluding a workspace whose dependents are kept fails fast", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    expect(() => selectWorkspaceTargets(ctx, { exclude: ["core"] }, "build")).toThrow(
+      /"plugin" depends on "core"/,
+    );
+  });
+
+  test("--workspace + --exclude with the same name → empty error", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    expect(() =>
+      selectWorkspaceTargets(ctx, { workspace: ["api"], exclude: ["api"] }, "build"),
+    ).toThrow(/selection is empty/);
+  });
+
+  test("--exclude with unknown name throws the known-names error", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    expect(() => selectWorkspaceTargets(ctx, { exclude: ["nope"] }, "build")).toThrow(
+      /workspace not found/,
+    );
+  });
+
+  test("--exclude inside a workspace is rejected", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(join(rootDir, "api"))!;
+    expect(() => selectWorkspaceTargets(ctx, { exclude: ["core"] }, "build")).toThrow(
+      /--exclude is only valid at the repo root/,
+    );
   });
 });
 

@@ -110,8 +110,11 @@ export async function buildProject(
   await stageResources(project, stagingDir);
 
   // Auto-generate the descriptor unless the user staged one through `resources`.
+  // Library workspaces (no `main`) are not loaded by a platform; skip the
+  // descriptor entirely. The jar still gets produced for `workspace:`
+  // consumers to depend on.
   const descriptorRelPath = descriptor.path;
-  if (!hasUserDescriptor(project, descriptorRelPath)) {
+  if (project.main !== undefined && !hasUserDescriptor(project, descriptorRelPath)) {
     const rendered = descriptor.generate(project);
     const destination = join(stagingDir, descriptorRelPath);
     await mkdir(dirname(destination), { recursive: true });

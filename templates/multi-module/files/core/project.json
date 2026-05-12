@@ -1,0 +1,8 @@
+{
+  "name": "${project.name}-core",
+  "version": "0.1.0",
+  "description": "${project.name} internal implementation. Shaded into the plugin jar; not for direct consumption.",
+  "dependencies": {
+    "${project.name}-api": { "source": "workspace:${project.name}-api", "version": "*" }
+  }
+}

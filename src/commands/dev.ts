@@ -79,22 +79,48 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
 /**
  * Pick the single workspace `dev` targets.
  *
- * At a root with workspaces `--workspace` is required; inside a workspace it
- * must match (or be omitted); standalone projects use their root. `dev` has
- * no `--workspaces`: the dev server is always one-at-a-time.
+ * At a root with workspaces:
+ *   • `--workspace <name>` picks that workspace.
+ *   • No `--workspace`: if exactly one workspace declares `main` (the
+ *     shipping workspace), pick it. Otherwise throw with a table of every
+ *     workspace's `main` and `compatibility.platforms` so the user can see
+ *     why the choice is ambiguous.
+ *
+ * Inside a workspace it must match (or be omitted); standalone projects use
+ * their root. `dev` has no `--workspaces`: the dev server is always
+ * one-at-a-time.
  */
 export function selectDevTarget(
   context: WorkspaceContext,
   opts: Pick<DevCommandOptions, "workspace">,
 ): ResolvedProject {
   if (context.atRoot && context.workspaces.length > 0) {
-    if (opts.workspace === undefined) {
-      throw new InvalidArgumentError(
-        "dev requires --workspace <name> at a root that declares workspaces. " +
-          `Known workspaces: ${context.workspaces.map((w) => w.name).join(", ")}`,
-      );
+    if (opts.workspace !== undefined) {
+      return findWorkspace(context, opts.workspace).project;
     }
-    return findWorkspace(context, opts.workspace).project;
+    const shipping = context.workspaces.filter(
+      (w) => typeof w.project.main === "string" && w.project.main.length > 0,
+    );
+    if (shipping.length === 1) {
+      const chosen = shipping[0];
+      log.info(
+        `${dim("→")} dev: auto-selected workspace "${chosen.name}" (only shipping workspace)`,
+      );
+      return chosen.project;
+    }
+    const lines = context.workspaces.map((w) => {
+      const main =
+        w.project.main !== undefined && w.project.main.length > 0 ? w.project.main : "<no main>";
+      const platforms = (w.project.compatibility?.platforms ?? []).join(", ") || "<no platforms>";
+      return `  • ${w.name}: main=${main}; platforms=${platforms}`;
+    });
+    const reason =
+      shipping.length === 0
+        ? "no workspace declares `main`"
+        : `${shipping.length} workspaces declare \`main\``;
+    throw new InvalidArgumentError(
+      `dev requires --workspace <name> at a root with workspaces (${reason}; can't auto-pick).\n${lines.join("\n")}`,
+    );
   }
 
   if (context.current !== undefined) {

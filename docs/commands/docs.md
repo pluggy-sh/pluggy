@@ -10,14 +10,18 @@ pluggy docs [options]
 
 ## Flags
 
-| Flag                 | Default                              | Notes                                                       |
-| -------------------- | ------------------------------------ | ----------------------------------------------------------- |
-| `--output <path>`    | `<workspace>/docs/<name>-<version>/` | Output directory for the generated site.                    |
-| `--clean`            | off                                  | Wipe the output directory before generating.                |
-| `--private`          | off                                  | Include private members. Default visibility is `protected`. |
-| `--link <url>`       | none                                 | Cross-link to an external javadoc site. Repeatable.         |
-| `--workspace <name>` | none                                 | Document only this workspace.                               |
-| `--workspaces`       | off                                  | Explicit all-workspaces docs run from the root.             |
+| Flag                  | Default                              | Notes                                                                                  |
+| --------------------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `--output <path>`     | `<workspace>/docs/<name>-<version>/` | Output directory for the generated site.                                               |
+| `--clean`             | off                                  | Wipe the output directory before generating.                                           |
+| `--private`           | off                                  | Include private members. Default visibility is `protected`.                            |
+| `--link <url>`        | none                                 | Cross-link to an external javadoc site. Repeatable.                                    |
+| `--workspace <names>` | none                                 | Document one or more workspaces. Repeatable; comma-separated. Overrides `docs: false`. |
+| `--exclude <names>`   | none                                 | Subtract one or more workspaces from the default sweep.                                |
+| `--workspaces`        | off                                  | Explicit all-workspaces docs run from the root.                                        |
+| `--concurrency <n>`   | `min(cpus, 4)`                       | Cap on workspaces documenting simultaneously.                                          |
+
+A workspace can opt out of the default sweep by setting `"docs": false` in its `project.json`. See [Workspaces: per-workspace opt-out](../workspaces.md#per-workspace-opt-out).
 
 ## Scope rules
 

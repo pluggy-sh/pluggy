@@ -1,0 +1,14 @@
+{
+  "name": "${project.name}-velocity",
+  "version": "${project.version}",
+  "main": "${project.packageName}.velocity.${project.className}Velocity",
+  "compatibility": { "platforms": ["velocity"] },
+  "dependencies": {
+    "${project.name}-api": { "source": "workspace:${project.name}-api", "version": "*" },
+    "${project.name}-core": { "source": "workspace:${project.name}-core", "version": "*" }
+  },
+  "shading": {
+    "${project.name}-api": {},
+    "${project.name}-core": {}
+  }
+}

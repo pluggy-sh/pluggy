@@ -26,10 +26,12 @@ import {
 } from "../project.ts";
 import { replace } from "../template.ts";
 import {
+  getTemplateMetadata,
   listTemplates,
   loadTemplate,
   type InstantiatedTemplate,
   type TemplateFile,
+  type TemplateMetadata,
 } from "../templates/index.ts";
 
 import { parseMcVersion, parsePlatform, parseSemver } from "./parsers.ts";
@@ -65,11 +67,19 @@ export async function generateProject(
   options: GenerateProjectOptions = {},
 ): Promise<void> {
   const main = project.main;
-  if (!main) {
+  // A "workspace root" project declares `workspaces` and has no `main` of
+  // its own — it isn't a shipping plugin, just an umbrella over child
+  // workspaces. Skip the `main`/`primaryPlatform` requirements in that
+  // case; the children carry those fields individually.
+  const isWorkspaceRoot =
+    Array.isArray(project.workspaces) && project.workspaces.length > 0 && !main;
+  if (!main && !isWorkspaceRoot) {
     throw new Error("generateProject requires project.main to be set");
   }
 
-  const family = platforms.get(primaryPlatform(project)).descriptor.family;
+  const family = isWorkspaceRoot
+    ? undefined
+    : platforms.get(primaryPlatform(project)).descriptor.family;
 
   try {
     await mkdir(distDir, { recursive: true });
@@ -99,7 +109,7 @@ export async function generateProject(
         throw new Error(`Failed to write ${file.path}: ${(e as Error).message}`);
       }
     }
-  } else {
+  } else if (!isWorkspaceRoot && main !== undefined && family !== undefined) {
     const replacementProject = {
       project: {
         ...project,
@@ -336,14 +346,43 @@ export function initCommand(): Command {
         );
       }
 
+      // Workspace-root templates own the per-workspace `main` declarations
+      // themselves; the root has no `main`. Detect this by peeking at the
+      // template's metadata up front — if it declares a non-empty
+      // `projectJsonExtras.workspaces`, we treat it as a workspace root and
+      // skip the main prompt / validation. This generalises beyond the
+      // builtin templates; any contributed template that scaffolds
+      // workspaces gets the same treatment automatically.
+      let workspaceRootMetadata: TemplateMetadata | undefined;
+      if (options.template !== undefined) {
+        try {
+          const meta = await getTemplateMetadata(options.template);
+          const wsList = (meta.projectJsonExtras as { workspaces?: unknown } | undefined)
+            ?.workspaces;
+          if (Array.isArray(wsList) && wsList.length > 0) {
+            workspaceRootMetadata = meta;
+          }
+        } catch {
+          // Let the later loadTemplate call surface the real error if the
+          // id is unknown; here we just fall back to single-project flow.
+        }
+      }
+      const isWorkspaceRootTemplate = workspaceRootMetadata !== undefined;
+
       // Main class
       const className = deriveClassName(projectName) || "Main";
       const derivedMain = `com.example.${className}`;
-      const projectMain =
-        options.main ??
-        (interactive ? await input({ message: "Main class", default: derivedMain }) : derivedMain);
+      const projectMain = isWorkspaceRootTemplate
+        ? undefined
+        : (options.main ??
+          (interactive
+            ? await input({ message: "Main class", default: derivedMain })
+            : derivedMain));
 
-      if (!projectMain || !/^[a-zA-Z0-9_.]+$/.test(projectMain) || !projectMain.includes(".")) {
+      if (
+        !isWorkspaceRootTemplate &&
+        (!projectMain || !/^[a-zA-Z0-9_.]+$/.test(projectMain) || !projectMain.includes("."))
+      ) {
         throw new InvalidArgumentError(
           `Invalid main class: "${projectMain}". It must be a valid Java classpath (e.g. com.example.Main).`,
         );
@@ -382,12 +421,14 @@ export function initCommand(): Command {
         name: projectName,
         version: options.version || "1.0.0",
         description: options.description || "A simple Minecraft plugin",
-        main: projectMain,
         compatibility: {
           versions,
           platforms: selectedPlatforms,
         },
       };
+      if (projectMain !== undefined) {
+        INITIAL_PROJECT.main = projectMain;
+      }
 
       const family = platforms.get(selectedPlatforms[0]).descriptor.family;
 
@@ -427,16 +468,21 @@ export function initCommand(): Command {
 
       let templateInstance: InstantiatedTemplate | undefined;
       if (templateId !== undefined) {
-        const className = projectMain.split(".").pop() || "Main";
-        const packageName = projectMain.split(".").slice(0, -1).join(".");
+        // Multi-module templates skip the `main` prompt, but still need a
+        // package/class pair to seed the per-workspace stubs they write.
+        // Fall back to a derived `com.example.<className>` so substitutions
+        // produce sensible defaults.
+        const mainForSubstitution = projectMain ?? `com.example.${className}`;
+        const tmplClassName = mainForSubstitution.split(".").pop() || "Main";
+        const packageName = mainForSubstitution.split(".").slice(0, -1).join(".");
         const apiVersion = deriveApiVersion(versions[0]);
         templateInstance = await loadTemplate(templateId, {
-          className,
+          className: tmplClassName,
           packagePath: packageName.replace(/\./g, "/"),
           replacements: {
             project: {
               ...INITIAL_PROJECT,
-              className,
+              className: tmplClassName,
               packageName,
               velocityId: deriveVelocityId(INITIAL_PROJECT.name),
               spongeId: deriveSpongeId(INITIAL_PROJECT.name),

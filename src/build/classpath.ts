@@ -5,13 +5,18 @@
  * platform API jars for the primary (or explicitly requested) platform.
  */
 
+import { existsSync } from "node:fs";
+
+import { UserError } from "../errors.ts";
 import { readLock, type LockfileEntry } from "../lockfile.ts";
 import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
+import { PENDING_BUILD_INTEGRITY } from "../resolver/workspace.ts";
 import { parseSource, stringifySource } from "../source.ts";
+import { resolveWorkspaceContext } from "../workspace.ts";
 
 export interface ResolveClasspathOptions {
   /**
@@ -54,10 +59,34 @@ export async function resolveProjectClasspath(
     resolvePlatformApiJars(project, registries, opts.platformId),
   ]);
 
+  assertWorkspaceJarsExist(deps);
+
   const depJars = deps.flatMap(flattenJarPaths);
   const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
 
   return { deps, platformApiJars, classpath };
+}
+
+/**
+ * Walk `deps` and confirm every `workspace:` dep's jar exists on disk before
+ * we hand the classpath to javac. Without this, missing sibling jars surface
+ * as a confusing "package <x> does not exist" compile error; this check
+ * turns them into a clear "build <name> first" message.
+ */
+function assertWorkspaceJarsExist(deps: ResolvedDependency[]): void {
+  for (const dep of deps) {
+    if (dep.integrity !== PENDING_BUILD_INTEGRITY) continue;
+    if (existsSync(dep.jarPath)) continue;
+    const name = dep.source.kind === "workspace" ? dep.source.name : "(unknown)";
+    throw new UserError(
+      `workspace dependency "${name}" has not been built yet: expected jar at "${dep.jarPath}"`,
+      {
+        code: "E_WORKSPACE_DEP_NOT_BUILT",
+        hint: `Build it first: pluggy build --workspace ${name}`,
+        context: { workspace: name, expectedJar: dep.jarPath },
+      },
+    );
+  }
 }
 
 /** Flatten `dep.jarPath` plus every transitive's jarPath into a single list. */
@@ -83,6 +112,13 @@ async function resolveDeclaredDependencies(
   // build re-resolved fresh and accepted whatever bytes came back.
   const lockEntries = readLock(project.rootDir)?.entries ?? {};
 
+  // Workspaces compile against sibling jars via `workspace:` deps; the
+  // resolver needs a `WorkspaceContext` to find them. Walk up from the
+  // project's own directory so we get the same context the rest of the CLI
+  // sees. Standalone projects produce a context with `workspaces: []`,
+  // which is harmless to the non-workspace resolvers.
+  const workspaceContext = resolveWorkspaceContext(project.rootDir);
+
   const results: ResolvedDependency[] = [];
   for (const [name, raw] of Object.entries(deps)) {
     const { source, version } =
@@ -97,6 +133,7 @@ async function resolveDeclaredDependencies(
       force: false,
       registries,
       expectedIntegrity,
+      workspaceContext,
     });
     results.push(resolved);
   }

@@ -657,3 +657,92 @@ describe("checkDependencyJars", () => {
     await rm(cacheDir, { recursive: true, force: true });
   });
 });
+
+describe("runDoctorCommand --fix", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-fix-"));
+    initLogging({ json: false, verbose: false, noColor: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  test("drops missing-folder workspace entries from root project.json", async () => {
+    await mkdir(join(rootDir, "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        // `./missing` points nowhere; --fix should drop it.
+        workspaces: ["./api", "./missing"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "api", "project.json"),
+      JSON.stringify({ name: "api", version: "0.1.0" }),
+    );
+
+    // The missing workspace makes the workspace context refuse to load, so
+    // run --fix from a state that's tolerable to resolveWorkspaceContext.
+    // We invoke runDoctorCommand directly, and the inner enumerate-workspaces
+    // call would throw if "missing" was traversed — but enumerateWorkspaces
+    // does throw. So this case needs the root to be at least partially
+    // resolvable. For this test we simulate the case where the entry was
+    // declared *and* the folder existed when declared but was later deleted.
+    await mkdir(join(rootDir, "missing"), { recursive: true });
+    await writeFile(
+      join(rootDir, "missing", "project.json"),
+      JSON.stringify({ name: "missing", version: "0.1.0" }),
+    );
+    // Now actually delete the folder to mimic the "user removed it by hand" state.
+    await rm(join(rootDir, "missing"), { recursive: true, force: true });
+
+    const res = await runDoctorCommand({
+      cwd: rootDir,
+      fix: true,
+      // Stub the heavy hooks; we only care about the fix path here.
+      checks: passingHooks(),
+    });
+
+    expect(res.fixes).toBeDefined();
+    expect(res.fixes?.some((f) => f.id === "workspace-prune")).toBe(true);
+
+    // Verify the root project.json was rewritten without the missing entry.
+    const reread = JSON.parse(
+      await import("node:fs/promises").then((fs) =>
+        fs.readFile(join(rootDir, "project.json"), "utf8"),
+      ),
+    );
+    expect(reread.workspaces).toEqual(["./api"]);
+  });
+
+  test("no --fix: no fixes applied even when fixable issues exist", async () => {
+    await mkdir(join(rootDir, "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "api", "project.json"),
+      JSON.stringify({ name: "api", version: "0.1.0" }),
+    );
+
+    const res = await runDoctorCommand({
+      cwd: rootDir,
+      checks: passingHooks(),
+    });
+    expect(res.fixes).toBeUndefined();
+  });
+});
