@@ -137,10 +137,21 @@ try {
     process.exit(0);
   }
 
+  // Input errors take precedence over commander's hardcoded `exitCode = 1` on
+  // InvalidArgumentError so they exit 2 (CLI-usage convention), matching the
+  // treatment of UserError.
   const exitCode =
-    error.exitCode ?? (error instanceof UserError || error instanceof InvalidArgumentError ? 2 : 1);
+    error instanceof UserError || error instanceof InvalidArgumentError ? 2 : (error.exitCode ?? 1);
 
-  if (error.code?.startsWith("commander.") && !wantsJson) {
+  // Commander prints its own parse-time errors before throwing and rewraps
+  // them as plain CommanderError instances; suppress to avoid double-printing.
+  // Action-thrown InvalidArgumentError is *not* printed by commander, so let
+  // those fall through to emitError below.
+  if (
+    error.code?.startsWith("commander.") &&
+    !(error instanceof InvalidArgumentError) &&
+    !wantsJson
+  ) {
     process.exit(exitCode);
   }
 

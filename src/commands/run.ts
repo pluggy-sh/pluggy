@@ -16,12 +16,15 @@
  */
 
 import { spawn } from "node:child_process";
+import { delimiter, join } from "node:path";
 import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
 
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces, type RunResult } from "../runner.ts";
+import { getCachedJdk } from "../sdk/index.ts";
+import { selectJdkForProject } from "../sdk/resolve.ts";
 import { replace } from "../template.ts";
 import {
   resolveWorkspaceContext,
@@ -225,10 +228,13 @@ async function runOne(
   const extraLabel = extraArgs.length > 0 ? ` ${dim(`+ ${extraArgs.join(" ")}`)}` : "";
   log.info(`${dim(prefix)} ${bold(scriptName)}: ${expanded}${extraLabel}`);
 
+  const env = await projectJdkEnv(node);
+
   return new Promise<RunOneResult>((resolveP, rejectP) => {
     const child = spawn(cmd, args, {
       cwd: node.root,
       stdio: ["ignore", "pipe", "pipe"],
+      env,
     });
 
     const onLine = (stream: "stdout" | "stderr") => (chunk: Buffer | string) => {
@@ -249,6 +255,25 @@ async function runOne(
       resolveP({ expanded: argv, exitCode });
     });
   });
+}
+
+/**
+ * Build the child env for a workspace, prepending the project's pinned JDK
+ * to `PATH` and setting `JAVA_HOME` when a matching JDK is already cached.
+ *
+ * Cache-only by design: `pluggy run` shouldn't trigger a 200 MB JDK download
+ * for a script that may not even invoke Java. `pluggy build` / `pluggy dev`
+ * are the commands that auto-install.
+ */
+async function projectJdkEnv(node: WorkspaceNode): Promise<NodeJS.ProcessEnv> {
+  const base = { ...process.env };
+  const selection = await selectJdkForProject(node.project);
+  const cached = getCachedJdk(selection.major, selection.distribution);
+  if (cached === undefined) return base;
+  base.JAVA_HOME = cached.javaHome;
+  const binDir = join(cached.javaHome, "bin");
+  base.PATH = base.PATH !== undefined ? `${binDir}${delimiter}${base.PATH}` : binDir;
+  return base;
 }
 
 /**

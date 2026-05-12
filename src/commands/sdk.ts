@@ -148,11 +148,17 @@ function listSubcommand(): Command {
 function pathSubcommand(): Command {
   return new Command("path")
     .description("Print JAVA_HOME for a cached JDK. Exits 1 if not installed.")
-    .argument("<major>", "Java major release.")
-    .option("--distribution <name>", "JDK distribution.", parseDistribution, "temurin")
-    .action(async function action(this: Command, majorArg: string, options) {
-      const major = parseMajor(majorArg);
-      const distribution = options.distribution as AllowedDistribution;
+    .argument("<major-or-distribution>", "Java major release, or distribution if <major> follows.")
+    .argument("[major]", "Java major release (when the first arg is a distribution).")
+    .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
+    .action(async function action(
+      this: Command,
+      firstArg: string,
+      secondArg: string | undefined,
+      options,
+    ) {
+      const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
+      const distribution = resolveDistribution(positional, options.distribution) ?? "temurin";
 
       const cached = getCachedJdk(major, distribution);
       if (cached === undefined) {
@@ -193,12 +199,18 @@ function pathSubcommand(): Command {
 function useSubcommand(): Command {
   return new Command("use")
     .description("Pin a JDK in the current project.json so teammates land on the same one.")
-    .argument("<major>", "Java major release.")
+    .argument("<major-or-distribution>", "Java major release, or distribution if <major> follows.")
+    .argument("[major]", "Java major release (when the first arg is a distribution).")
     .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
-    .action(async function action(this: Command, majorArg: string, options) {
+    .action(async function action(
+      this: Command,
+      firstArg: string,
+      secondArg: string | undefined,
+      options,
+    ) {
       const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
-      const major = parseMajor(majorArg);
-      const distribution = options.distribution as AllowedDistribution | undefined;
+      const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
+      const distribution = resolveDistribution(positional, options.distribution);
 
       const project = loadProject(globalOpts);
 
@@ -228,11 +240,17 @@ function removeSubcommand(): Command {
   return new Command("remove")
     .alias("rm")
     .description("Delete a cached JDK.")
-    .argument("<major>", "Java major release.")
-    .option("--distribution <name>", "JDK distribution.", parseDistribution, "temurin")
-    .action(async function action(this: Command, majorArg: string, options) {
-      const major = parseMajor(majorArg);
-      const distribution = options.distribution as AllowedDistribution;
+    .argument("<major-or-distribution>", "Java major release, or distribution if <major> follows.")
+    .argument("[major]", "Java major release (when the first arg is a distribution).")
+    .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
+    .action(async function action(
+      this: Command,
+      firstArg: string,
+      secondArg: string | undefined,
+      options,
+    ) {
+      const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
+      const distribution = resolveDistribution(positional, options.distribution) ?? "temurin";
 
       const removed = await removeJdk(major, distribution);
 
@@ -256,6 +274,42 @@ function parseMajor(value: string): number {
     throw new InvalidArgumentError(`"${value}" is not a valid Java major release`);
   }
   return n;
+}
+
+/**
+ * Split the two positional slots into `{ major, distribution }`. Mirrors how
+ * `sdk list` formats entries (`<distribution> <major>`) so users can copy a
+ * line straight off the listing. Two shapes:
+ *   pluggy sdk use 21
+ *   pluggy sdk use temurin 21
+ * Commander can't model `[opt] <req>` directly (single args always fill the
+ * first slot), so we accept `<first> [second]` and disambiguate here.
+ */
+function splitMajorAndDistribution(
+  first: string,
+  second: string | undefined,
+): { major: number; distribution: AllowedDistribution | undefined } {
+  if (second === undefined) {
+    return { major: parseMajor(first), distribution: undefined };
+  }
+  return { major: parseMajor(second), distribution: parseDistribution(first) };
+}
+
+/**
+ * Reconcile a distribution from the positional `[distribution]` arg and the
+ * `--distribution` option. Errors when both are given and disagree so users
+ * don't get a silent winner.
+ */
+function resolveDistribution(
+  positional: AllowedDistribution | undefined,
+  fromOption: AllowedDistribution | undefined,
+): AllowedDistribution | undefined {
+  if (positional !== undefined && fromOption !== undefined && positional !== fromOption) {
+    throw new InvalidArgumentError(
+      `distribution given twice and disagrees: "${positional}" vs --distribution ${fromOption}`,
+    );
+  }
+  return positional ?? fromOption;
 }
 
 function loadProject(globalOpts: SdkGlobalOpts): ResolvedProject {
