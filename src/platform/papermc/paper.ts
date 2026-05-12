@@ -10,41 +10,6 @@ import * as papermc from "./papermc.ts";
 const PAPER_MAVEN_METADATA =
   "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/maven-metadata.xml";
 
-/**
- * Resolve an MC version (e.g. `"1.21.8"`, `"26.1.2"`) to the Maven
- * coordinate Paper publishes for `paper-api`.
- *
- * Paper has two formats in the wild:
- *   - Old SNAPSHOT form: `<mc>-R0.1-SNAPSHOT` (1.17 to 1.21.x)
- *   - New build-stamped form: `<mc>.build.<N>-alpha` (26.x+)
- *
- * The provider fetches Paper's top-level `maven-metadata.xml` and picks
- * the highest matching entry. Falls back to the old SNAPSHOT form when
- * no published artifact is found, so the Maven resolver can surface a
- * specific 404 instead of a cryptic "no match".
- */
-async function resolvePaperApiVersion(mcVersion: string): Promise<string> {
-  const res = await fetch(PAPER_MAVEN_METADATA);
-  if (!res.ok) return `${mcVersion}-R0.1-SNAPSHOT`;
-  const xml = await res.text();
-  const all = Array.from(xml.matchAll(/<version>([^<]+)<\/version>/g), (m) => m[1]);
-
-  const newFormat = all.filter((v) => v.startsWith(`${mcVersion}.build.`));
-  if (newFormat.length > 0) {
-    return newFormat.sort((a, b) => buildNumber(b) - buildNumber(a))[0];
-  }
-
-  const oldFormat = all.find((v) => v === `${mcVersion}-R0.1-SNAPSHOT`);
-  if (oldFormat !== undefined) return oldFormat;
-
-  return `${mcVersion}-R0.1-SNAPSHOT`;
-}
-
-function buildNumber(versionString: string): number {
-  const match = versionString.match(/\.build\.(\d+)/);
-  return match ? Number.parseInt(match[1], 10) : 0;
-}
-
 export default createPlatform((ctx) => ({
   id: "paper",
   descriptor: bukkitDescriptor,
@@ -71,7 +36,7 @@ export default createPlatform((ctx) => ({
 
   async api(version: string) {
     const repo = "https://repo.papermc.io/repository/maven-public/";
-    const resolved = await resolvePaperApiVersion(version);
+    const resolved = await papermc.resolveApiVersion(PAPER_MAVEN_METADATA, version);
     return {
       repositories: [repo],
       dependencies: [

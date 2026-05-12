@@ -1,3 +1,4 @@
+import { relative } from "node:path";
 import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
@@ -91,18 +92,32 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
 
   const targets = selectBuildTargets(context, opts);
 
-  const initial = await buildTargets(targets, opts);
+  const initial = await buildTargets(targets, opts, cwd);
 
   if (opts.watch === true) {
-    await runWatchLoop(targets, opts);
+    await runWatchLoop(targets, opts, cwd);
   }
 
   return initial;
 }
 
+/**
+ * Render an absolute jar path relative to where `pluggy build` ran. At a
+ * multi-workspace root that produces `paper/bin/foo.jar` instead of the full
+ * `/Users/.../paper/bin/foo.jar`; for paths outside cwd (rare, but possible
+ * via `--output`) it falls back to the absolute form so the user can still
+ * find the file.
+ */
+function displayPath(absPath: string, cwd: string): string {
+  const rel = relative(cwd, absPath);
+  if (rel === "" || rel.startsWith("..")) return absPath;
+  return rel;
+}
+
 async function buildTargets(
   targets: WorkspaceNode[],
   opts: BuildCommandOptions,
+  cwd: string,
 ): Promise<BuildCommandResult> {
   const runResults = await runWorkspaces<BuildOneResult>(
     targets,
@@ -137,7 +152,7 @@ async function buildTargets(
       }
 
       log.success(
-        `${bold(label)} → ${build.outputPath} ${dim(`(${formatBytes(build.sizeBytes)}, ${build.durationMs}ms)`)}`,
+        `${bold(label)} → ${displayPath(build.outputPath, cwd)} ${dim(`(${formatBytes(build.sizeBytes)}, ${build.durationMs}ms)`)}`,
       );
       return { build, platformChecks };
     },
@@ -202,7 +217,7 @@ async function buildTargets(
     for (const r of results) {
       if (r.ok) {
         log.step(
-          `${r.workspace} → ${r.outputPath} ${dim(`(${formatBytes(r.sizeBytes ?? 0)}, ${r.durationMs}ms)`)}`,
+          `${r.workspace} → ${r.outputPath !== undefined ? displayPath(r.outputPath, cwd) : "(no output)"} ${dim(`(${formatBytes(r.sizeBytes ?? 0)}, ${r.durationMs}ms)`)}`,
         );
       } else {
         log.step(`${red(r.workspace)} failed: ${r.error ?? "unknown error"}`);
@@ -223,7 +238,11 @@ async function buildTargets(
  * Watch-mode output stays unbuffered: users expect live progress as they
  * iterate, even when `--concurrency > 1`.
  */
-async function runWatchLoop(allTargets: WorkspaceNode[], opts: BuildCommandOptions): Promise<void> {
+async function runWatchLoop(
+  allTargets: WorkspaceNode[],
+  opts: BuildCommandOptions,
+  cwd: string,
+): Promise<void> {
   if (allTargets.length === 0) return;
   const debounceMs = opts.watchDebounceMs ?? 100;
   const reverseGraph = computeReverseDependents(allTargets);
@@ -245,7 +264,7 @@ async function runWatchLoop(allTargets: WorkspaceNode[], opts: BuildCommandOptio
     log.heading(
       `Rebuild triggered for ${subset.length} workspace${subset.length === 1 ? "" : "s"} (${subset.map((s) => s.name).join(", ")})`,
     );
-    await buildTargets(subset, { ...opts, watch: false }).catch((err) => {
+    await buildTargets(subset, { ...opts, watch: false }, cwd).catch((err) => {
       log.error(err instanceof Error ? err.message : String(err));
     });
     building = false;

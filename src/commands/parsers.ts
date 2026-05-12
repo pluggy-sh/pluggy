@@ -31,14 +31,12 @@ export function parseSemver(value: string): string {
 }
 
 export function parsePlatform(value: string): string {
+  const resolved = platforms.resolve(value);
+  if (resolved !== undefined) return resolved;
   const registered = platforms.list();
-  const id = value.toLowerCase();
-  if (!registered.includes(id)) {
-    throw new InvalidArgumentError(
-      `Invalid platform: "${value}". Available platforms: ${registered.join(", ")}`,
-    );
-  }
-  return id;
+  throw new InvalidArgumentError(
+    `Invalid platform: "${value}". Available platforms: ${registered.join(", ")}`,
+  );
 }
 
 export function parseMcVersion(value: string): string {

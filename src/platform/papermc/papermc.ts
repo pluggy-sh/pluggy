@@ -40,6 +40,39 @@ export function versions(project: Project): Promise<Version[]> {
 }
 
 /**
+ * Resolve a Minecraft version (e.g. `1.21.8`, `26.1.2`) to the Maven
+ * coordinate published for a PaperMC artifact (paper-api, folia-api, …).
+ *
+ * Two formats coexist:
+ *   - Old SNAPSHOT form: `<mc>-R0.1-SNAPSHOT` (used through 1.21.x)
+ *   - New build-stamped form: `<mc>.build.<N>-<channel>` (26.x+)
+ *
+ * Fetches the artifact's top-level `maven-metadata.xml` and prefers the
+ * highest build-stamped entry. Falls back to the SNAPSHOT form when no
+ * build-stamped entry exists (or metadata isn't reachable) so the Maven
+ * resolver surfaces a specific 404 instead of a cryptic "no match".
+ */
+export async function resolveApiVersion(metadataUrl: string, mcVersion: string): Promise<string> {
+  const snapshotForm = `${mcVersion}-R0.1-SNAPSHOT`;
+  const res = await fetch(metadataUrl);
+  if (!res.ok) return snapshotForm;
+  const xml = await res.text();
+  const all = Array.from(xml.matchAll(/<version>([^<]+)<\/version>/g), (m) => m[1]);
+
+  const buildStamped = all.filter((v) => v.startsWith(`${mcVersion}.build.`));
+  if (buildStamped.length > 0) {
+    return buildStamped.sort((a, b) => buildNumber(b) - buildNumber(a))[0];
+  }
+
+  return snapshotForm;
+}
+
+function buildNumber(versionString: string): number {
+  const match = versionString.match(/\.build\.(\d+)/);
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
+/**
  * Download a specific build (or the latest build when `build` is omitted)
  * for `project`/`version` and return the bytes. `target` selects the
  * download channel (defaults to `server:default`).

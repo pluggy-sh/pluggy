@@ -131,6 +131,28 @@ async function findLatestArtifactForMc(mcVersion: string): Promise<ResolvedArtif
   return matches[0];
 }
 
+/**
+ * SpongeAPI tags from the dl-api (e.g. `19.0.0`) often outpace what's
+ * published as a release on the Maven repo. Anything past the current
+ * `<release>` only exists as `<api>-SNAPSHOT`. Probe the spongeapi
+ * `maven-metadata.xml` and pick the matching variant; fall back to the raw
+ * tag so the Maven resolver can surface a precise 404 if the metadata fetch
+ * itself fails.
+ */
+async function resolvePublishedApiVersion(api: string): Promise<string> {
+  try {
+    const res = await fetch(`${SPONGE_REPO}org/spongepowered/spongeapi/maven-metadata.xml`);
+    if (!res.ok) return api;
+    const xml = await res.text();
+    const versions = new Set(Array.from(xml.matchAll(/<version>([^<]+)<\/version>/g), (m) => m[1]));
+    if (versions.has(api)) return api;
+    if (versions.has(`${api}-SNAPSHOT`)) return `${api}-SNAPSHOT`;
+    return api;
+  } catch {
+    return api;
+  }
+}
+
 export default createPlatform((ctx) => ({
   id: "sponge",
   descriptor: spongeDescriptor,
@@ -161,13 +183,14 @@ export default createPlatform((ctx) => ({
 
   async api(mcVersion: string) {
     const artifact = await findLatestArtifactForMc(mcVersion);
+    const version = await resolvePublishedApiVersion(artifact.api);
     return {
       repositories: [SPONGE_REPO],
       dependencies: [
         {
           groupId: "org.spongepowered",
           artifactId: "spongeapi",
-          version: artifact.api,
+          version,
         },
       ],
     };

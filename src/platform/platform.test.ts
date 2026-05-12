@@ -37,3 +37,29 @@ describe("platforms.assertSameFamily", () => {
     expect(() => platforms.assertSameFamily(["paper", "bogus"])).toThrow(/'bogus' not found/);
   });
 });
+
+describe("platforms.resolve", () => {
+  test("returns the canonical id for a registered platform", () => {
+    expect(platforms.resolve("paper")).toBe("paper");
+  });
+
+  test("is case-insensitive", () => {
+    expect(platforms.resolve("PAPER")).toBe("paper");
+  });
+
+  test("resolves bungeecord to waterfall", () => {
+    expect(platforms.resolve("bungeecord")).toBe("waterfall");
+    expect(platforms.resolve("BungeeCord")).toBe("waterfall");
+    expect(platforms.resolve("bungee")).toBe("waterfall");
+  });
+
+  test("returns undefined for unknown ids", () => {
+    expect(platforms.resolve("totally-fake")).toBeUndefined();
+  });
+});
+
+describe("platforms.get with aliases", () => {
+  test("get('bungeecord') returns the waterfall provider", () => {
+    expect(platforms.get("bungeecord").id).toBe("waterfall");
+  });
+});
