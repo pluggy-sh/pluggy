@@ -171,10 +171,6 @@ Top-level entries have non-empty `declaredBy`. Pure transitives have `declaredBy
 
 The file is written atomically: pluggy creates a `.<pid>.<rand>.tmp` sibling and `rename`s over the target. Entries are sorted by key so diffs are deterministic. Trailing LF.
 
-### Migrating from version 1
-
-Version 1 lockfiles nested transitives inline (`transitives: LockfileEntry[]`). Version 2 flattens everything by name. Lockfiles are regenerated on the next `pluggy install`, so the migration is automatic. Delete `pluggy.lock` and run `pluggy install` if you hit a parse error from a stale file.
-
 ### When pluggy rewrites it
 
 - `pluggy install`: on a single-identifier run, adds or updates that one entry. On a bare `install`, resolves anything stale and prunes orphans.

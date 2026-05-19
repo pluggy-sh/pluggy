@@ -330,7 +330,7 @@ Failed to parse lockfile at <path>: <json-error>
 Someone wrote a newer-format lockfile with a newer pluggy. Upgrade pluggy with `pluggy upgrade`.
 
 ```text
-Unsupported lockfile version: <n> (at <path>; expected 1)
+Unsupported lockfile version: <n> (at <path>; expected 2)
 ```
 
 ### Invalid lockfile entry
