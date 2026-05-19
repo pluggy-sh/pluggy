@@ -49,14 +49,23 @@ export function versions(project: Project): Promise<Version[]> {
  *
  * Fetches the artifact's top-level `maven-metadata.xml` and prefers the
  * highest build-stamped entry. Falls back to the SNAPSHOT form when no
- * build-stamped entry exists (or metadata isn't reachable) so the Maven
- * resolver surfaces a specific 404 instead of a cryptic "no match".
+ * build-stamped entry exists, the metadata is unreachable (non-2xx), or
+ * the fetch itself rejects (DNS, offline, TLS). The fallback keeps
+ * offline/cached Folia builds working: the Maven resolver can satisfy
+ * `<mc>-R0.1-SNAPSHOT` from a previously-installed cache without ever
+ * hitting the network. When upstream really is gone the resolver
+ * surfaces a precise 404 instead of a cryptic "no match".
  */
 export async function resolveApiVersion(metadataUrl: string, mcVersion: string): Promise<string> {
   const snapshotForm = `${mcVersion}-R0.1-SNAPSHOT`;
-  const res = await fetch(metadataUrl);
-  if (!res.ok) return snapshotForm;
-  const xml = await res.text();
+  let xml: string;
+  try {
+    const res = await fetch(metadataUrl);
+    if (!res.ok) return snapshotForm;
+    xml = await res.text();
+  } catch {
+    return snapshotForm;
+  }
   const all = Array.from(xml.matchAll(/<version>([^<]+)<\/version>/g), (m) => m[1]);
 
   const buildStamped = all.filter((v) => v.startsWith(`${mcVersion}.build.`));
