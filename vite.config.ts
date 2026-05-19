@@ -11,6 +11,9 @@ import { defineConfig } from "vite-plus";
 const textAssetExtensions = [".java", ".yml"];
 
 export default defineConfig({
+  staged: {
+    "*": "vp check --fix",
+  },
   lint: {
     options: {
       typeAware: true,
