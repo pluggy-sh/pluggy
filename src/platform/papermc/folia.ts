@@ -31,13 +31,15 @@ export default createPlatform((ctx) => ({
     return versionsList.map((v) => v.version.id);
   },
 
-  api(version) {
-    return Promise.resolve({
+  async api(version: string) {
+    const resolved = await papermc.resolveApiVersion(
+      "https://repo.papermc.io/repository/maven-public/dev/folia/folia-api/maven-metadata.xml",
+      version,
+    );
+    return {
       repositories: ["https://repo.papermc.io/repository/maven-public/"],
-      dependencies: [
-        { groupId: "dev.folia", artifactId: "folia-api", version: `${version}-R0.1-SNAPSHOT` },
-      ],
-    });
+      dependencies: [{ groupId: "dev.folia", artifactId: "folia-api", version: resolved }],
+    };
   },
 
   async download(version: Version, ignoreCache = false) {

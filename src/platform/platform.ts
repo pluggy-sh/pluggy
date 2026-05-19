@@ -97,6 +97,17 @@ export interface PlatformContext {
 const PLATFORMS: Record<string, PlatformProvider> = {};
 
 /**
+ * Human-friendly aliases that resolve to a registered platform id.
+ * BungeeCord proxies are served by the Waterfall provider (Waterfall is the
+ * actively-maintained PaperMC fork of BungeeCord), so users typing the
+ * upstream name land on the right provider.
+ */
+const ALIASES: Record<string, string> = {
+  bungee: "waterfall",
+  bungeecord: "waterfall",
+};
+
+/**
  * Define and register a platform provider. The factory runs at module-load
  * time and must not perform I/O. The Bun-compiled binary ships a read-only
  * `$bunfs` and would crash on disk writes before command dispatch.
@@ -115,10 +126,10 @@ export function createPlatform<T extends PlatformProvider>(
  * supplies context, so the actions stay concise.
  */
 export const platforms = {
-  /** Look up a registered platform by id (case-insensitive). Throws if missing. */
+  /** Look up a registered platform by id or alias (case-insensitive). Throws if missing. */
   get(this: void, providerId: string): PlatformProvider {
-    const id = providerId.toLowerCase();
-    if (!PLATFORMS[id]) {
+    const id = platforms.resolve(providerId);
+    if (id === undefined) {
       const known = Object.keys(PLATFORMS).sort();
       throw new UserError(`Platform with id '${providerId}' not found`, {
         code: "E_PLATFORM_UNKNOWN",
@@ -130,9 +141,27 @@ export const platforms = {
     return PLATFORMS[id];
   },
 
+  /**
+   * Resolve an id-or-alias to a canonical platform id. Returns `undefined`
+   * when neither matches. Callers that want a hard failure should use
+   * `platforms.get()`.
+   */
+  resolve(this: void, providerId: string): string | undefined {
+    const key = providerId.toLowerCase();
+    if (PLATFORMS[key]) return key;
+    const aliased = ALIASES[key];
+    if (aliased !== undefined && PLATFORMS[aliased]) return aliased;
+    return undefined;
+  },
+
   /** List every registered platform id, lowercased. */
   list(this: void): string[] {
     return Object.keys(PLATFORMS);
+  },
+
+  /** Aliases that resolve to canonical ids. Keys are user-facing inputs. */
+  aliases(this: void): Record<string, string> {
+    return { ...ALIASES };
   },
 
   /**
