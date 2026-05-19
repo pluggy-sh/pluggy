@@ -1,6 +1,14 @@
 # Dependencies
 
-Four [source kinds](./glossary.md#source-kind), one grammar, one [lockfile](./glossary.md#lockfile). Every dependency you install ends up in one of these four categories.
+A dependency is anything your plugin needs at build time or runtime that isn't your own source code. pluggy resolves dependencies from four [source kinds](./glossary.md#source-kind), records them in `project.json:dependencies`, and pins exact versions in [`pluggy.lock`](./glossary.md#lockfile).
+
+Most installs look like this:
+
+```text
+pluggy install worldedit
+```
+
+The CLI works out the source kind from the identifier, resolves the latest stable version, and writes both files for you. The four source kinds and the full identifier grammar are below.
 
 ## Source kinds
 
