@@ -1,10 +1,30 @@
 # `project.json` reference
 
-This is the one file pluggy reads. It lives at the repo root, or at the root of each [workspace](./glossary.md#workspace) in a monorepo. pluggy walks up from the current directory until it finds one, then walks back down (if workspaces are declared) to classify which workspace you're sitting in.
+`project.json` is the one file pluggy reads to configure your plugin. It lives at the repo root, or at the root of each [workspace](./glossary.md#workspace) in a monorepo.
 
-Every field is documented below. If a term is unfamiliar, check the [glossary](./glossary.md).
+Every field is documented below. If a term is unfamiliar, check the [glossary](./glossary.md). For a guided walkthrough of a first plugin, see [getting started](./getting-started.md).
 
-## Shape
+## The smallest `project.json`
+
+Four fields are required to build a plugin. `pluggy init` writes them for you, but a hand-rolled minimum looks like this:
+
+```json
+{
+  "name": "my_plugin",
+  "version": "1.0.0",
+  "main": "com.example.myplugin.Main",
+  "compatibility": {
+    "versions": ["1.21.8"],
+    "platforms": ["paper"]
+  }
+}
+```
+
+That's enough for `pluggy build` to produce a jar and `pluggy dev` to start a server. Everything in the full shape below is optional and documented per field further down.
+
+## Full shape
+
+The example below uses every supported field. Use it as a reference of what's possible, not a template to copy.
 
 ```json
 {
@@ -67,8 +87,6 @@ Every field is documented below. If a term is unfamiliar, check the [glossary](.
   "workspaces": []
 }
 ```
-
-No field in this example is unique to that structure. You'll see them one at a time below.
 
 ## Fields
 
