@@ -40,10 +40,30 @@ jobs:
         with:
           cache: true
 
+      # Tests download real platform jars (paper-api, spigot-api, folia, sponge,
+      # BuildTools) into the OS-appropriate pluggy cache. Restoring them between
+      # runs cuts off the slowest + flakiest piece of CI — a single Folia jar
+      # alone is ~53 MB. The key includes a hash of platform source so the cache
+      # invalidates when version-resolution logic changes; restore-keys lets a
+      # stale cache rehydrate the long tail (server jars are immutable per version).
+      - name: Cache pluggy test downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pluggy
+            ~/Library/Caches/pluggy
+            ~/AppData/Local/pluggy/cache
+          key: ${{ runner.os }}-pluggy-cache-v1-${{ hashFiles('src/platform/**/*.ts', 'src/build/platform-compat.test.ts', 'src/sdk/**/*.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-pluggy-cache-v1-
+
       - name: Install dependencies
         run: vp install --frozen-lockfile
 
+      # Format / lint / typecheck are platform-agnostic. Running them on ubuntu
+      # only saves ~5-10s per non-ubuntu matrix leg without losing coverage.
       - name: Format, lint, and type check
+        if: matrix.os == 'ubuntu-latest'
         run: vp check
 
       - name: Run tests
