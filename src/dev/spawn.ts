@@ -1,8 +1,6 @@
 /**
- * Spawn the Minecraft server JVM inside the staged dev directory. stdin is
- * piped so the parent can send `/stop`; stdout/stderr are piped through to
- * the parent's terminal so the user still sees logs unchanged, while
- * remaining tap-able for the hotswap watcher.
+ * Spawn the Minecraft server JVM inside the staged dev directory, forwarding
+ * its stdio to the parent terminal and installing a shutdown handler.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -28,6 +26,11 @@ export interface SpawnServerOptions {
    * is enabled.
    */
   javaPath?: string;
+  /**
+   * When `true` (default), pipe the parent's stdin straight to the child. The
+   * watch loop sets it `false` to route stdin itself (to intercept `restart`).
+   */
+  manageStdin?: boolean;
 }
 
 /**
@@ -49,16 +52,13 @@ export function spawnServer(opts: SpawnServerOptions): ChildProcess {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  // Forward server output to the parent terminal. The hotswap watcher can
-  // attach additional `data` listeners; Node streams broadcast to all
-  // listeners, so taps and the forward coexist.
   child.stdout?.pipe(process.stdout, { end: false });
   child.stderr?.pipe(process.stderr, { end: false });
 
-  if (child.stdin !== null && !child.stdin.destroyed) {
-    // `end: false` keeps the child's stdin open when the parent's closes
-    // (e.g. EOF on a non-TTY). Shutdown still reaches the child via the
-    // SIGINT handler installed below.
+  const manageStdin = opts.manageStdin ?? true;
+  if (manageStdin && child.stdin !== null && !child.stdin.destroyed) {
+    // `end: false` keeps the child's stdin open past the parent's EOF; shutdown
+    // still reaches the child through the SIGINT handler below.
     process.stdin.pipe(child.stdin, { end: false });
   }
 
@@ -70,7 +70,7 @@ export function spawnServer(opts: SpawnServerOptions): ChildProcess {
 
   child.once("exit", () => {
     dispose();
-    if (child.stdin !== null) {
+    if (manageStdin && child.stdin !== null) {
       try {
         process.stdin.unpipe(child.stdin);
       } catch {

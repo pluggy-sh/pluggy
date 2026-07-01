@@ -22,6 +22,14 @@ export interface Project {
   testDependencies?: Record<string, string | Dependency>;
   registries?: (string | Registry)[];
   shading?: Record<string, Shading>;
+  /**
+   * Plugin commands, keyed by command name. Rendered into the Bukkit-family
+   * descriptor's `commands:` block (paper/spigot/folia); other platforms
+   * register commands in code and ignore this. The plugin still implements
+   * the behaviour in `onCommand`/an executor — this only registers the name
+   * with the server so it routes to the plugin.
+   */
+  commands?: Record<string, CommandSpec>;
   resources?: Record<string, string>;
   workspaces?: string[];
   dev?: DevConfig;
@@ -83,6 +91,24 @@ export interface Shading {
   include?: string[];
 }
 
+/**
+ * A Bukkit plugin command. Mirrors the `commands:` entries in `plugin.yml`
+ * (https://docs.papermc.io/paper/dev/plugin-yml#commands): every field is
+ * optional and only emitted when set.
+ */
+export interface CommandSpec {
+  /** Short help text shown by the server's help system. */
+  description?: string;
+  /** Usage string, e.g. `/<command> <player>`. */
+  usage?: string;
+  /** Alternate names that also route to this command. */
+  aliases?: string[];
+  /** Permission node required to run it. */
+  permission?: string;
+  /** Message shown when the sender lacks `permission`. */
+  permissionMessage?: string;
+}
+
 export interface Registry {
   url: string;
   credentials?: {
@@ -98,19 +124,37 @@ export interface DevConfig {
   jvmArgs?: string[];
   serverProperties?: Record<string, string | number | boolean>;
   extraPlugins?: string[];
+  /** Hotswap changed classes in place on rebuild. Default on; `false` disables it. */
+  hotswap?: boolean;
   /**
-   * Hotswapping is on by default. Pluggy provisions JetBrains Runtime and
-   * HotswapAgent into the user cache and reloads classes in-place on every
-   * rebuild. Set to `false` to fall back to plain restart-on-change.
+   * What to do when a change can't be hotswapped. Default `"manual"` (notify
+   * and wait for you to type `restart`), or `"restart"` when hotswap is off.
+   * `"reload"` uses the deprecated `/reload` command.
    */
-  hotswap?: boolean | HotswapConfig;
+  fallback?: "manual" | "reload" | "restart";
+  /**
+   * Attach a JDWP debug agent so an IDE can set breakpoints. `true` uses the
+   * default port 5005; a number sets the port; an object configures port and
+   * suspend. Off by default; also toggled per-run with `--debug`.
+   */
+  debug?: boolean | number | DebugConfig;
 }
 
-export interface HotswapConfig {
-  /** `"jbr"` (default) downloads JetBrains Runtime; `"system"` uses `java` from PATH. */
-  jdk?: "jbr" | "system";
-  /** Action when a class change can't be hotswapped. Defaults to `"reload"`. */
-  fallback?: "reload" | "restart";
+export interface DebugConfig {
+  /** JDWP listen port. Default 5005. */
+  port?: number;
+  /**
+   * When `true`, the JVM waits for a debugger to attach before starting — use
+   * it to break in `onEnable`. Default `false`.
+   */
+  suspend?: boolean;
+  /**
+   * When `true`, bind the JDWP agent to all interfaces (`*`) instead of
+   * loopback. JDWP is unauthenticated, so this exposes remote code execution
+   * to the whole network — only enable it when the debugger runs on another
+   * host (a container or WSL2). Default `false`.
+   */
+  exposed?: boolean;
 }
 
 /**

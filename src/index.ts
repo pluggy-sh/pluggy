@@ -30,11 +30,11 @@ import { workspacesCommand } from "./commands/workspaces.ts";
 import { causeMessages, formatSource, isTypedError, UserError } from "./errors.ts";
 import { emitError, initLogging } from "./logging.ts";
 import { startUpdateCheck } from "./update-check.ts";
+import { CLI_VERSION } from "./version.ts";
 
 // Side-effect import: platform providers self-register via createPlatform.
 import "./platform/index.ts";
 
-const CLI_VERSION = "0.0.0";
 const REPOSITORY = "pluggy-sh/pluggy";
 
 const program = new Command()

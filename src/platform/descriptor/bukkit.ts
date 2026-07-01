@@ -1,3 +1,4 @@
+import type { CommandSpec } from "../../project.ts";
 import type { DescriptorSpec } from "../platform.ts";
 
 /** Bukkit-family descriptor (paper, folia, spigot, bukkit) → `plugin.yml`. */
@@ -31,9 +32,68 @@ export const bukkitDescriptor: DescriptorSpec = {
       }
     }
 
+    // A `workspace:` dependency is a sibling plugin. Bukkit needs a hard
+    // `depend` so it load-orders that plugin first and lets this one's
+    // classloader see its classes at runtime (the alternative — shading — would
+    // duplicate the classes and any static state into each consumer).
+    const depend = workspaceDependNames(project);
+    if (depend.length > 0) {
+      lines.push("depend:");
+      for (const name of depend) {
+        lines.push(`  - ${yamlScalar(name)}`);
+      }
+    }
+
+    if (project.commands && Object.keys(project.commands).length > 0) {
+      lines.push("commands:");
+      for (const [name, spec] of Object.entries(project.commands)) {
+        lines.push(...renderCommand(name, spec));
+      }
+    }
+
     return `${lines.join("\n")}\n`;
   },
 };
+
+/** Names of the project's `workspace:` dependencies, in declaration order. */
+function workspaceDependNames(project: Parameters<DescriptorSpec["generate"]>[0]): string[] {
+  const deps = project.dependencies;
+  if (deps === undefined || deps === null) return [];
+  const names: string[] = [];
+  for (const value of Object.values(deps)) {
+    // String form is modrinth shorthand; only the object form carries a source.
+    if (typeof value === "string") continue;
+    if (value.source.startsWith("workspace:")) {
+      const name = value.source.slice("workspace:".length);
+      if (name.length > 0) names.push(name);
+    }
+  }
+  return names;
+}
+
+/** Render one `commands:` entry (name + its set fields), two-space indented. */
+function renderCommand(name: string, spec: CommandSpec): string[] {
+  const lines = [`  ${yamlScalar(name)}:`];
+  if (spec.description !== undefined) {
+    lines.push(`    description: ${yamlScalar(spec.description)}`);
+  }
+  if (spec.usage !== undefined) {
+    lines.push(`    usage: ${yamlScalar(spec.usage)}`);
+  }
+  if (spec.permission !== undefined) {
+    lines.push(`    permission: ${yamlScalar(spec.permission)}`);
+  }
+  if (spec.permissionMessage !== undefined) {
+    lines.push(`    permission-message: ${yamlScalar(spec.permissionMessage)}`);
+  }
+  if (spec.aliases && spec.aliases.length > 0) {
+    lines.push("    aliases:");
+    for (const alias of spec.aliases) {
+      lines.push(`      - ${yamlScalar(alias)}`);
+    }
+  }
+  return lines;
+}
 
 /**
  * Derive a Bukkit `api-version` (major.minor) from a full MC version:

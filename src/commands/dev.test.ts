@@ -6,9 +6,10 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-vi.mock("../dev/index.ts", () => ({
-  runDev: vi.fn(async () => {}),
-}));
+vi.mock("../dev/index.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../dev/index.ts")>();
+  return { ...actual, runDev: vi.fn(async () => {}) };
+});
 
 import { runDev } from "../dev/index.ts";
 
@@ -81,27 +82,30 @@ describe("runDevCommand", () => {
     await writeStandalone();
     await runDevCommand({ cwd: rootDir });
     expect(runDev).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(runDev).mock.calls[0][0].name).toBe("solo");
+    expect(vi.mocked(runDev).mock.calls[0][0].server.name).toBe("solo");
   });
 
-  test("at root with workspaces: requires --workspace", async () => {
+  test("at root with workspaces: runs every shipping plugin on one server", async () => {
     await writeMultiWorkspace();
-    await expect(runDevCommand({ cwd: rootDir })).rejects.toThrow(/--workspace/);
-    expect(runDev).not.toHaveBeenCalled();
+    await runDevCommand({ cwd: rootDir });
+    expect(runDev).toHaveBeenCalledTimes(1);
+    const target = vi.mocked(runDev).mock.calls[0][0];
+    expect(target.server.name).toBe("suite");
+    expect(target.plugins.map((p) => p.name).sort()).toEqual(["suite_api", "suite_impl"]);
   });
 
   test("at root with workspaces: --workspace selects the target", async () => {
     await writeMultiWorkspace();
     await runDevCommand({ cwd: rootDir, workspace: "suite_impl" });
     expect(runDev).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(runDev).mock.calls[0][0].name).toBe("suite_impl");
+    expect(vi.mocked(runDev).mock.calls[0][0].server.name).toBe("suite_impl");
   });
 
   test("inside a workspace: uses the current workspace automatically", async () => {
     await writeMultiWorkspace();
     await runDevCommand({ cwd: join(rootDir, "modules", "api") });
     expect(runDev).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(runDev).mock.calls[0][0].name).toBe("suite_api");
+    expect(vi.mocked(runDev).mock.calls[0][0].server.name).toBe("suite_api");
   });
 
   test("--no-watch (watch=false) is passed through to runDev verbatim", async () => {
@@ -167,7 +171,8 @@ describe("selectDevTarget", () => {
     );
     const ctx = resolveWorkspaceContext(rootDir)!;
     const target = selectDevTarget(ctx, {});
-    expect(target.name).toBe("solo");
+    expect(target.server.name).toBe("solo");
+    expect(target.plugins.map((p) => p.name)).toEqual(["solo"]);
   });
 
   test("root + workspaces: one shipping workspace → auto-picks it", async () => {
@@ -187,7 +192,8 @@ describe("selectDevTarget", () => {
     );
     const ctx = resolveWorkspaceContext(rootDir)!;
     const target = selectDevTarget(ctx, {});
-    expect(target.name).toBe("a");
+    expect(target.server.name).toBe("a");
+    expect(target.plugins.map((p) => p.name)).toEqual(["a"]);
   });
 
   test("root + workspaces: zero shipping → enriched error", async () => {
@@ -215,7 +221,34 @@ describe("selectDevTarget", () => {
     expect(() => selectDevTarget(ctx, {})).toThrow(/no workspace declares.*main/);
   });
 
-  test("root + workspaces: multiple shipping → enriched error lists each", async () => {
+  test("root + workspaces: multiple same-platform shipping → runs them all", async () => {
+    await mkdir(join(rootDir, "modules", "economy"), { recursive: true });
+    await mkdir(join(rootDir, "modules", "homes"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "r",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./modules/economy", "./modules/homes"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "economy", "project.json"),
+      JSON.stringify({ name: "economy", version: "0.1.0", main: "e.M" }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "homes", "project.json"),
+      JSON.stringify({ name: "homes", version: "0.1.0", main: "h.M" }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const target = selectDevTarget(ctx, {});
+    // Server is the root; both plugins run on it.
+    expect(target.server.name).toBe("r");
+    expect(target.plugins.map((p) => p.name).sort()).toEqual(["economy", "homes"]);
+  });
+
+  test("root + workspaces: shipping on different platforms → co-host error", async () => {
     await mkdir(join(rootDir, "modules", "paper"), { recursive: true });
     await mkdir(join(rootDir, "modules", "sponge"), { recursive: true });
     await writeFile(
@@ -253,7 +286,7 @@ describe("selectDevTarget", () => {
       caught = err as Error;
     }
     expect(caught).toBeDefined();
-    expect(caught?.message).toMatch(/2 workspaces declare/);
+    expect(caught?.message).toMatch(/different platforms/);
     expect(caught?.message).toContain("ws_paper");
     expect(caught?.message).toContain("ws_sponge");
   });

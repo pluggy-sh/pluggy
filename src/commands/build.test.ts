@@ -92,6 +92,8 @@ describe("runBuildCommand", () => {
       sizeBytes: 1024,
       durationMs: 42,
       stagingDir: "/tmp/staging",
+      classpath: [],
+      javacPath: "javac",
     });
 
     const res = await runBuildCommand({ cwd: rootDir });
@@ -111,6 +113,8 @@ describe("runBuildCommand", () => {
       sizeBytes: 100,
       durationMs: 1,
       stagingDir: "/tmp/staging",
+      classpath: [],
+      javacPath: "javac",
     });
 
     const res = await runBuildCommand({ cwd: rootDir });
@@ -131,6 +135,8 @@ describe("runBuildCommand", () => {
       sizeBytes: 10,
       durationMs: 5,
       stagingDir: "/tmp/staging",
+      classpath: [],
+      javacPath: "javac",
     });
 
     const res = await runBuildCommand({ cwd: rootDir });
@@ -153,6 +159,8 @@ describe("runBuildCommand", () => {
       sizeBytes: 10,
       durationMs: 1,
       stagingDir: "/tmp/staging",
+      classpath: [],
+      javacPath: "javac",
     });
 
     const res = await runBuildCommand({ cwd: rootDir, workspace: ["suite_impl"] });
@@ -171,6 +179,8 @@ describe("runBuildCommand", () => {
       sizeBytes: 512,
       durationMs: 3,
       stagingDir: "/tmp/staging",
+      classpath: [],
+      javacPath: "javac",
     });
 
     await runBuildCommand({ cwd: rootDir });
@@ -193,6 +203,8 @@ describe("runBuildCommand", () => {
       sizeBytes: 1,
       durationMs: 1,
       stagingDir: "/tmp/staging",
+      classpath: [],
+      javacPath: "javac",
     });
 
     const res = await runBuildCommand({ cwd: rootDir });

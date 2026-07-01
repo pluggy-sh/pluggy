@@ -33,17 +33,21 @@ export async function zipDirectory(
     const ws = createWriteStream(destPath);
     ws.once("error", rejectPromise);
     ws.once("close", () => resolvePromise());
+    // Without this, a per-entry read failure (a file that vanished between
+    // enumeration and streaming) surfaces as an uncaught error instead of a
+    // rejected build.
+    zip.outputStream.once("error", rejectPromise);
     zip.outputStream.pipe(ws);
 
     for (const abs of files) {
       const rel = toPosix(relative(sourceDir, abs));
       if (opts.include !== undefined && !opts.include(rel)) continue;
       zip.addReadStreamLazy(rel, (cb) => {
-        try {
-          cb(null, createReadStream(abs));
-        } catch (e) {
-          cb(e as Error, null as unknown as NodeJS.ReadableStream);
-        }
+        const rs = createReadStream(abs);
+        // createReadStream reports a missing file via `error`, not a throw, so
+        // hand that back to yazl rather than letting it go unhandled.
+        rs.once("error", (e) => cb(e as Error, null as unknown as NodeJS.ReadableStream));
+        rs.once("open", () => cb(null, rs));
       });
     }
 
