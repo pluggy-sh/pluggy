@@ -5,17 +5,20 @@
  * platform API jars for the primary (or explicitly requested) platform.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { UserError } from "../errors.ts";
 import { readLock, type LockfileEntry } from "../lockfile.ts";
+import { log } from "../logging.ts";
 import { platforms } from "../platform/index.ts";
-import type { ResolvedProject } from "../project.ts";
+import { getCachePath, type ResolvedProject } from "../project.ts";
 import { effectiveRegistries } from "../registry.ts";
 import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
 import { resolveMaven } from "../resolver/maven.ts";
 import { PENDING_BUILD_INTEGRITY } from "../resolver/workspace.ts";
 import { parseSource, stringifySource } from "../source.ts";
+import { CLI_VERSION } from "../version.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
 export interface ResolveClasspathOptions {
@@ -171,6 +174,12 @@ async function resolvePlatformApiJars(
   const primaryId = platformId ?? declaredPlatforms[0];
   const primaryVersion = versions[0];
 
+  // A platform's API dependency tree is immutable for a given (platform,
+  // version), so cache the resolved jars: re-walking the Maven tree costs
+  // seconds even when the jars themselves are already downloaded.
+  const cached = readPlatformClasspathCache(primaryId, primaryVersion);
+  if (cached !== undefined && cached.every((p) => existsSync(p))) return cached;
+
   let primary;
   try {
     primary = platforms.get(primaryId);
@@ -196,7 +205,45 @@ async function resolvePlatformApiJars(
     });
     jars.push(...flattenJarPaths(resolved));
   }
-  return dedupePreservingOrder(jars);
+  const result = dedupePreservingOrder(jars);
+  writePlatformClasspathCache(primaryId, primaryVersion, result);
+  return result;
+}
+
+/**
+ * On-disk cache path for a platform's resolved API classpath. The pluggy
+ * version is part of the key: how a `(platform, version)` resolves can change
+ * between releases (see #40/#41), and the jars stay on disk, so keying on
+ * `(platform, version)` alone would silently serve a stale classpath after an
+ * upgrade. Folding `CLI_VERSION` in gives each release its own namespace.
+ */
+function platformClasspathCacheFile(platformId: string, version: string): string {
+  const safe = `${platformId}-${version}-v${CLI_VERSION}`.replace(/[^\w.-]/g, "_");
+  return join(getCachePath(), "classpath", `${safe}.json`);
+}
+
+function readPlatformClasspathCache(platformId: string, version: string): string[] | undefined {
+  try {
+    const raw = readFileSync(platformClasspathCacheFile(platformId, version), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((p) => typeof p === "string")) {
+      return parsed as string[];
+    }
+  } catch {
+    // Missing or unreadable cache → resolve fresh.
+  }
+  return undefined;
+}
+
+function writePlatformClasspathCache(platformId: string, version: string, jars: string[]): void {
+  try {
+    const file = platformClasspathCacheFile(platformId, version);
+    mkdirSync(join(getCachePath(), "classpath"), { recursive: true });
+    writeFileSync(file, JSON.stringify(jars));
+  } catch (err) {
+    // A cache write failure must never fail the build.
+    log.debug(`classpath: could not write cache: ${(err as Error).message}`);
+  }
 }
 
 function dedupePreservingOrder(paths: string[]): string[] {

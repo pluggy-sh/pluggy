@@ -29,13 +29,15 @@ export interface BuildOptions {
   /** Skip `.classpath` regeneration. */
   skipClasspath?: boolean;
   /**
+   * Exploded staging directory to build in. Defaults to the deterministic
+   * `projectStagingDir`. The dev runtime overrides this with a session-private
+   * dir so a concurrent `pluggy build` (or an IDE build task) can't clear or
+   * repopulate the tree mid-build and yield a jar missing its `.class` files.
+   */
+  stagingDir?: string;
+  /**
    * Extra files to drop into the staging directory before zipping. Map keys
    * are relative paths inside the JAR; values are file contents (LF-only).
-   *
-   * The dev runtime uses this to inject `hotswap-agent.properties` so the
-   * file is visible only to the plugin's own classloader. Putting it on the
-   * boot classpath instead would let HotswapAgent splice the staging dir
-   * into the system classloader and break Bukkit's plugin classloader guard.
    */
   extraStagingFiles?: Record<string, string>;
 }
@@ -46,26 +48,37 @@ export interface BuildResult {
   durationMs: number;
   /**
    * Absolute path to the exploded class/resource staging directory. The dev
-   * runtime points HotswapAgent's `extraClasspath` at this so subsequent
-   * rebuilds (which rewrite `.class` files in place) can be picked up
-   * without restarting the JVM.
+   * agent redefines classes straight from here, so a hotswap only needs the
+   * `.class` files in this dir refreshed — not a full jar.
    */
   stagingDir: string;
+  /**
+   * The resolved compile classpath and `javac` path. The dev loop caches these
+   * from the first build so hotswap recompiles skip re-resolving dependencies
+   * (which can hit the network) — see `recompileClasses`.
+   */
+  classpath: string[];
+  javacPath: string;
 }
 
 const STAGING_ROOT = ".pluggy-build";
 
-/**
- * Compute the staging directory `buildProject` will use for `project`,
- * without running the build. Lets the dev runtime point HotswapAgent's
- * `extraClasspath` at the staging dir on the very first launch.
- */
+/** The staging directory `buildProject` uses for `project`, without building. */
 export function projectStagingDir(project: ResolvedProject): string {
   const stagingId = createHash("sha256")
     .update(`${project.name}\0${project.version}\0${project.rootDir}`)
     .digest("hex")
     .slice(0, 12);
   return join(project.rootDir, STAGING_ROOT, stagingId);
+}
+
+/**
+ * Session-private staging dir for `pluggy dev`. Distinct from
+ * `projectStagingDir` so a concurrent `pluggy build` or IDE build task never
+ * shares the tree the dev server's agent redefines from.
+ */
+export function devStagingDir(project: ResolvedProject): string {
+  return `${projectStagingDir(project)}-dev`;
 }
 
 /**
@@ -82,12 +95,25 @@ export async function buildProject(
 ): Promise<BuildResult> {
   const started = Date.now();
 
+  // Every buildable project is a plugin. Shared code can't be a bare library:
+  // Java isolates each plugin's classloader, so shading the same classes into
+  // two plugins duplicates them (and any static state). Shared code must be its
+  // own plugin that others `depend` on. A missing `main` is therefore an error,
+  // not a "library".
+  if (project.main === undefined || project.main.length === 0) {
+    throw new Error(
+      `"${project.name}" has no \`main\`: every plugin needs an entry-point class. ` +
+        `Shared code must be its own plugin that others depend on (a \`workspace:\` dep ` +
+        `becomes a plugin.yml \`depend\`), not a library.`,
+    );
+  }
+
   const descriptor = pickDescriptor(project);
 
   const outputPath =
     opts.output ?? join(project.rootDir, "bin", `${project.name}-${project.version}.jar`);
 
-  const stagingDir = projectStagingDir(project);
+  const stagingDir = opts.stagingDir ?? projectStagingDir(project);
 
   if (opts.clean) {
     await rm(stagingDir, { recursive: true, force: true });
@@ -110,11 +136,8 @@ export async function buildProject(
   await stageResources(project, stagingDir);
 
   // Auto-generate the descriptor unless the user staged one through `resources`.
-  // Library workspaces (no `main`) are not loaded by a platform; skip the
-  // descriptor entirely. The jar still gets produced for `workspace:`
-  // consumers to depend on.
   const descriptorRelPath = descriptor.path;
-  if (project.main !== undefined && !hasUserDescriptor(project, descriptorRelPath)) {
+  if (!hasUserDescriptor(project, descriptorRelPath)) {
     const rendered = descriptor.generate(project);
     const destination = join(stagingDir, descriptorRelPath);
     await mkdir(dirname(destination), { recursive: true });
@@ -148,7 +171,26 @@ export async function buildProject(
     sizeBytes: info.size,
     durationMs: Date.now() - started,
     stagingDir,
+    classpath,
+    javacPath: jdk.javacPath,
   };
+}
+
+/**
+ * Recompile `.java` into `stagingDir` and nothing else — no dependency
+ * resolution, resource staging, shading, or jar. `classpath`/`javacPath` are
+ * the cached values from a prior full build.
+ */
+export async function recompileClasses(
+  project: ResolvedProject,
+  opts: { classpath: string[]; javacPath: string; stagingDir: string },
+): Promise<void> {
+  await compileJava(project, {
+    sourceDir: join(project.rootDir, "src"),
+    outputDir: opts.stagingDir,
+    classpath: opts.classpath,
+    javacPath: opts.javacPath,
+  });
 }
 
 /**

@@ -54,10 +54,10 @@ jobs:
             echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update CLI version in src/index.ts
+      - name: Update CLI version in src/version.ts
         run: |
-          sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' src/index.ts
-          grep 'const CLI_VERSION' src/index.ts
+          sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' src/version.ts
+          grep 'const CLI_VERSION' src/version.ts
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

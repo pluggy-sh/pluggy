@@ -91,6 +91,53 @@ describe("bukkitDescriptor.generate", () => {
     const output = bukkitDescriptor.generate(project());
     expect(output).not.toContain("description:");
     expect(output).not.toContain("authors:");
+    expect(output).not.toContain("commands:");
+  });
+
+  test("derives depend from workspace: dependencies, ignoring other sources", () => {
+    const output = bukkitDescriptor.generate(
+      project({
+        dependencies: {
+          core: { source: "workspace:core", version: "*" },
+          util: { source: "workspace:util", version: "*" },
+          Vault: "1.7.3",
+          adventure: { source: "maven:net.kyori:adventure-api", version: "4.24.0" },
+        },
+      }),
+    );
+    expect(output).toContain(["depend:", "  - core", "  - util"].join("\n"));
+    expect(output).not.toContain("Vault");
+    expect(output).not.toContain("adventure");
+  });
+
+  test("omits depend when there are no workspace dependencies", () => {
+    const output = bukkitDescriptor.generate(project({ dependencies: { Vault: "1.7.3" } }));
+    expect(output).not.toContain("depend:");
+  });
+
+  test("renders a commands block with only the fields that are set", () => {
+    const output = bukkitDescriptor.generate(
+      project({
+        commands: {
+          balance: { description: "Show balance", usage: "/balance", aliases: ["bal", "money"] },
+          pay: { permission: "economy.pay", permissionMessage: "No permission: denied" },
+        },
+      }),
+    );
+    expect(output).toContain(
+      [
+        "commands:",
+        "  balance:",
+        "    description: Show balance",
+        "    usage: /balance",
+        "    aliases:",
+        "      - bal",
+        "      - money",
+        "  pay:",
+        "    permission: economy.pay",
+        '    permission-message: "No permission: denied"',
+      ].join("\n"),
+    );
   });
 
   test("throws when main is missing", () => {

@@ -15,7 +15,9 @@ import type { ResolvedProject } from "../project.ts";
 
 vi.mock("../build/index.ts", () => ({
   buildProject: vi.fn(),
+  recompileClasses: vi.fn(async () => {}),
   projectStagingDir: vi.fn((p: { rootDir: string }) => `${p.rootDir}/.pluggy-build/abc`),
+  devStagingDir: vi.fn((p: { rootDir: string }) => `${p.rootDir}/.pluggy-build/abc-dev`),
 }));
 
 vi.mock("../resolver/index.ts", () => ({
@@ -47,20 +49,27 @@ vi.mock("./watch.ts", () => ({
   watchProject: vi.fn(),
 }));
 
-vi.mock("./hotswap.ts", () => ({
-  ensureAgent: vi.fn(async () => "/cache/agents/hotswap-agent.jar"),
-  agentJvmArgs: vi.fn(() => []),
-  renderPropertiesFile: vi.fn(() => "extraClasspath=/test\n"),
-  start: vi.fn(() => ({
-    arm: vi.fn(),
-    wait: vi.fn(async () => "reloaded"),
-    stop: vi.fn(),
-  })),
-}));
-
 vi.mock("./jbr.ts", () => ({
   ensureJbr: vi.fn(async () => "java"),
 }));
+
+/** A control server whose `reload()` result each test overrides as needed. */
+const controlReload = vi.fn(async () => ({ status: "reloaded", count: 1 }));
+
+vi.mock("./agent.ts", () => ({
+  ensureDevAgent: vi.fn(async () => "/cache/agents/pluggy-agent.jar"),
+  watchedPackageFromMain: vi.fn(() => "com.example"),
+  agentJvmArgs: vi.fn(() => [AGENT_ARG]),
+  createControlServer: vi.fn(async () => ({
+    port: 54321,
+    token: "test-token",
+    reload: controlReload,
+    close: vi.fn(),
+  })),
+}));
+
+/** The agent `-javaagent` is prepended to jvmArgs whenever hotswap is on. */
+const AGENT_ARG = "-javaagent:/cache/agents/pluggy-agent.jar=classes=/x,packages=com.example";
 
 vi.mock("../sdk/index.ts", () => ({
   ensureJdkForProject: vi.fn(async () => ({
@@ -89,7 +98,7 @@ import { spawnServer } from "./spawn.ts";
 import { stageDev } from "./stage.ts";
 import { watchProject } from "./watch.ts";
 
-import { runDev } from "./index.ts";
+import { resolveDebug, runDev, singleTarget } from "./index.ts";
 
 function makeProject(rootDir: string, overrides: Partial<ResolvedProject> = {}): ResolvedProject {
   return {
@@ -102,6 +111,55 @@ function makeProject(rootDir: string, overrides: Partial<ResolvedProject> = {}):
     ...overrides,
   };
 }
+
+describe("resolveDebug", () => {
+  const p = (debug?: unknown) =>
+    makeProject("/x", { dev: debug === undefined ? {} : { debug: debug as never } });
+
+  test("off by default", () => {
+    expect(resolveDebug(p(), {})).toEqual({
+      enabled: false,
+      port: 5005,
+      suspend: false,
+      exposed: false,
+    });
+  });
+
+  test("--debug enables on the default port", () => {
+    expect(resolveDebug(p(), { debug: true })).toEqual({
+      enabled: true,
+      port: 5005,
+      suspend: false,
+      exposed: false,
+    });
+  });
+
+  test("--debug <port> sets the port", () => {
+    expect(resolveDebug(p(), { debug: 5006 }).port).toBe(5006);
+  });
+
+  test("project.dev.debug number enables on that port", () => {
+    expect(resolveDebug(p(5007), {})).toEqual({
+      enabled: true,
+      port: 5007,
+      suspend: false,
+      exposed: false,
+    });
+  });
+
+  test("--debug-expose opts into all-interfaces binding", () => {
+    expect(resolveDebug(p(), { debug: true, debugExpose: true }).exposed).toBe(true);
+  });
+
+  test("--debug-suspend sets suspend and implies nothing about the port", () => {
+    expect(resolveDebug(p(), { debug: true, debugSuspend: true }).suspend).toBe(true);
+  });
+
+  test("CLI wins over project config", () => {
+    // project enables debug, but that's fine; CLI absence honours it.
+    expect(resolveDebug(p(true), {}).enabled).toBe(true);
+  });
+});
 
 function fakeDescriptor(): DescriptorSpec {
   return { path: "plugin.yml", format: "yaml", family: "bukkit", generate: () => "name: x\n" };
@@ -149,6 +207,8 @@ describe("runDev", () => {
     vi.mocked(isRuntimePlugin).mockReset();
     vi.mocked(spawnServer).mockReset();
     vi.mocked(watchProject).mockReset();
+    controlReload.mockReset();
+    controlReload.mockResolvedValue({ status: "reloaded", count: 1 });
   });
 
   afterEach(async () => {
@@ -164,6 +224,8 @@ describe("runDev", () => {
       outputPath: join(workDir, "bin", "testplugin-1.0.0.jar"),
       sizeBytes: 42,
       stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
       durationMs: 1,
     });
 
@@ -181,7 +243,7 @@ describe("runDev", () => {
     setImmediate(() => fakeChild.emit("exit", 0, null));
 
     const project = makeProject(workDir);
-    await runDev(project, {});
+    await runDev(singleTarget(project), {});
 
     expect(platforms.get).toHaveBeenCalledWith("paper");
 
@@ -209,7 +271,7 @@ describe("runDev", () => {
     expect(spawnOpts.devDir).toBe(devDirPath);
     expect(spawnOpts.serverJarName).toBe("server.jar");
     expect(spawnOpts.memory).toBe("2G");
-    expect(spawnOpts.jvmArgs).toEqual([]);
+    expect(spawnOpts.jvmArgs).toEqual([AGENT_ARG]);
 
     expect(watchProject).toHaveBeenCalledTimes(1);
     const [watchProjArg, watchOptsArg] = vi.mocked(watchProject).mock.calls[0];
@@ -224,6 +286,8 @@ describe("runDev", () => {
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
       stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -235,7 +299,7 @@ describe("runDev", () => {
     setImmediate(() => child.emit("exit", 0, null));
 
     const project = makeProject(workDir);
-    await runDev(project, { platform: "folia", version: "1.22.0", watch: false });
+    await runDev(singleTarget(project), { platform: "folia", version: "1.22.0", watch: false });
 
     expect(platforms.get).toHaveBeenCalledWith("folia");
     // The jar path carries the overridden version, proving info was
@@ -253,6 +317,8 @@ describe("runDev", () => {
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
       stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -286,7 +352,7 @@ describe("runDev", () => {
         "some-lib": { source: "maven:g:lib", version: "1" },
       },
     });
-    await runDev(project, { watch: false });
+    await runDev(singleTarget(project), { watch: false });
 
     const runtimeDepsArg = vi.mocked(stagePlugins).mock.calls[0][3];
     expect(runtimeDepsArg).toHaveLength(1);
@@ -300,6 +366,8 @@ describe("runDev", () => {
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
       stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -313,7 +381,7 @@ describe("runDev", () => {
     const project = makeProject(workDir, {
       dev: { extraPlugins: ["./dev-plugins/debug.jar", "./dev-plugins/tools.jar"] },
     });
-    await runDev(project, { watch: false });
+    await runDev(singleTarget(project), { watch: false });
 
     const extras = vi.mocked(stagePlugins).mock.calls[0][4];
     expect(extras).toEqual([
@@ -329,6 +397,8 @@ describe("runDev", () => {
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
       stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -342,7 +412,7 @@ describe("runDev", () => {
     const project = makeProject(workDir, {
       dev: { memory: "4G", jvmArgs: ["-Dbase=true"] },
     });
-    await runDev(project, {
+    await runDev(singleTarget(project), {
       watch: false,
       memory: "8G",
       args: ["-Doverride=true"],
@@ -350,14 +420,14 @@ describe("runDev", () => {
 
     const opts = vi.mocked(spawnServer).mock.calls[0][0];
     expect(opts.memory).toBe("8G");
-    expect(opts.jvmArgs).toEqual(["-Doverride=true"]);
+    expect(opts.jvmArgs).toEqual([AGENT_ARG, "-Doverride=true"]);
   });
 
   test("throws when no platform is configured", async () => {
     const project = makeProject(workDir, {
       compatibility: { versions: ["1.21.8"], platforms: [] },
     });
-    await expect(runDev(project, {})).rejects.toThrow(/platform/);
+    await expect(runDev(singleTarget(project), {})).rejects.toThrow(/platform/);
   });
 
   test("passes clean, freshWorld, port, offline to stageDev", async () => {
@@ -367,6 +437,8 @@ describe("runDev", () => {
       outputPath: join(workDir, "plugin.jar"),
       sizeBytes: 1,
       stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
       durationMs: 1,
     });
     vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
@@ -379,7 +451,7 @@ describe("runDev", () => {
 
     // --offline overrides project.dev.onlineMode=true.
     const project = makeProject(workDir, { dev: { onlineMode: true } });
-    await runDev(project, {
+    await runDev(singleTarget(project), {
       clean: true,
       freshWorld: false,
       port: 30_000,
@@ -393,6 +465,70 @@ describe("runDev", () => {
     expect(stageOpts.onlineMode).toBe(false);
 
     expect(vi.mocked(buildProject).mock.calls[0][1].clean).toBe(true);
+  });
+
+  /** Common mock setup for the watch-mode fallback tests. */
+  function setupWatchMode(): void {
+    const platform = fakePlatform("paper");
+    vi.mocked(platforms.get).mockReturnValue(platform);
+    vi.mocked(buildProject).mockResolvedValue({
+      outputPath: join(workDir, "plugin.jar"),
+      sizeBytes: 1,
+      stagingDir: join(workDir, ".pluggy-build", "abc"),
+      classpath: [],
+      javacPath: "javac",
+      durationMs: 1,
+    });
+    vi.mocked(stageDev).mockResolvedValue(join(workDir, "dev"));
+    vi.mocked(stagePlugins).mockResolvedValue(undefined);
+    // Every reload reports the change can't be hotswapped, forcing the fallback.
+    controlReload.mockResolvedValue({ status: "unsupported", count: 0 });
+  }
+
+  test("manual fallback (default): a hotswap miss does NOT restart the server", async () => {
+    setupWatchMode();
+    const child = makeFakeChild();
+    vi.mocked(spawnServer).mockReturnValue(child as unknown as ReturnType<typeof spawnServer>);
+    let onChange: (() => Promise<void>) | undefined;
+    vi.mocked(watchProject).mockImplementation((_p, o) => {
+      onChange = o.onChange;
+      return () => {};
+    });
+
+    const done = runDev(singleTarget(makeProject(workDir)), {}); // watch on, fallback defaults to manual
+    await vi.waitFor(() => expect(onChange).toBeDefined());
+
+    await onChange!(); // change → hotswap timeout → manual: notify, never restart
+    expect(spawnServer).toHaveBeenCalledTimes(1);
+
+    child.emit("exit", 0, null);
+    await done;
+  });
+
+  test("fallback 'restart': a hotswap miss restarts the server", async () => {
+    setupWatchMode();
+    const child1 = makeFakeChild();
+    const child2 = makeFakeChild();
+    vi.mocked(spawnServer)
+      .mockReturnValueOnce(child1 as unknown as ReturnType<typeof spawnServer>)
+      .mockReturnValueOnce(child2 as unknown as ReturnType<typeof spawnServer>);
+    let onChange: (() => Promise<void>) | undefined;
+    vi.mocked(watchProject).mockImplementation((_p, o) => {
+      onChange = o.onChange;
+      return () => {};
+    });
+
+    const done = runDev(singleTarget(makeProject(workDir)), { fallback: "restart" });
+    await vi.waitFor(() => expect(onChange).toBeDefined());
+
+    const changeP = onChange!(); // change → timeout → restart: stop child1, spawn child2
+    await vi.waitFor(() => expect(child1.stdin?.write).toHaveBeenCalledWith("stop\n"));
+    child1.emit("exit", 0, null); // let the restart proceed
+    await changeP;
+    expect(spawnServer).toHaveBeenCalledTimes(2);
+
+    child2.emit("exit", 0, null);
+    await done;
   });
 });
 

@@ -210,6 +210,11 @@ describe("buildProject", () => {
     await expect(buildProject(project, {})).rejects.toThrow(/different descriptor families/);
   });
 
+  test("throws when the project has no `main` (no bare libraries)", async () => {
+    const project = makeProject(workDir, { main: undefined });
+    await expect(buildProject(project, {})).rejects.toThrow(/has no `main`/);
+  });
+
   test("user-supplied descriptor in `resources` wins over auto-generation", async () => {
     await mkdir(join(workDir, "src"), { recursive: true });
     await writeFile(join(workDir, "src", "A.java"), "class A {}");
