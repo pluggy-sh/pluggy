@@ -15,6 +15,7 @@ import process from "node:process";
 
 import { RuntimeError } from "../errors.ts";
 import { log } from "../logging.ts";
+import { writeFileAtomic } from "../portable.ts";
 import { getCachePath } from "../project.ts";
 
 /**
@@ -193,10 +194,7 @@ async function downloadArchive(
       },
     );
   }
-  const tmpPath = `${destPath}.partial`;
-  const { writeFile } = await import("node:fs/promises");
-  await writeFile(tmpPath, buf);
-  await rename(tmpPath, destPath);
+  await writeFileAtomic(destPath, buf);
   log.debug(`Cached JBR archive at ${destPath} (${buf.byteLength} bytes)`);
 }
 

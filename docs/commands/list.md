@@ -110,15 +110,16 @@ is signalled by the `authenticated` boolean.
 
 Under `--outdated`, each `deps[]` entry additionally carries:
 
-- `latestVersion`: the newest Modrinth stable version, or `null` for non-Modrinth deps and query failures.
-- `outdated`: `true` only for entries where `latestVersion` is known and differs from `resolvedVersion`.
+- `latestVersion`: the newest stable version from the dep's registry (Modrinth or Maven), or `null` when the lookup failed.
+- `outdated`: `true` only for entries where `latestVersion` is known and is newer than the current version.
+- `lookupError`: present when the latest-version lookup failed. The human output prints these as warnings instead of counting the dep as up to date.
 
 ## Error cases
 
-| Trigger                     | Message                                             |
-| --------------------------- | --------------------------------------------------- |
-| Not inside a pluggy project | `not inside a pluggy project (from <cwd>)`          |
-| Unknown `--workspace` name  | `workspace not found: "<n>". known workspaces: ...` |
+| Trigger                     | Message                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------------------- |
+| Not inside a pluggy project | `No pluggy project found. Run this from inside a project directory.` (`E_LIST_NO_PROJECT`, exit 2) |
+| Unknown `--workspace` name  | `workspace not found: "<n>". known workspaces: ...`                                                |
 
 ## See also
 

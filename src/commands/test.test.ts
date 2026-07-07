@@ -158,6 +158,8 @@ describe("runTestCommand", () => {
         platformId: "paper",
       },
     ]);
+    const lines = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines.some((l: string) => l.includes("stdout from tests is not shown"))).toBe(true);
   });
 
   test("no-test-dir → ok=true, skipped field set, exitCode 0", async () => {
@@ -330,6 +332,14 @@ describe("runTestCommand", () => {
     const cellCoords = res.results[0].cells.map((c) => `${c.mcVersion}:${c.platformId}`);
     expect(cellCoords).toEqual(["1.21.4:paper", "1.21.4:spigot", "1.20.4:paper", "1.20.4:spigot"]);
     expect(res.results[0].tests).toEqual({ total: 4, passed: 4, failed: 0, skipped: 0 });
+    const lines = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines.some((l: string) => l.includes("(4 cells: 2 versions × 2 platforms)"))).toBe(true);
+  });
+
+  test("outside a project: UserError with E_TEST_NO_PROJECT", async () => {
+    await expect(runTestCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_TEST_NO_PROJECT",
+    });
   });
 
   test("--mc-version and --platform narrow the matrix", async () => {

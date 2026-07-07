@@ -10,6 +10,8 @@ import type { ResolvedProject } from "./project.ts";
 import {
   findWorkspace,
   parseWorkspaceList,
+  projectStartDir,
+  resolveScope,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   topologicalOrder,
@@ -636,5 +638,60 @@ describe("findWorkspace", () => {
   test("lists (none) when there are no workspaces", () => {
     const empty: WorkspaceContext = { ...context, workspaces: [] };
     expect(() => findWorkspace(empty, "anything")).toThrow(/\(none\)/);
+  });
+});
+
+describe("projectStartDir", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-startdir-"));
+    await writeFile(join(rootDir, "project.json"), JSON.stringify({ name: "p", version: "1.0.0" }));
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  test("returns cwd when no --project flag was given", () => {
+    expect(projectStartDir(undefined, rootDir)).toBe(rootDir);
+  });
+
+  test("returns the project file's directory for a file path", () => {
+    expect(projectStartDir(join(rootDir, "project.json"), "/anywhere")).toBe(rootDir);
+  });
+
+  test("accepts a directory path as-is", () => {
+    expect(projectStartDir(rootDir, "/anywhere")).toBe(rootDir);
+  });
+
+  test("throws E_PROJECT_FLAG_NOT_FOUND for a missing path", () => {
+    expect(() => projectStartDir(join(rootDir, "nope", "project.json"), rootDir)).toThrow(
+      /project file not found/i,
+    );
+  });
+});
+
+describe("resolveScope: no project", () => {
+  let emptyDir: string;
+
+  beforeEach(async () => {
+    emptyDir = await mkdtemp(join(tmpdir(), "pluggy-scope-empty-"));
+  });
+
+  afterEach(async () => {
+    await rm(emptyDir, { recursive: true, force: true });
+  });
+
+  test("throws the standard no-project UserError with a per-command code", () => {
+    expect(() => resolveScope({ cwd: emptyDir, commandName: "install" })).toThrow(
+      /no pluggy project found/i,
+    );
+    try {
+      resolveScope({ cwd: emptyDir, commandName: "install" });
+    } catch (err) {
+      expect((err as { code?: string }).code).toBe("E_INSTALL_NO_PROJECT");
+      expect((err as { hint?: string }).hint).toMatch(/pluggy init/);
+    }
   });
 });

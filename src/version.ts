@@ -4,4 +4,6 @@
  * notably the platform-classpath cache, which folds it into its key so a
  * release that changes dependency resolution can't reuse a stale cache.
  */
-export const CLI_VERSION = "0.0.0";
+// Annotated `string`, not the inferred literal: releases stamp a real
+// version over "0.0.0", so narrowing on the literal would be wrong.
+export const CLI_VERSION: string = "0.0.0";

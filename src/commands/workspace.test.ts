@@ -209,11 +209,65 @@ describe("runWorkspaceRemove", () => {
     expect(child).toBeDefined();
   });
 
-  test("--delete also removes the workspace's directory", async () => {
+  test("--delete --yes removes the workspace's directory", async () => {
     await writeWithApiCore();
-    const res = await runWorkspaceRemove({ cwd: rootDir, name: "core", deleteFiles: true });
+    const res = await runWorkspaceRemove({
+      cwd: rootDir,
+      name: "core",
+      deleteFiles: true,
+      yes: true,
+    });
     expect(res.deletedFiles).toBe(true);
     expect(resolveProjectFile(join(rootDir, "core", "project.json"))).toBeUndefined();
+  });
+
+  test("--delete without --yes throws in non-interactive mode and modifies nothing", async () => {
+    await writeWithApiCore();
+    const stdout = process.stdout as unknown as { isTTY: boolean | undefined };
+    const wasTTY = stdout.isTTY;
+    stdout.isTTY = false;
+    try {
+      await expect(
+        runWorkspaceRemove({ cwd: rootDir, name: "core", deleteFiles: true }),
+      ).rejects.toThrow(/without confirmation/);
+    } finally {
+      stdout.isTTY = wasTTY;
+    }
+
+    const root = resolveProjectFile(join(rootDir, "project.json"));
+    expect(root?.workspaces).toEqual(["./api", "./core"]);
+    expect(resolveProjectFile(join(rootDir, "core", "project.json"))).toBeDefined();
+  });
+
+  test("--delete without --yes throws when stdin is not a TTY and modifies nothing", async () => {
+    await writeWithApiCore();
+    const stdout = process.stdout as unknown as { isTTY: boolean | undefined };
+    const stdin = process.stdin as unknown as { isTTY: boolean | undefined };
+    const wasStdoutTTY = stdout.isTTY;
+    const wasStdinTTY = stdin.isTTY;
+    stdout.isTTY = true;
+    stdin.isTTY = false;
+    try {
+      await expect(
+        runWorkspaceRemove({ cwd: rootDir, name: "core", deleteFiles: true }),
+      ).rejects.toThrow(/without confirmation/);
+    } finally {
+      stdout.isTTY = wasStdoutTTY;
+      stdin.isTTY = wasStdinTTY;
+    }
+
+    const root = resolveProjectFile(join(rootDir, "project.json"));
+    expect(root?.workspaces).toEqual(["./api", "./core"]);
+    expect(resolveProjectFile(join(rootDir, "core", "project.json"))).toBeDefined();
+  });
+
+  test("--delete without --yes throws in --json mode", async () => {
+    await writeWithApiCore();
+    initLogging({ json: true, verbose: false, noColor: true });
+    await expect(
+      runWorkspaceRemove({ cwd: rootDir, name: "core", deleteFiles: true }),
+    ).rejects.toThrow(/without confirmation/);
+    expect(resolveProjectFile(join(rootDir, "core", "project.json"))).toBeDefined();
   });
 
   test("refuses when other workspaces declare workspace:<name>", async () => {

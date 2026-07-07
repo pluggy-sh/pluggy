@@ -14,7 +14,7 @@ vi.mock("../dev/index.ts", async (importOriginal) => {
 import { runDev } from "../dev/index.ts";
 
 import { initLogging } from "../logging.ts";
-import { runDevCommand, selectDevTarget } from "./dev.ts";
+import { devCommand, runDevCommand, selectDevTarget } from "./dev.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
 describe("runDevCommand", () => {
@@ -145,6 +145,26 @@ describe("runDevCommand", () => {
     await writeStandalone();
     vi.mocked(runDev).mockRejectedValueOnce(new Error("server crashed"));
     await expect(runDevCommand({ cwd: rootDir })).rejects.toThrow(/server crashed/);
+  });
+
+  test("mcVersion plumbs through to runDev as `version`", async () => {
+    await writeStandalone();
+    await runDevCommand({ cwd: rootDir, mcVersion: "1.21" });
+    expect(vi.mocked(runDev).mock.calls[0][1].version).toBe("1.21");
+  });
+
+  test("outside a project: UserError with E_DEV_NO_PROJECT", async () => {
+    await expect(runDevCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_DEV_NO_PROJECT",
+    });
+  });
+});
+
+describe("devCommand", () => {
+  test("exposes --mc-version, not --version (the root program owns --version)", () => {
+    const longs = devCommand().options.map((o) => o.long);
+    expect(longs).toContain("--mc-version");
+    expect(longs).not.toContain("--version");
   });
 });
 

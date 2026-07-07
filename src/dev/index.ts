@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { basename, join, resolve } from "node:path";
 
 import { buildProject, devStagingDir, recompileClasses, type BuildResult } from "../build/index.ts";
@@ -230,6 +231,9 @@ export async function runDev(target: DevTarget, opts: DevOptions): Promise<void>
 
   log.debug(`server spawned (pid=${child.pid ?? "?"})`);
 
+  const port = opts.port ?? server.dev?.port ?? 25565;
+  announceWhenReady(child, port, watchMode);
+
   let stopWatching: (() => void) | undefined;
   let disposeStdin: (() => void) | undefined;
   let activeRestartRef: (() => Promise<void> | undefined) | undefined;
@@ -339,6 +343,7 @@ export async function runDev(target: DevTarget, opts: DevOptions): Promise<void>
       } catch {
         // compileJava already streamed the javac error to the console.
         log.error("compile error");
+        log.info(dim("server still running with the previous code — fix the error and save again"));
         return;
       }
 
@@ -349,7 +354,10 @@ export async function runDev(target: DevTarget, opts: DevOptions): Promise<void>
           log.success(`hotswapped ${n} class${n === 1 ? "" : "es"}`);
           return;
         }
-        if (result.status === "nochange") return;
+        if (result.status === "nochange") {
+          log.info(dim("· no class changes; nothing to hotswap"));
+          return;
+        }
         if (result.status === "pending") {
           log.info(dim("· restart to apply new code"));
           return;
@@ -376,6 +384,15 @@ export async function runDev(target: DevTarget, opts: DevOptions): Promise<void>
       for (const d of disposers) d();
     };
 
+    const onSave = hotswap.enabled
+      ? "hotswapped into the running server"
+      : hotswap.fallback === "reload"
+        ? "rebuilt and applied with /reload"
+        : hotswap.fallback === "restart"
+          ? "rebuilt; the server restarts"
+          : "rebuilt; type `restart` to apply";
+    log.step(`Watching for changes — saves are ${onSave}`);
+
     activeRestartRef = (): Promise<void> | undefined => activeRestart;
   }
 
@@ -397,6 +414,36 @@ export async function runDev(target: DevTarget, opts: DevOptions): Promise<void>
     stopWatching?.();
     disposeStdin?.();
   }
+}
+
+/**
+ * Print connect/stop affordances once the server logs its ready line
+ * ("Done (…s)!" on bukkit-family/Sponge/Velocity, "Listening on" on Bungee).
+ * Partial chunks are buffered so a ready line split across reads still
+ * matches; the listener detaches after the first match. On a platform with
+ * other wording the block simply never prints.
+ */
+function announceWhenReady(child: ChildProcess, port: number, watchMode: boolean): void {
+  const stdout = child.stdout;
+  if (stdout === null || stdout === undefined) return;
+  let tail = "";
+  const onData = (chunk: Buffer | string): void => {
+    tail += chunk.toString();
+    if (!/Done \(|Listening on /.test(tail)) {
+      const lastNewline = tail.lastIndexOf("\n");
+      tail = lastNewline === -1 ? tail.slice(-256) : tail.slice(lastNewline + 1);
+      return;
+    }
+    stdout.removeListener("data", onData);
+    log.info("");
+    log.success(`Server ready on localhost:${port}`);
+    log.step(`Connect: Minecraft → Multiplayer → Direct Connect → localhost:${port}`);
+    if (watchMode) {
+      log.step("Console: type server commands below; `restart` (or `rs`) restarts the server");
+    }
+    log.step("Ctrl+C to stop");
+  };
+  stdout.on("data", onData);
 }
 
 interface Provisioning {

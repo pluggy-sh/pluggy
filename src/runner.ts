@@ -36,9 +36,11 @@ export interface RunOptions {
    * block when that workspace settles. Keeps parallel runs readable
    * (interleaved chatter is the default cost of `--concurrency > 1`).
    *
-   * Defaults to `true` when the effective concurrency is `> 1`. Set
-   * explicitly to `false` to keep the live-streamed behavior, e.g. when
-   * the user wants progress feedback on long-running workspaces.
+   * Defaults to `true` only when more than one workspace runs with an
+   * effective concurrency `> 1`; a single target can't interleave, so it
+   * streams live and long steps (JDK download, BuildTools) show progress
+   * as it happens. Set explicitly to `false` to force live streaming with
+   * multiple workspaces.
    */
   bufferOutput?: boolean;
 }
@@ -73,7 +75,7 @@ export async function runWorkspaces<T>(
 
   const concurrency = Math.max(1, opts.concurrency ?? Math.min(cpus().length, 4));
   const skipOnUpstreamFailure = opts.skipOnUpstreamFailure ?? true;
-  const bufferOutput = opts.bufferOutput ?? concurrency > 1;
+  const bufferOutput = opts.bufferOutput ?? (targets.length > 1 && concurrency > 1);
   const semaphore = new Semaphore(concurrency);
   const ordered = topologicalOrder(targets);
   const inSelection = new Set(ordered.map((n) => n.name));

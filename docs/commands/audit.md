@@ -58,9 +58,12 @@ Tampered
     expected: sha256-15c8c2eb1a69d8b1bc914f554353da8ee7cf074c05c8074da9898aee5c70d0d8
     actual:   sha256-deadbeef000...
     jar:      /Users/you/Library/Caches/pluggy/dependencies/maven/net/kyori/adventure-api/4.17.0.jar
+Run `pluggy install` to re-download; it detects tampering and heals the cache.
 
 1 tampered, 5 ok
 ```
+
+The failure summary keeps the not-cached and skipped counts when present (`1 tampered, 4 ok, 1 not cached`). A run where nothing is cached yet prints `0 verified; nothing cached yet. Run `pluggy install` first.` instead of a green check.
 
 ## JSON output
 

@@ -95,6 +95,25 @@ describe("parseIdentifier (CLI form)", () => {
   test("rejects identifiers with multiple @ separators", () => {
     expect(() => parseIdentifier("foo@1.0.0@beta")).toThrow();
   });
+
+  test("folds ASCII uppercase in slugs to lowercase (npm-style leniency)", () => {
+    expect(parseIdentifier("EssentialsX")).toEqual({
+      kind: "modrinth",
+      slug: "essentialsx",
+      version: "*",
+    });
+    expect(parseIdentifier("EssentialsX@2.21.1")).toEqual({
+      kind: "modrinth",
+      slug: "essentialsx",
+      version: "2.21.1",
+    });
+  });
+
+  test("rejects slugs that lowercasing cannot fix, leading with the slug rules", () => {
+    expect(() => parseIdentifier("essentials!x")).toThrow(
+      /lowercase letters, digits, hyphens, and underscores/,
+    );
+  });
 });
 
 describe("stringifySource (round trip)", () => {

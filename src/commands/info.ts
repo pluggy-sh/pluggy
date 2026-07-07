@@ -7,11 +7,14 @@ import { Command } from "commander";
 
 import { bold, dim, emit, log } from "../logging.ts";
 import { parseIdentifier, type ResolvedSource } from "../source.ts";
-import { resolveWorkspaceContext } from "../workspace.ts";
+import { projectStartDir, resolveWorkspaceContext } from "../workspace.ts";
 
 import { parseIdentifierArg } from "./parsers.ts";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
+
+/** Human output shows only the newest versions; popular plugins have hundreds. */
+const HUMAN_VERSION_CAP = 15;
 
 interface ModrinthProject {
   slug?: string;
@@ -41,6 +44,7 @@ interface ModrinthVersion {
 }
 
 export interface InfoOptions {
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
 }
 
@@ -57,10 +61,10 @@ export interface InfoResult {
  * When invoked inside a pluggy project, Modrinth hits are annotated with a
  * per-version compatibility hint against the project's `compatibility.versions`.
  */
-export async function doInfo(identifier: string, _options: InfoOptions = {}): Promise<InfoResult> {
+export async function doInfo(identifier: string, options: InfoOptions = {}): Promise<InfoResult> {
   const source = parseIdentifier(identifier);
 
-  const ctx = resolveWorkspaceContext(process.cwd());
+  const ctx = resolveWorkspaceContext(projectStartDir(options.project, process.cwd()));
   const compatVersions =
     ctx?.current?.project.compatibility?.versions ?? ctx?.root.compatibility?.versions ?? [];
 
@@ -222,11 +226,15 @@ function printHumanInfo(result: InfoResult): void {
       const versions = result.versions as Record<string, unknown>[];
       log.info("");
       log.info(bold("versions:"));
-      for (const v of versions) {
+      const shown = versions.slice(0, HUMAN_VERSION_CAP);
+      for (const v of shown) {
         const compat = v.compatibility === undefined ? "" : ` [${v.compatibility as string}]`;
         log.info(
           `  ${v.version as string}  ${dim(v.type as string)}  ${dim(v.date as string)}${compat}`,
         );
+      }
+      if (versions.length > shown.length) {
+        log.info(dim(`  … and ${versions.length - shown.length} more (use --json for all)`));
       }
       break;
     }
@@ -257,7 +265,11 @@ export function infoCommand(): Command {
   return new Command("info")
     .alias("show")
     .description("Show information about a plugin, including available versions and compatibility.")
-    .argument("<plugin>", "Plugin identifier.", parseIdentifierArg)
+    .argument(
+      "<plugin>",
+      "Plugin identifier: a Modrinth slug (worldedit), maven:group:artifact@version, workspace:name, or a local jar path (./libs/custom.jar).",
+      parseIdentifierArg,
+    )
     .action(async function action(this: Command, plugin: string) {
       const globalOpts = this.optsWithGlobals();
       await doInfo(plugin, { project: globalOpts.project });

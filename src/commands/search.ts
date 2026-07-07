@@ -2,7 +2,7 @@ import { Command } from "commander";
 
 import { bold, dim, emit, log } from "../logging.ts";
 
-import { parseInteger, parsePlatform, parseSemver } from "./parsers.ts";
+import { parseInteger, parseMcVersion, parsePlatform } from "./parsers.ts";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
 
@@ -39,7 +39,8 @@ export interface SearchOptions {
   size: number;
   page: number;
   platform?: string;
-  version?: string;
+  /** Minecraft (game) version filter, e.g. `1.21.8`. */
+  mcVersion?: string;
 }
 
 export interface SearchResult {
@@ -61,7 +62,7 @@ export async function doSearch(query: string, options: SearchOptions): Promise<S
 
   const facets: string[][] = [["project_type:plugin"]];
   if (options.platform) facets.push([`categories:${options.platform}`]);
-  if (options.version) facets.push([`versions:${options.version}`]);
+  if (options.mcVersion) facets.push([`versions:${options.mcVersion}`]);
 
   const params = new URLSearchParams();
   params.set("query", query);
@@ -122,6 +123,12 @@ function printHumanSearch(query: string, result: SearchResult): void {
     log.info(`  ${dim(`downloads: ${downloads.toLocaleString()}`)}`);
     log.info(`  ${dim(`https://modrinth.com/plugin/${hit.slug}`)}`);
   }
+  log.info("");
+  log.info(dim("Install with: pluggy install <slug>"));
+  const seen = (result.page + 1) * result.size;
+  if (result.hits.length === result.size && seen < result.total) {
+    log.info(dim(`more: --page ${result.page + 1}`));
+  }
 }
 
 /**
@@ -156,13 +163,13 @@ export function searchCommand(): Command {
     .option("--size <size>", "Page size (default: 10).", parseInteger, 10)
     .option("--page <page>", "Page number (default: 0).", parseInteger, 0)
     .option("--platform <name>", "Filter by platform.", parsePlatform)
-    .option("--version <semver>", "Filter by Minecraft version.", parseSemver)
+    .option("--mc-version <version>", "Filter by Minecraft version (e.g. 1.21.8).", parseMcVersion)
     .action(async function action(this: Command, query: string, options) {
       await doSearch(query, {
         size: options.size,
         page: options.page,
         platform: options.platform,
-        version: options.version,
+        mcVersion: options.mcVersion,
       });
     });
 }

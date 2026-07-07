@@ -34,7 +34,7 @@ sdk: extracting JDK…
 ✓ sdk: installed temurin 21 at /Users/you/Library/Caches/pluggy/jdk/temurin-21-macos-aarch64/Contents/Home
 ```
 
-Pass `--distribution <name>` to install a non-default distribution. Pass `--force` to wipe the slot and re-download.
+Pass `--distribution <name>` to install a non-default distribution, or use the `sdk list` row shape positionally: `pluggy sdk install temurin 21`. Pass `--force` to reinstall — the replacement is downloaded and verified before the existing JDK is removed, so a failed download never leaves you without one.
 
 The allowlist is `temurin` (default), `zulu`, `liberica`, `corretto`, `microsoft`, and `graalvm_community`. Run `pluggy sdk list --available` to see the current set.
 
@@ -45,8 +45,10 @@ Show the cached JDKs.
 ```text
 $ pluggy sdk list
 Cached JDKs:
-  ✓ temurin 21  (21.0.11+10)  last used just now
-  ✓ zulu 17     (17.0.13)     last used 3d ago
+  ✓ temurin 21  (21.0.11+10)  334.50 MB  last used just now
+  ✓ zulu 17     (17.0.13)     301.20 MB  last used 3d ago
+
+stored under /Users/you/Library/Caches/pluggy/jdk — manage with `pluggy cache`
 ```
 
 A red `✗` means the manifest still references the slot but the directory is gone. `pluggy cache prune --category jdk` cleans those up.
@@ -92,7 +94,7 @@ Delete a cached JDK.
 
 ```text
 $ pluggy sdk remove 17 --distribution zulu
-✓ Removed zulu 17
+✓ Removed zulu 17 (freed 301.20 MB) from /Users/you/Library/Caches/pluggy/jdk/zulu-17-macos-aarch64
 ```
 
 `remove` always honors the `--distribution` value, so you can prune one distribution while keeping another.

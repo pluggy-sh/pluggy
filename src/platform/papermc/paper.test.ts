@@ -1,4 +1,9 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 import { expect, test } from "vite-plus/test";
+
+import { getCachePath } from "../../project.ts";
 import { platforms } from "../index.ts";
 
 test("paper platform exists", () => {
@@ -27,4 +32,8 @@ test("paper platform download latest version", async () => {
   expect(result?.build).toBe(latestVersion.build);
   expect(result?.output instanceof Uint8Array).toBe(true);
   expect(result?.output.length).toBeGreaterThan(0);
+
+  const jarPath = join(getCachePath(), "versions", `paper-${result.version}-${result.build}.jar`);
+  expect(existsSync(jarPath)).toBe(true);
+  expect(existsSync(`${jarPath}.partial`)).toBe(false);
 });

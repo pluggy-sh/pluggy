@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { initLogging } from "../logging.ts";
 import { runRunCommand, tokenize } from "./run.ts";
@@ -229,5 +229,46 @@ describe("runRunCommand", () => {
     await expect(runRunCommand({ cwd: rootDir, scriptName: "x" })).rejects.toThrow(
       /no pluggy project/i,
     );
+    await expect(runRunCommand({ cwd: rootDir, scriptName: "x" })).rejects.toMatchObject({
+      code: "E_RUN_NO_PROJECT",
+    });
+  });
+
+  test("sweep notes workspaces skipped for not defining the script", async () => {
+    await mkdir(join(rootDir, "api"), { recursive: true });
+    await mkdir(join(rootDir, "core"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21"], platforms: ["paper"] },
+        workspaces: ["./api", "./core"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "api", "project.json"),
+      JSON.stringify({
+        name: "api",
+        version: "0.1.0",
+        scripts: { only: 'node -e "process.exit(0)"' },
+      }),
+    );
+    await writeFile(
+      join(rootDir, "core", "project.json"),
+      JSON.stringify({ name: "core", version: "0.1.0" }),
+    );
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const res = await runRunCommand({ cwd: rootDir, scriptName: "only" });
+      expect(res.results).toHaveLength(1);
+      const lines = logSpy.mock.calls.map((c) => String(c[0]));
+      expect(
+        lines.some((l) => l.includes('skipping 1 workspace where "only" is not defined: core')),
+      ).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

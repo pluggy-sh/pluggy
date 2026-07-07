@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import process from "node:process";
 
+import { dirSize } from "../cache/index.ts";
 import { log } from "../logging.ts";
 import type { ResolvedProject } from "../project.ts";
 
@@ -42,6 +43,12 @@ export interface EnsureJdkOptions {
    * write to the cache, regardless of system Java.
    */
   ignoreSystemJava?: boolean;
+  /**
+   * Reinstall even on a cache hit: re-download the archive, verify it, and
+   * only then replace the existing slot. A failed download or extract
+   * leaves the old JDK untouched.
+   */
+  force?: boolean;
 }
 
 export interface ResolvedJdk {
@@ -86,7 +93,7 @@ export async function ensureJdk(major: number, opts: EnsureJdkOptions = {}): Pro
   const key = cacheKey(parts);
   const slot = slotPath(key);
 
-  if (existsSync(javaBinaryPath(slot, target.os))) {
+  if (opts.force !== true && existsSync(javaBinaryPath(slot, target.os))) {
     await touchEntry(key);
     return resolvedFromSlot(slot, target.os, parts, "cache");
   }
@@ -99,7 +106,7 @@ export async function ensureJdk(major: number, opts: EnsureJdkOptions = {}): Pro
   }
 
   const spec = await resolveJdk({ major, distribution, os: target.os, arch: target.arch });
-  await installJdk(spec);
+  await installJdk(spec, { freshArchive: opts.force === true });
   log.success(`Installed ${distribution} ${spec.fullVersion}`);
   return resolvedFromSlot(slot, target.os, parts, "installed");
 }
@@ -191,11 +198,17 @@ export async function listInstalled(): Promise<InstalledJdkInfo[]> {
   return out;
 }
 
-/**
- * Remove a specific JDK by major+distribution. Used by `pluggy sdk remove`.
- * Returns `false` if the slot wasn't installed.
- */
-export async function removeJdk(major: number, distribution = "temurin"): Promise<boolean> {
+export interface RemoveJdkResult {
+  /** False when the slot wasn't installed (nothing was on disk). */
+  removed: boolean;
+  /** Slot directory that was (or would have been) removed. */
+  slotPath: string;
+  /** Bytes reclaimed from disk; 0 when nothing was installed. */
+  freedBytes: number;
+}
+
+/** Remove a specific JDK by major+distribution. Used by `pluggy sdk remove`. */
+export async function removeJdk(major: number, distribution = "temurin"): Promise<RemoveJdkResult> {
   const target = targetForHost();
   const parts: CacheKeyParts = {
     distribution,
@@ -206,11 +219,13 @@ export async function removeJdk(major: number, distribution = "temurin"): Promis
   const key = cacheKey(parts);
   const slot = slotPath(key);
   const slotExists = existsSync(slot);
+  let freedBytes = 0;
   if (slotExists) {
+    freedBytes = await dirSize(slot);
     await rm(slot, { recursive: true, force: true });
   }
   await forgetEntry(key);
-  return slotExists;
+  return { removed: slotExists, slotPath: slot, freedBytes };
 }
 
 // ---------------------------------------------------------------------------

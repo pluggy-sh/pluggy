@@ -2,24 +2,29 @@ import process from "node:process";
 
 import { Command } from "commander";
 
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, log, yellow } from "../logging.ts";
 import { type LockfileEntry, readLock } from "../lockfile.ts";
 import type { Dependency, ResolvedProject } from "../project.ts";
 import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
-import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { parseSource, type ResolvedSource } from "../source.ts";
+import { compareVersions } from "../update-check.ts";
 import {
   findWorkspace,
+  projectStartDir,
   resolveWorkspaceContext,
   type WorkspaceContext,
   type WorkspaceNode,
 } from "../workspace.ts";
+
+import { latestUpstreamVersion } from "./outdated.ts";
 
 export interface ListOptions {
   tree?: boolean;
   outdated?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
   cwd?: string;
 }
@@ -31,10 +36,12 @@ export interface DepEntry {
   resolvedVersion: string | null;
   integrity: string | null;
   declaredBy: string[];
-  /** Latest Modrinth version, populated only when `--outdated` ran. `null` when not queried, not Modrinth, or query failed. */
+  /** Latest upstream (Modrinth or Maven) version, populated only when `--outdated` ran. `null` when not queried, has no upstream, or the query failed. */
   latestVersion?: string | null;
-  /** True when `latestVersion` is known and differs from `resolvedVersion`. */
+  /** True when `latestVersion` is known and newer than the current version. */
   outdated?: boolean;
+  /** Error message when the `--outdated` lookup failed for this dep. */
+  lookupError?: string;
   /**
    * Transitive children sourced from the lockfile. Populated recursively
    * for `--tree` rendering and for JSON output consumers. Leaf deps omit
@@ -65,9 +72,12 @@ export interface ListResult {
  */
 export async function doList(options: ListOptions): Promise<ListResult> {
   const cwd = options.cwd ?? process.cwd();
-  const ctx = resolveWorkspaceContext(cwd);
+  const ctx = resolveWorkspaceContext(projectStartDir(options.project, cwd));
   if (ctx === undefined) {
-    throw new Error(`not inside a pluggy project (from ${cwd})`);
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_LIST_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const scope = determineScope(ctx, options);
@@ -123,8 +133,11 @@ export async function doList(options: ListOptions): Promise<ListResult> {
         : ctx.root.name;
 
   if (options.outdated) {
-    await enrichWithLatestVersions(deps);
-    deps = deps.filter((d) => d.outdated === true);
+    await enrichWithLatestVersions(
+      deps,
+      registries.map((r) => r.url),
+    );
+    deps = deps.filter((d) => d.outdated === true || d.lookupError !== undefined);
   }
 
   const result: ListResult = { scope, deps, registries, target };
@@ -141,30 +154,27 @@ export async function doList(options: ListOptions): Promise<ListResult> {
 }
 
 /**
- * Query Modrinth for the newest stable version of every Modrinth-sourced dep
- * and annotate each entry with `latestVersion` + `outdated`. Non-Modrinth
- * entries get `latestVersion: null`. Network failures are logged at debug and
- * the entry is left un-annotated (not marked outdated) so a transient API
- * hiccup doesn't surface a false positive.
+ * Query upstream (via `latestUpstreamVersion`, the same lookup `pluggy
+ * outdated` uses) for the newest stable version of every Modrinth- and
+ * Maven-sourced dep and annotate each entry with `latestVersion` +
+ * `outdated`. File and workspace entries have no upstream and get
+ * `latestVersion: null`. A failed lookup sets `lookupError` so the failure
+ * is surfaced instead of rendering as up to date.
  */
-async function enrichWithLatestVersions(deps: DepEntry[]): Promise<void> {
+async function enrichWithLatestVersions(deps: DepEntry[], registries: string[]): Promise<void> {
   for (const dep of deps) {
-    if (dep.source.kind !== "modrinth") {
-      dep.latestVersion = null;
-      continue;
-    }
     try {
-      const latest = await getLatestModrinthVersion(dep.source.slug, false);
+      const latest = await latestUpstreamVersion(dep.source, registries, false);
       if (latest === undefined) {
         dep.latestVersion = null;
         continue;
       }
       dep.latestVersion = latest;
       const current = dep.resolvedVersion ?? dep.declaredVersion;
-      dep.outdated = current !== "*" && current !== latest;
+      dep.outdated = current !== "*" && compareVersions(current, latest) < 0;
     } catch (err) {
-      log.debug(`list: outdated check failed for "${dep.name}": ${(err as Error).message}`);
       dep.latestVersion = null;
+      dep.lookupError = (err as Error).message;
     }
   }
 }
@@ -278,13 +288,14 @@ function collectRegistries(ctx: WorkspaceContext): RegistryEntry[] {
 
 function printHumanList(result: ListResult, outdatedMode: boolean): void {
   log.info(bold(`${result.scope}: ${result.target}`));
-  if (result.deps.length === 0) {
-    const empty = outdatedMode ? "  (everything is up to date)" : "  (no dependencies declared)";
-    log.info(dim(empty));
+  const shown = outdatedMode ? result.deps.filter((d) => d.lookupError === undefined) : result.deps;
+  const failed = outdatedMode ? result.deps.filter((d) => d.lookupError !== undefined) : [];
+  if (shown.length === 0) {
+    log.info(dim(emptyDepsLine(outdatedMode, failed.length)));
   } else {
     log.info("");
     log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
-    for (const dep of result.deps) {
+    for (const dep of shown) {
       const resolved = dep.resolvedVersion ?? dim("(unresolved; run install)");
       const decl = result.scope === "root" ? ` ${dim(`[${dep.declaredBy.join(", ")}]`)}` : "";
       const update =
@@ -296,6 +307,7 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
       );
     }
   }
+  printLookupFailures(failed);
   log.info("");
   log.info(bold("registries:"));
   if (result.registries.length === 0) {
@@ -324,18 +336,18 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
  */
 function printTreeList(result: ListResult, outdatedMode: boolean): void {
   log.info(bold(`${result.scope}: ${result.target}`));
-  if (result.deps.length === 0) {
-    const empty = outdatedMode ? "  (everything is up to date)" : "  (no dependencies declared)";
-    log.info(dim(empty));
+  const shown = outdatedMode ? result.deps.filter((d) => d.lookupError === undefined) : result.deps;
+  const failed = outdatedMode ? result.deps.filter((d) => d.lookupError !== undefined) : [];
+  if (shown.length === 0) {
+    log.info(dim(emptyDepsLine(outdatedMode, failed.length)));
   } else {
     log.info("");
     log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
-    for (let i = 0; i < result.deps.length; i++) {
-      const dep = result.deps[i];
-      const last = i === result.deps.length - 1;
-      renderDepNode(dep, "  ", last, /* topLevel */ true);
+    for (let i = 0; i < shown.length; i++) {
+      renderDepNode(shown[i], "  ", i === shown.length - 1, /* topLevel */ true);
     }
   }
+  printLookupFailures(failed);
   log.info("");
   log.info(bold("registries:"));
   if (result.registries.length === 0) {
@@ -349,6 +361,23 @@ function printTreeList(result: ListResult, outdatedMode: boolean): void {
       log.info(`  ${dim(branch)} ${reg.url}${auth}`);
     }
   }
+}
+
+function emptyDepsLine(outdatedMode: boolean, failedCount: number): string {
+  if (!outdatedMode) return "  (no dependencies declared)";
+  if (failedCount > 0) return "  (no known-outdated dependencies; some could not be checked)";
+  return "  (everything is up to date)";
+}
+
+function printLookupFailures(failed: DepEntry[]): void {
+  if (failed.length === 0) return;
+  log.info("");
+  for (const dep of failed) {
+    log.warn(`${dep.name}: ${dep.lookupError ?? "lookup failed"}`);
+  }
+  log.info(
+    `${failed.length} ${failed.length === 1 ? "dependency" : "dependencies"} could not be checked (network error).`,
+  );
 }
 
 /**

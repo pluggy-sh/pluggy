@@ -1,28 +1,30 @@
 /**
- * `pluggy clean`: sweep `bin/` (and optionally `docs/`) across the selected
- * workspaces. Build outputs only — IDE files (`.classpath`, `.project`,
- * `.idea/`) are explicitly out of scope; we don't want a wide-cast clean
- * deleting things the user didn't expect.
+ * `pluggy clean`: sweep `bin/` (and optionally generated docs) across the
+ * selected workspaces. Build outputs only — IDE files (`.classpath`,
+ * `.project`, `.idea/`) are explicitly out of scope; we don't want a
+ * wide-cast clean deleting things the user didn't expect.
  */
 
-import { rm, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
-import { bold, dim, emit, emitErr, log } from "../logging.ts";
+import { UserError } from "../errors.ts";
+import { bold, dim, emit, log } from "../logging.ts";
 import {
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
+  type WorkspaceNode,
 } from "../workspace.ts";
 
 export interface CleanCommandOptions {
   workspace?: string[];
   exclude?: string[];
   workspaces?: boolean;
-  /** Also remove `<workspace>/docs/` directories. */
+  /** Also remove generated `<workspace>/docs/<name>-<version>/` directories. */
   docs?: boolean;
   /** Print paths that would be removed without touching disk. */
   dryRun?: boolean;
@@ -41,6 +43,8 @@ export interface CleanCommandResult {
   exitCode: 0;
   wouldRemove?: string[];
   removed?: string[];
+  /** docs/ entries left in place because `pluggy docs` didn't generate them. */
+  skippedDocs?: string[];
   entries: CleanedEntry[];
 }
 
@@ -48,47 +52,44 @@ export async function runCleanCommand(opts: CleanCommandOptions = {}): Promise<C
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_CLEAN_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const targets = selectWorkspaceTargets(context, opts, "clean");
   const entries: CleanedEntry[] = [];
-  const includeDocs = opts.docs === true;
+  const skippedDocs: string[] = [];
+  const dryRun = opts.dryRun === true;
 
   for (const target of targets) {
-    const dirs = ["bin"];
-    if (includeDocs) dirs.push("docs");
-    for (const sub of dirs) {
-      const path = join(target.root, sub);
-      const exists = await pathExists(path);
-      if (!exists) {
-        entries.push({ workspace: target.name, path, removed: false });
-        continue;
-      }
-      if (opts.dryRun === true) {
-        entries.push({ workspace: target.name, path, removed: true });
-        continue;
-      }
-      try {
-        await rm(path, { recursive: true, force: true });
-        entries.push({ workspace: target.name, path, removed: true });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`failed to remove ${path}: ${message}`);
-      }
+    const binPath = join(target.root, "bin");
+    if (!(await pathExists(binPath))) {
+      entries.push({ workspace: target.name, path: binPath, removed: false });
+    } else {
+      if (!dryRun) await removePath(binPath);
+      entries.push({ workspace: target.name, path: binPath, removed: true });
+    }
+
+    if (opts.docs === true) {
+      await cleanDocs(target, entries, skippedDocs, dryRun);
     }
   }
 
   const removedPaths = entries.filter((e) => e.removed).map((e) => e.path);
   const result: CleanCommandResult = {
-    status: opts.dryRun === true ? "dry-run" : "success",
+    status: dryRun ? "dry-run" : "success",
     exitCode: 0,
     entries,
   };
-  if (opts.dryRun === true) {
+  if (dryRun) {
     result.wouldRemove = removedPaths;
   } else {
     result.removed = removedPaths;
+  }
+  if (skippedDocs.length > 0) {
+    result.skippedDocs = skippedDocs;
   }
 
   const printSummary = (): void => {
@@ -96,21 +97,97 @@ export async function runCleanCommand(opts: CleanCommandOptions = {}): Promise<C
       log.info(dim("No workspaces selected; nothing to clean."));
       return;
     }
-    const verb = opts.dryRun === true ? "would remove" : "removed";
+    const verb = dryRun ? "would remove" : "removed";
     if (removedPaths.length === 0) {
       log.info(dim(`${verb}: nothing (no build outputs present)`));
-      return;
+    } else {
+      log.heading(
+        `${bold("clean")} ${verb} ${removedPaths.length} path${removedPaths.length === 1 ? "" : "s"}`,
+      );
+      for (const entry of entries) {
+        if (!entry.removed) continue;
+        log.step(`${entry.workspace}: ${entry.path}`);
+      }
     }
-    log.heading(
-      `${bold("clean")} ${verb} ${removedPaths.length} path${removedPaths.length === 1 ? "" : "s"}`,
-    );
-    for (const entry of entries) {
-      if (!entry.removed) continue;
-      log.step(`${entry.workspace}: ${entry.path}`);
+    if (skippedDocs.length > 0) {
+      log.info(
+        dim(
+          `docs: left ${skippedDocs.length} entr${skippedDocs.length === 1 ? "y" : "ies"} in place (not generated by \`pluggy docs\`): ${skippedDocs.join(", ")}`,
+        ),
+      );
     }
   };
   emit(result as unknown as Record<string, unknown>, printSummary);
   return result;
+}
+
+/**
+ * Remove only the docs subdirectories `pluggy docs` generates
+ * (`docs/<name>-<version>/`). Anything else under `docs/` is user content:
+ * it stays on disk and is collected into `skipped` for reporting. The
+ * `docs/` directory itself goes only when nothing remains inside it.
+ */
+async function cleanDocs(
+  target: WorkspaceNode,
+  entries: CleanedEntry[],
+  skipped: string[],
+  dryRun: boolean,
+): Promise<void> {
+  const docsDir = join(target.root, "docs");
+  let dirEntries;
+  try {
+    dirEntries = await readdir(docsDir, { withFileTypes: true });
+  } catch {
+    entries.push({ workspace: target.name, path: docsDir, removed: false });
+    return;
+  }
+
+  let removedAny = false;
+  let keptAny = false;
+  for (const entry of dirEntries) {
+    const path = join(docsDir, entry.name);
+    if (
+      entry.isDirectory() &&
+      isGeneratedDocsDir(entry.name, target.project.name, target.project.version)
+    ) {
+      if (!dryRun) await removePath(path);
+      entries.push({ workspace: target.name, path, removed: true });
+      removedAny = true;
+    } else {
+      skipped.push(path);
+      keptAny = true;
+    }
+  }
+  if (!removedAny) {
+    entries.push({ workspace: target.name, path: docsDir, removed: false });
+  } else if (!keptAny && !dryRun) {
+    await removePath(docsDir);
+  }
+}
+
+/**
+ * True for `<name>-<version>` directory names as `pluggy docs` writes them.
+ * `pluggy docs` uses the raw (unvalidated) project.json version, so the
+ * workspace's exact `projectVersion` always matches; the shape regex
+ * additionally catches dirs left over from earlier version bumps.
+ */
+function isGeneratedDocsDir(
+  entryName: string,
+  projectName: string,
+  projectVersion: string,
+): boolean {
+  if (!entryName.startsWith(`${projectName}-`)) return false;
+  const version = entryName.slice(projectName.length + 1);
+  return version === projectVersion || /^\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?$/.test(version);
+}
+
+async function removePath(path: string): Promise<void> {
+  try {
+    await rm(path, { recursive: true, force: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`failed to remove ${path}: ${message}`);
+  }
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -126,6 +203,10 @@ async function pathExists(path: string): Promise<boolean> {
 export function cleanCommand(): Command {
   return new Command("clean")
     .description("Remove bin/ build outputs across the selected workspaces.")
+    .addHelpText(
+      "after",
+      "\nRelated: `pluggy build --clean` wipes the build cache; `pluggy dev --clean` wipes the dev server directory (dev/).",
+    )
     .option(
       "--workspace <names>",
       "Clean one or more workspaces (repeatable; comma-separated).",
@@ -134,30 +215,20 @@ export function cleanCommand(): Command {
     )
     .option(
       "--exclude <names>",
-      "Exclude workspaces from the sweep (repeatable; comma-separated).",
+      "Exclude workspaces from an all-workspaces clean (repeatable; comma-separated).",
       workspaceListOption,
       [] as string[],
     )
     .option("--workspaces", "Explicit all-workspaces clean.")
-    .option("--docs", "Also remove <workspace>/docs/ output directories.")
+    .option("--docs", "Also remove docs/<name>-<version>/ output generated by `pluggy docs`.")
     .option("--dry-run", "Print paths that would be removed without touching disk.")
     .action(async function action(this: Command, options) {
-      try {
-        await runCleanCommand({
-          workspace: options.workspace as string[],
-          exclude: options.exclude as string[],
-          workspaces: options.workspaces === true,
-          docs: options.docs === true,
-          dryRun: options.dryRun === true,
-        });
-      } catch (err) {
-        if (err instanceof InvalidArgumentError) throw err;
-        // Surface filesystem errors via the JSON-aware error path.
-        const message = err instanceof Error ? err.message : String(err);
-        emitErr({ status: "error", message, exitCode: 1 }, () => {
-          log.error(message);
-        });
-        process.exit(1);
-      }
+      await runCleanCommand({
+        workspace: options.workspace as string[],
+        exclude: options.exclude as string[],
+        workspaces: options.workspaces === true,
+        docs: options.docs === true,
+        dryRun: options.dryRun === true,
+      });
     });
 }

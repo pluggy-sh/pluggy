@@ -46,10 +46,12 @@ export function completionsCommand(program: Command): Command {
     .addHelpText(
       "after",
       `\nInstall the script for your shell:\n` +
-        `  bash:  pluggy completions bash > /usr/local/etc/bash_completion.d/pluggy\n` +
-        `  zsh:   pluggy completions zsh  > "\${fpath[1]}/_pluggy"\n` +
-        `  fish:  pluggy completions fish > ~/.config/fish/completions/pluggy.fish\n` +
-        `  pwsh:  pluggy completions pwsh >> $PROFILE`,
+        `  bash (Linux):          pluggy completions bash | sudo tee /etc/bash_completion.d/pluggy\n` +
+        `  bash (macOS Intel):    pluggy completions bash > /usr/local/etc/bash_completion.d/pluggy\n` +
+        `  bash (Apple Silicon):  pluggy completions bash > /opt/homebrew/etc/bash_completion.d/pluggy\n` +
+        `  zsh:                   pluggy completions zsh  > "\${fpath[1]}/_pluggy"\n` +
+        `  fish:                  pluggy completions fish > ~/.config/fish/completions/pluggy.fish\n` +
+        `  pwsh:                  pluggy completions pwsh >> $PROFILE`,
     )
     .action((shell: Shell) => {
       const snapshot = introspect(program);

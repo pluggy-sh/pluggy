@@ -80,7 +80,7 @@ describe("doSearch", () => {
     expect(parsed.searchParams.get("offset")).toBe("0");
   });
 
-  test("adds platform and version facets when provided, computes offset from page", async () => {
+  test("adds platform and MC-version facets when provided, computes offset from page", async () => {
     let capturedUrl = "";
     vi.stubGlobal(
       "fetch",
@@ -94,7 +94,7 @@ describe("doSearch", () => {
       size: 5,
       page: 3,
       platform: "paper",
-      version: "1.21.8",
+      mcVersion: "1.21.8",
     });
 
     const parsed = new URL(capturedUrl);
@@ -111,6 +111,44 @@ describe("doSearch", () => {
     await expect(doSearch("x", { size: 10, page: 0 })).rejects.toThrow(
       /Modrinth search failed.*"x".*500/s,
     );
+  });
+
+  test("human output ends with an install affordance and a next-page hint when the page is full", async () => {
+    const hit = (slug: string): Record<string, unknown> => ({ slug, title: slug });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        okJson({ hits: [hit("aaa"), hit("bbb")], offset: 0, limit: 2, total_hits: 5 }),
+      ),
+    );
+
+    const captured: string[] = [];
+    console.log = (s: string) => {
+      captured.push(String(s));
+    };
+    await doSearch("chat", { size: 2, page: 0 });
+    const out = captured.join("\n");
+    expect(out).toContain("Install with: pluggy install <slug>");
+    expect(out.match(/Install with:/g)).toHaveLength(1);
+    expect(out).toContain("more: --page 1");
+  });
+
+  test("no next-page hint on the last page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        okJson({ hits: [{ slug: "aaa", title: "aaa" }], offset: 4, limit: 2, total_hits: 5 }),
+      ),
+    );
+
+    const captured: string[] = [];
+    console.log = (s: string) => {
+      captured.push(String(s));
+    };
+    await doSearch("chat", { size: 2, page: 2 });
+    const out = captured.join("\n");
+    expect(out).toContain("Install with: pluggy install <slug>");
+    expect(out).not.toContain("more: --page");
   });
 
   test("json mode emits a status-success envelope to stdout", async () => {

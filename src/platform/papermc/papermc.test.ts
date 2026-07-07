@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+
+import { initLogging } from "../../logging.ts";
+
 import { download, resolveApiVersion, versions } from "./papermc.ts";
 
 test("papermc versions", async () => {
@@ -7,13 +10,24 @@ test("papermc versions", async () => {
 });
 
 test("papermc download latest version", async () => {
-  const versionsList = await versions("paper");
-  expect(versionsList.length).toBeGreaterThan(0);
-  const latestVersion = versionsList[0].version.id;
-  const result = await download("paper", latestVersion);
-  expect(result.version).toBe(latestVersion);
-  expect(result.build).toBeGreaterThan(0);
-  expect(result.output instanceof ArrayBuffer).toBe(true);
+  initLogging({ noColor: true });
+  const logSpy = vi.spyOn(console, "log");
+  try {
+    const versionsList = await versions("paper");
+    expect(versionsList.length).toBeGreaterThan(0);
+    const latestVersion = versionsList[0].version.id;
+    const result = await download("paper", latestVersion);
+    expect(result.version).toBe(latestVersion);
+    expect(result.build).toBeGreaterThan(0);
+    expect(result.output instanceof ArrayBuffer).toBe(true);
+
+    const lines = logSpy.mock.calls.map((c) => String(c[0]));
+    expect(
+      lines.some((l) => l.includes(`Downloading paper ${latestVersion} build ${result.build}`)),
+    ).toBe(true);
+  } finally {
+    logSpy.mockRestore();
+  }
 });
 
 describe("resolveApiVersion", () => {

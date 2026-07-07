@@ -3,6 +3,7 @@ import { readFile, unlink } from "node:fs/promises";
 import { Command } from "commander";
 
 import { cachedJarPathForEntry } from "../cache/dependency-paths.ts";
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import { writeFileLF } from "../portable.ts";
 import { type Project } from "../project.ts";
@@ -140,7 +141,10 @@ async function removeFromProject(
   const deps = parsed.dependencies ?? {};
   if (!(name in deps)) {
     if (flags.errorIfMissing) {
-      throw new Error(`"${name}" is not declared in ${target.name} (${path})`);
+      throw new UserError(`"${name}" is not declared in ${target.name} (${path})`, {
+        code: "E_REMOVE_NOT_DECLARED",
+        hint: "Run `pluggy list` to see the declared dependencies.",
+      });
     }
     return false;
   }
@@ -195,6 +199,9 @@ function emitRemoveResult(opts: RemoveOptions, result: RemoveResult): void {
           result.lockEntryRemoved ? dim(" (and pluggy.lock)") : ""
         }`,
       );
+      if (result.fileRemoved) {
+        log.info(dim("  Deleted the cached jar. Use --keep-file to keep it."));
+      }
     },
   );
 }
@@ -205,7 +212,7 @@ export function removeCommand(): Command {
     .alias("rm")
     .description("Remove a plugin from the project config and optionally delete its jar.")
     .argument("<plugin>", "Plugin identifier.")
-    .option("--keep-file", "Leave the local/cached jar on disk.")
+    .option("--keep-file", "Keep the cached jar on disk instead of deleting it.")
     .option("--workspace <name>", "Target a specific workspace.")
     .option("--workspaces", "Remove from every workspace that declares it.")
     .action(async function action(this: Command, plugin: string, options) {

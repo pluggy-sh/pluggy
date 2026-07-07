@@ -25,6 +25,7 @@ test("BuildTools download", async () => {
   const path = await download(ctx);
   expect(typeof path).toBe("string");
   expect(existsSync(path)).toBe(true);
+  expect(existsSync(`${path}.partial`)).toBe(false);
   expect(statSync(path).isFile()).toBe(true);
   expect(readFileSync(path).byteLength).toBeGreaterThan(0);
 

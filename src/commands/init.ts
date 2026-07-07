@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 
 import defaultConfig from "../defaults/config.yml" with { type: "text" };
@@ -13,6 +13,7 @@ import bungeePackage from "../defaults/bungee-package.java" with { type: "text" 
 import spongePackage from "../defaults/sponge-package.java" with { type: "text" };
 
 import { writeIntellijStub } from "../build/intellij.ts";
+import { UserError } from "../errors.ts";
 import { platforms, type PlatformFamily } from "../platform/index.ts";
 import { deriveVelocityId } from "../platform/descriptor/velocity.ts";
 import { deriveSpongeId } from "../platform/descriptor/sponge.ts";
@@ -184,6 +185,12 @@ function stubForFamily(family: PlatformFamily): string {
   throw new Error(`No stub for platform family: ${String(_exhaustive)}`);
 }
 
+const PROJECT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+
+function isFullyQualifiedClassName(value: string): boolean {
+  return /^[a-zA-Z0-9_.]+$/.test(value) && value.includes(".");
+}
+
 function deriveClassName(name: string): string {
   return name
     .split(/[-_]/)
@@ -236,37 +243,35 @@ function deepMerge<T extends Record<string, unknown>>(
 /** Factory for the `pluggy init` commander command. */
 export function initCommand(): Command {
   return new Command("init")
-    .description(
-      "Initialize a new project with interactive prompts.\n\nIf you want to skip prompts and use defaults, use the -y option.\nIt's recommended to use --main <main> to specify the main class name.",
-    )
+    .description("Initialize a new project with interactive prompts.")
     .argument("[path]", "Target directory for the new project.")
     .option("--name <name>", "Project name.")
     .option("--version <version>", "Project version.", parseSemver)
     .option("--description <description>", "Project description.")
     .option("--main <main>", "Main class name.")
-    .option(
-      "--platform <platform>",
-      "Target platform, repeatable (default: paper).",
-      (val: string, prev: string[]) => {
-        const id = parsePlatform(val);
-        return prev.includes(id) ? prev : [...prev, id];
-      },
-      [] as string[],
+    .addOption(
+      new Option("--platform <platform>", "Target platform, repeatable.")
+        .argParser((val: string, prev: string[]) => {
+          const id = parsePlatform(val);
+          return prev.includes(id) ? prev : [...prev, id];
+        })
+        .default([] as string[], "paper"),
     )
     .option("--mc-version <version>", "Minecraft version for compatibility.", parseMcVersion)
     .option(
       "--template <id>",
-      "Scaffold from a template (`pluggy init --template paper-mockbukkit`). Without this flag init uses an embedded family stub and never touches the network.",
+      "Scaffold from a template (`pluggy init --template paper-mockbukkit`). Without this flag init writes the embedded family stub.",
     )
     .option("-y, --yes", "Skip prompts and use defaults.")
     .addHelpText(
       "after",
-      `\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --mc-version 1.21.8\n  $ pluggy init --template paper-mockbukkit`,
+      `\nUse -y to skip prompts and take the defaults. We recommend --main <main> to set the main class explicitly.\nUnless --mc-version is set, init fetches each platform's latest Minecraft version list from the network, even with -y.\n\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --mc-version 1.21.8\n  $ pluggy init --template paper-mockbukkit`,
     )
     .action(async function action(this: Command, path: string | undefined, options) {
       const globalOpts = this.optsWithGlobals();
       const jsonMode = isJsonMode();
-      const interactive = !options.yes && !jsonMode && process.stdout.isTTY;
+      const interactive =
+        !options.yes && !jsonMode && process.stdout.isTTY === true && process.stdin.isTTY === true;
 
       let currentProject = getCurrentProject();
       if (globalOpts.project) {
@@ -276,26 +281,52 @@ export function initCommand(): Command {
 
       const TARGET_PATH = resolve(process.cwd(), path || ".");
 
-      let warned = false;
+      let dirNotEmpty = false;
       try {
         const entries = await readdir(TARGET_PATH);
-        if (entries.length > 0) warned = true;
+        if (entries.length > 0) dirNotEmpty = true;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
       }
-      if (!warned && currentProject) warned = true;
 
-      if (warned && jsonMode && !options.yes) {
-        const reason = currentProject
-          ? `"${relative(process.cwd(), currentProject.projectFile)}" already exists`
-          : `"${TARGET_PATH}" is not empty`;
-        throw new Error(`${reason}. Use --yes to overwrite.`);
+      // `getCurrentProject` walks up parent directories, so the found project
+      // file may live outside TARGET_PATH. Init never touches that file; the
+      // new project is merely nested inside it, and the messaging below has
+      // to say so instead of threatening an overwrite that won't happen.
+      const overwritesProjectFile =
+        currentProject !== undefined &&
+        resolve(currentProject.projectFile) === join(TARGET_PATH, "project.json");
+      const warned = dirNotEmpty || currentProject !== undefined;
+
+      if (warned && !options.yes && !interactive) {
+        const rel = currentProject
+          ? relative(process.cwd(), currentProject.projectFile)
+          : "project.json";
+        if (overwritesProjectFile) {
+          throw new UserError(`"${rel}" already exists. Use --yes to overwrite.`, {
+            code: "E_INIT_EXISTS",
+          });
+        }
+        if (dirNotEmpty) {
+          throw new UserError(`"${TARGET_PATH}" is not empty. Use --yes to overwrite.`, {
+            code: "E_INIT_DIR_NOT_EMPTY",
+          });
+        }
+        throw new UserError(
+          `Found an existing project at "${rel}". The new project will be nested inside it. Use --yes to continue.`,
+          { code: "E_INIT_NESTED_PROJECT" },
+        );
       }
 
       if (warned && interactive) {
-        const message = currentProject
-          ? `"${relative(process.cwd(), currentProject.projectFile)}" already exists. Overwrite?`
-          : `"${TARGET_PATH}" is not empty. Continue?`;
+        const rel = currentProject
+          ? relative(process.cwd(), currentProject.projectFile)
+          : "project.json";
+        const message = overwritesProjectFile
+          ? `"${rel}" already exists. Overwrite?`
+          : dirNotEmpty
+            ? `"${TARGET_PATH}" is not empty. Continue?`
+            : `Found an existing project at "${rel}". The new project will be nested inside it. Continue?`;
         const ok = await confirm({ message, default: false });
         if (!ok) {
           log.info("Aborted.");
@@ -310,10 +341,16 @@ export function initCommand(): Command {
         (path
           ? basename(TARGET_PATH)
           : interactive
-            ? await input({ message: "Project name", default: defaultName })
+            ? await input({
+                message: "Project name",
+                default: defaultName,
+                validate: (value) =>
+                  PROJECT_NAME_RE.test(value) ||
+                  "Only alphanumeric characters, underscores, and hyphens are allowed.",
+              })
             : defaultName);
 
-      if (!/^[a-zA-Z0-9_-]+$/.test(projectName)) {
+      if (!PROJECT_NAME_RE.test(projectName)) {
         throw new InvalidArgumentError(
           `Invalid project name: "${projectName}". Only alphanumeric characters, underscores, and hyphens are allowed.`,
         );
@@ -376,15 +413,18 @@ export function initCommand(): Command {
         ? undefined
         : (options.main ??
           (interactive
-            ? await input({ message: "Main class", default: derivedMain })
+            ? await input({
+                message: "Main class",
+                default: derivedMain,
+                validate: (value) =>
+                  isFullyQualifiedClassName(value) ||
+                  "Must be a fully qualified class name (e.g. com.example.Main).",
+              })
             : derivedMain));
 
-      if (
-        !isWorkspaceRootTemplate &&
-        (!projectMain || !/^[a-zA-Z0-9_.]+$/.test(projectMain) || !projectMain.includes("."))
-      ) {
+      if (!isWorkspaceRootTemplate && (!projectMain || !isFullyQualifiedClassName(projectMain))) {
         throw new InvalidArgumentError(
-          `Invalid main class: "${projectMain}". It must be a valid Java classpath (e.g. com.example.Main).`,
+          `Invalid main class: "${projectMain}". It must be a fully qualified class name (e.g. com.example.Main).`,
         );
       }
 
@@ -394,12 +434,24 @@ export function initCommand(): Command {
         versions = [options.mcVersion];
       } else {
         log.info(`Fetching latest versions…`);
-        const versionLists = await Promise.all(
-          selectedPlatforms.map(async (p) => ({
-            platform: p,
-            versions: await platforms.get(p).versions(),
-          })),
-        );
+        let versionLists: Array<{ platform: string; versions: string[] }>;
+        try {
+          versionLists = await Promise.all(
+            selectedPlatforms.map(async (p) => ({
+              platform: p,
+              versions: await platforms.get(p).versions(),
+            })),
+          );
+        } catch (err) {
+          throw new UserError(
+            `Could not fetch Minecraft version lists for ${selectedPlatforms.join(", ")}. Is the network unreachable?`,
+            {
+              code: "E_INIT_VERSION_FETCH",
+              hint: "Pass --mc-version <version> (e.g. --mc-version 1.21.8) to skip the version lookup.",
+              cause: err,
+            },
+          );
+        }
         const common =
           versionLists.reduce<string[] | null>((acc, { versions: vs }) => {
             if (acc === null) return vs;

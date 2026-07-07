@@ -8,9 +8,11 @@ import { cachedJarPathForEntry } from "../cache/dependency-paths.ts";
 import { UserError } from "../errors.ts";
 import { type LockfileEntry, readLock } from "../lockfile.ts";
 import { bold, dim, emit, emitErr, log, red } from "../logging.ts";
-import { resolveWorkspaceContext } from "../workspace.ts";
+import { projectStartDir, resolveWorkspaceContext } from "../workspace.ts";
 
 export interface AuditOptions {
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -34,7 +36,7 @@ export interface AuditResult {
 /** Hash every cached jar against the lockfile's recorded integrity. */
 export async function doAudit(opts: AuditOptions = {}): Promise<AuditResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_AUDIT_NO_PROJECT",
@@ -114,6 +116,9 @@ function emitAuditResult(result: AuditResult): void {
         log.info(`  ${dim("actual:  ")} ${row.actual}`);
         if (row.jarPath !== undefined) log.info(`  ${dim("jar:     ")} ${row.jarPath}`);
       }
+      log.info(
+        dim("Run `pluggy install` to re-download; it detects tampering and heals the cache."),
+      );
     }
 
     if (missing.length > 0) {
@@ -123,13 +128,18 @@ function emitAuditResult(result: AuditResult): void {
       }
     }
 
+    const trailingCounts =
+      `${result.summary.missing > 0 ? `, ${result.summary.missing} not cached` : ""}` +
+      `${result.summary.skipped > 0 ? `, ${result.summary.skipped} skipped (workspace)` : ""}`;
     log.info("");
-    if (result.ok) {
-      log.success(
-        `${result.summary.ok} verified${result.summary.skipped > 0 ? `, ${result.summary.skipped} skipped (workspace)` : ""}${result.summary.missing > 0 ? `, ${result.summary.missing} not cached` : ""}`,
+    if (!result.ok) {
+      log.info(
+        red(`${result.summary.tampered} tampered`) + `, ${result.summary.ok} ok${trailingCounts}`,
       );
+    } else if (result.summary.ok === 0 && result.summary.missing > 0) {
+      log.info(`0 verified; nothing cached yet. Run \`pluggy install\` first.`);
     } else {
-      log.info(red(`${result.summary.tampered} tampered`) + ", " + `${result.summary.ok} ok`);
+      log.success(`${result.summary.ok} verified${trailingCounts}`);
     }
   };
 
@@ -141,7 +151,7 @@ export function auditCommand(): Command {
   return new Command("audit")
     .description("Verify cached dependency jars against pluggy.lock integrity hashes.")
     .action(async function action(this: Command) {
-      const result = await doAudit();
+      const result = await doAudit({ project: this.optsWithGlobals().project });
       if (result.exitCode !== 0) process.exit(result.exitCode);
     });
 }

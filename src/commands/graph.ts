@@ -14,8 +14,10 @@ import process from "node:process";
 
 import { Command } from "commander";
 
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   topologicalOrder,
   workspaceDependencyNames,
@@ -23,6 +25,8 @@ import {
 
 export interface GraphCommandOptions {
   mermaid?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -42,9 +46,12 @@ export interface GraphCommandResult {
 
 export async function runGraphCommand(opts: GraphCommandOptions = {}): Promise<GraphCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_GRAPH_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const ordered = topologicalOrder(context.workspaces);
@@ -68,7 +75,7 @@ export async function runGraphCommand(opts: GraphCommandOptions = {}): Promise<G
 
   emit(result as unknown as Record<string, unknown>, () => {
     if (nodes.length === 0) {
-      log.info(dim("No workspaces declared."));
+      log.info(dim("No workspaces declared. For the dependency tree, run `pluggy list --tree`."));
       return;
     }
     if (opts.mermaid === true) {
@@ -90,12 +97,13 @@ function renderTree(nodes: string[], edges: GraphEdge[]): void {
   }
 
   log.heading("Workspace graph");
+  log.info(dim("  a → b: a depends on b"));
   for (const name of nodes) {
     const deps = depsByNode.get(name) ?? [];
     if (deps.length === 0) {
       log.info(`  ${bold(name)}`);
     } else {
-      log.info(`  ${bold(name)} ${dim("←")} ${deps.join(", ")}`);
+      log.info(`  ${bold(name)} ${dim("→")} ${deps.join(", ")}`);
     }
   }
 }
@@ -126,6 +134,9 @@ export function graphCommand(): Command {
     .description("Render the workspace dependency graph (text by default).")
     .option("--mermaid", "Emit a Mermaid `graph TD` definition instead of the text rendering.")
     .action(async function action(this: Command, options) {
-      await runGraphCommand({ mermaid: options.mermaid === true });
+      await runGraphCommand({
+        mermaid: options.mermaid === true,
+        project: this.optsWithGlobals().project,
+      });
     });
 }

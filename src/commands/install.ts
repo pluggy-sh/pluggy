@@ -94,6 +94,15 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
     }
   }
 
+  if (byName.size === 0) {
+    const result: InstallResult = { installed: [], skipped: [] };
+    emitInstallResult(opts, result, {
+      message:
+        "No dependencies declared; nothing to install. Add one with `pluggy install <plugin>`.",
+    });
+    return result;
+  }
+
   const existingLock: Lockfile = readLock(scope.context.root.rootDir) ?? {
     version: 2,
     entries: {},
@@ -406,7 +415,7 @@ function emitInstallResult(
       return;
     }
     log.success(
-      `Installed ${result.installed.length} dependencies${
+      `Installed ${result.installed.length} ${result.installed.length === 1 ? "dependency" : "dependencies"}${
         result.skipped.length > 0 ? dim(` (${result.skipped.length} already fresh)`) : ""
       }`,
     );
@@ -416,7 +425,7 @@ function emitInstallResult(
 /** Factory for the `pluggy install` commander command. */
 export function installCommand(): Command {
   return new Command("install")
-    .alias("i")
+    .aliases(["i", "add"])
     .description("Install project dependencies or a specific plugin.")
     .argument("[plugin]", "Plugin identifier. Modrinth slug, local .jar, or maven: coordinate.")
     .option("--force", "Force dependency install (override compatibility checks).")
@@ -425,7 +434,7 @@ export function installCommand(): Command {
     .option("--workspaces", "Run across all workspaces explicitly.")
     .addHelpText(
       "after",
-      `\nExamples:\n  $ pluggy install\n  $ pluggy install EssentialsX@2.21.1\n  $ pluggy install ./libs/essentialsx-2.21.1.jar\n  $ pluggy install maven:com.example:my-plugin@1.0.0`,
+      `\nExamples:\n  $ pluggy install\n  $ pluggy install essentialsx@2.21.1\n  $ pluggy install ./libs/essentialsx-2.21.1.jar\n  $ pluggy install maven:com.example:my-plugin@1.0.0`,
     )
     .action(async function action(this: Command, plugin: string | undefined, options) {
       const globalOpts = this.optsWithGlobals();

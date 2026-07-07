@@ -88,7 +88,7 @@ vi.mock("../portable.ts", async () => {
   return { ...actual, linkOrCopy: vi.fn(async () => {}) };
 });
 
-import { buildProject } from "../build/index.ts";
+import { buildProject, recompileClasses } from "../build/index.ts";
 import { platforms } from "../platform/index.ts";
 import type { DescriptorSpec, PlatformProvider, Version } from "../platform/platform.ts";
 import { resolveDependency } from "../resolver/index.ts";
@@ -180,6 +180,7 @@ function fakePlatform(id = "paper"): PlatformProvider {
 
 interface FakeChild extends EventEmitter {
   stdin: { destroyed: boolean; writable: boolean; write: (s: string) => boolean } | null;
+  stdout: EventEmitter;
   pid?: number;
 }
 
@@ -190,6 +191,7 @@ function makeFakeChild(): FakeChild {
     writable: true,
     write: vi.fn(() => true),
   };
+  ee.stdout = new EventEmitter();
   ee.pid = 1234;
   return ee;
 }
@@ -500,6 +502,103 @@ describe("runDev", () => {
 
     await onChange!(); // change → hotswap timeout → manual: notify, never restart
     expect(spawnServer).toHaveBeenCalledTimes(1);
+
+    child.emit("exit", 0, null);
+    await done;
+  });
+
+  test("nochange hotswap result prints a dim one-liner", async () => {
+    setupWatchMode();
+    controlReload.mockResolvedValue({ status: "nochange", count: 0 });
+    const child = makeFakeChild();
+    vi.mocked(spawnServer).mockReturnValue(child as unknown as ReturnType<typeof spawnServer>);
+    let onChange: (() => Promise<void>) | undefined;
+    vi.mocked(watchProject).mockImplementation((_p, o) => {
+      onChange = o.onChange;
+      return () => {};
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const done = runDev(singleTarget(makeProject(workDir)), {});
+    await vi.waitFor(() => expect(onChange).toBeDefined());
+
+    await onChange!();
+    const lines = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines.some((l) => l.includes("no class changes; nothing to hotswap"))).toBe(true);
+
+    child.emit("exit", 0, null);
+    await done;
+  });
+
+  test("compile failure reassures that the server keeps running", async () => {
+    setupWatchMode();
+    vi.mocked(recompileClasses).mockRejectedValueOnce(new Error("javac boom"));
+    const child = makeFakeChild();
+    vi.mocked(spawnServer).mockReturnValue(child as unknown as ReturnType<typeof spawnServer>);
+    let onChange: (() => Promise<void>) | undefined;
+    vi.mocked(watchProject).mockImplementation((_p, o) => {
+      onChange = o.onChange;
+      return () => {};
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const done = runDev(singleTarget(makeProject(workDir)), {});
+    await vi.waitFor(() => expect(onChange).toBeDefined());
+
+    await onChange!();
+    expect(spawnServer).toHaveBeenCalledTimes(1); // no restart on compile error
+    const lines = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines.some((l) => l.includes("server still running with the previous code"))).toBe(true);
+    expect(errSpy.mock.calls.some((c: unknown[]) => String(c[0]).includes("compile error"))).toBe(
+      true,
+    );
+
+    child.emit("exit", 0, null);
+    await done;
+  });
+
+  test("watch mode announces that saves are watched and hotswapped", async () => {
+    setupWatchMode();
+    const child = makeFakeChild();
+    vi.mocked(spawnServer).mockReturnValue(child as unknown as ReturnType<typeof spawnServer>);
+    vi.mocked(watchProject).mockReturnValue(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const done = runDev(singleTarget(makeProject(workDir)), {});
+    await vi.waitFor(() => expect(watchProject).toHaveBeenCalled());
+
+    const lines = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(
+      lines.some((l) =>
+        l.includes("Watching for changes — saves are hotswapped into the running server"),
+      ),
+    ).toBe(true);
+
+    child.emit("exit", 0, null);
+    await done;
+  });
+
+  test("prints connect/stop affordances once the server logs its ready line", async () => {
+    setupWatchMode();
+    const child = makeFakeChild();
+    vi.mocked(spawnServer).mockReturnValue(child as unknown as ReturnType<typeof spawnServer>);
+    vi.mocked(watchProject).mockReturnValue(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const done = runDev(singleTarget(makeProject(workDir)), { port: 25599 });
+    await vi.waitFor(() => expect(spawnServer).toHaveBeenCalled());
+
+    child.stdout.emit("data", Buffer.from('[12:00:00 INFO]: Done (3.2s)! For help, type "help"\n'));
+    child.stdout.emit("data", Buffer.from("[12:00:01 INFO]: Done (0.0s)! again\n"));
+
+    const lines = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines.filter((l) => l.includes("Server ready on localhost:25599"))).toHaveLength(1);
+    expect(
+      lines.some((l) => l.includes("Minecraft → Multiplayer → Direct Connect → localhost:25599")),
+    ).toBe(true);
+    expect(lines.some((l) => l.includes("`restart` (or `rs`) restarts the server"))).toBe(true);
+    expect(lines.some((l) => l.includes("Ctrl+C to stop"))).toBe(true);
 
     child.emit("exit", 0, null);
     await done;

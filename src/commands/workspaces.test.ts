@@ -141,7 +141,38 @@ describe("runWorkspacesCommand", () => {
     expect(parsed.workspaces[0].role).toBe("shipping");
   });
 
-  test("throws when not inside a pluggy project", async () => {
-    await expect(runWorkspacesCommand({ cwd: rootDir })).rejects.toThrow(/no pluggy project/i);
+  test("throws E_WORKSPACES_NO_PROJECT when not inside a pluggy project", async () => {
+    await expect(runWorkspacesCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_WORKSPACES_NO_PROJECT",
+      message: expect.stringMatching(/no pluggy project/i),
+    });
+  });
+
+  test("--project <path> resolves the project from outside its directory", async () => {
+    await mkdir(join(rootDir, "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21"], platforms: ["paper"] },
+        workspaces: ["./api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "api", "project.json"),
+      JSON.stringify({ name: "api", version: "0.1.0" }),
+    );
+
+    const elsewhere = await mkdtemp(join(tmpdir(), "pluggy-workspaces-elsewhere-"));
+    try {
+      const res = await runWorkspacesCommand({
+        cwd: elsewhere,
+        project: join(rootDir, "project.json"),
+      });
+      expect(res.workspaces.map((w) => w.name)).toEqual(["api"]);
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
   });
 });

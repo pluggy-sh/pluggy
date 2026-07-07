@@ -54,14 +54,17 @@ Outdated
   org.jetbrains:annotations  22.0.0   26.1.0  maven (transitive)
 
 1 top-level outdated, 3 entries total stale.
+Update with: pluggy install <name>@<version>
 ```
 
 Top-level deps appear with just their source kind. Transitives appear with `(transitive)` after the kind. `latest` is yellow when the change is a major bump.
 
-Errored lookups are reported as warnings under the table:
+Errored lookups are reported as warnings under the table, and the summary gains `, 1 could not be checked`. When lookups fail and nothing is stale, the command reports the failures instead of the unqualified all-clear:
 
 ```text
 ! org.example:flaky: HTTP 503 from registry
+
+5 up to date, 1 could not be checked (network error).
 ```
 
 ## JSON output

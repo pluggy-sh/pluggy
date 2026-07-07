@@ -23,10 +23,15 @@ Any other value errors: `Unknown shell "<value>". Supported: bash, zsh, fish, pw
 ### bash
 
 ```bash
+# Linux
+pluggy completions bash | sudo tee /etc/bash_completion.d/pluggy > /dev/null
+# macOS (Homebrew, Apple Silicon)
+pluggy completions bash > /opt/homebrew/etc/bash_completion.d/pluggy
+# macOS (Homebrew, Intel)
 pluggy completions bash > /usr/local/etc/bash_completion.d/pluggy
 ```
 
-On Linux, `/etc/bash_completion.d/pluggy` is more common. Restart the shell or `source` the file.
+Restart the shell or `source` the file.
 
 ### zsh
 

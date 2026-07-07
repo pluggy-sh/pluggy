@@ -7,6 +7,7 @@ Add a [dependency](../glossary.md#dependency), refresh the [lockfile](../glossar
 ```text
 pluggy install [options] [plugin]
 pluggy i       [options] [plugin]
+pluggy add     [options] [plugin]
 ```
 
 Two modes:
@@ -93,6 +94,9 @@ $ pluggy install
 
 $ pluggy install                 # (lockfile was already fresh)
 lockfile is fresh; nothing to install.
+
+$ pluggy install                 # (no dependencies declared yet)
+No dependencies declared; nothing to install. Add one with `pluggy install <plugin>`.
 ```
 
 ## JSON output

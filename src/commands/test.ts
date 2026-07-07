@@ -3,6 +3,7 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { runTests, type TestRunOutcome } from "../test/index.ts";
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, green, log, red, yellow } from "../logging.ts";
 import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
@@ -99,7 +100,10 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_TEST_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const allTargets = selectTestTargets(context, opts);
@@ -142,7 +146,7 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
       if (matrix.error !== undefined) throw matrix.error;
       if (matrix.cells.length === 0) {
         throw new InvalidArgumentError(
-          "no matrix cells matched. Check --mc-version / --platform against compatibility.",
+          "no matrix cells matched: each cell is one (MC version × platform) pair from `compatibility` in project.json, and the --mc-version/--platform filters excluded them all.",
         );
       }
 
@@ -150,11 +154,7 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
         return { workspaceOk: true, cells: [], bailed: true };
       }
 
-      log.info(
-        `${bold("test")} ${project.name} ${dim(
-          `(${matrix.cells.length} cell${matrix.cells.length === 1 ? "" : "s"})`,
-        )}`,
-      );
+      log.info(`${bold("test")} ${project.name} ${dim(`(${formatMatrixShape(matrix.cells)})`)}`);
 
       const cellResults: TestCellResult[] = [];
       let workspaceOk = true;
@@ -331,6 +331,9 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
   };
   if (anyFailed) emitErr(payload, printSummary);
   else emit(payload, printSummary);
+  if (anyFailed && results.some((r) => (r.failures?.length ?? 0) > 0)) {
+    log.info(dim("stdout from tests is not shown; use assertion messages to surface details"));
+  }
 
   return { status, exitCode, results };
 }
@@ -338,6 +341,22 @@ export async function runTestCommand(opts: TestCommandOptions): Promise<TestComm
 interface MatrixCell {
   mcVersion?: string;
   platformId?: string;
+}
+
+/**
+ * Render the cell count with its dimensions, e.g. "4 cells: 2 versions × 2
+ * platforms". Dimensions the project doesn't declare are omitted; a single
+ * cell stays a bare "1 cell".
+ */
+function formatMatrixShape(cells: MatrixCell[]): string {
+  const count = `${cells.length} cell${cells.length === 1 ? "" : "s"}`;
+  if (cells.length <= 1) return count;
+  const versions = new Set(cells.map((c) => c.mcVersion).filter((v) => v !== undefined)).size;
+  const platformIds = new Set(cells.map((c) => c.platformId).filter((p) => p !== undefined)).size;
+  const dims: string[] = [];
+  if (versions > 0) dims.push(`${versions} version${versions === 1 ? "" : "s"}`);
+  if (platformIds > 0) dims.push(`${platformIds} platform${platformIds === 1 ? "" : "s"}`);
+  return dims.length > 0 ? `${count}: ${dims.join(" × ")}` : count;
 }
 
 /**
@@ -551,6 +570,10 @@ export function testCommand(): Command {
   return new Command("test")
     .alias("t")
     .description("Compile and run JUnit tests under test/.")
+    .addHelpText(
+      "after",
+      "\nTest stdout (System.out.println) is not shown: results are re-rendered from the JUnit XML reports. Put diagnostics in assertion messages instead.",
+    )
     .option(
       "--filter <pattern>",
       "Include tests matching classname glob, Class#method, or @tag:<name>.",
@@ -565,7 +588,7 @@ export function testCommand(): Command {
     )
     .option(
       "--exclude <names>",
-      "Exclude workspaces from the default sweep (repeatable; comma-separated).",
+      "Exclude workspaces from an all-workspaces test run (repeatable; comma-separated).",
       workspaceListOption,
       [] as string[],
     )

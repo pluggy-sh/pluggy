@@ -4,8 +4,10 @@
  */
 
 import type { ChildProcess } from "node:child_process";
-import { copyFile, link, unlink, writeFile } from "node:fs/promises";
+import { copyFile, link, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
+
+import { dim, log } from "./logging.ts";
 
 /**
  * Make `destination` reference the bytes at `source`. Hardlink first,
@@ -69,7 +71,9 @@ export interface ShutdownOptions {
  * Install a SIGINT handler that orchestrates graceful shutdown of `child`:
  * first Ctrl+C writes `gracefulStdin` and allows up to `graceMs` before
  * `child.kill()`; a second Ctrl+C inside `forceKillWindowMs` SIGKILLs
- * immediately. Returns a disposer that removes the handler.
+ * immediately. Each Ctrl+C is announced on the console so the user knows a
+ * grace period is running and how to skip it. Returns a disposer that
+ * removes the handler.
  */
 export function installShutdownHandler(child: ChildProcess, opts: ShutdownOptions): () => void {
   let firstSigintAt = 0;
@@ -102,6 +106,7 @@ export function installShutdownHandler(child: ChildProcess, opts: ShutdownOption
     if (firstSigintAt !== 0 && now - firstSigintAt <= opts.forceKillWindowMs) {
       clearGraceTimer();
       clearForceWindowTimer();
+      log.info(dim("force-stopping…"));
       try {
         child.kill("SIGKILL");
       } catch {
@@ -111,6 +116,11 @@ export function installShutdownHandler(child: ChildProcess, opts: ShutdownOption
     }
 
     firstSigintAt = now;
+    log.info(
+      dim(
+        `stopping server (up to ${Math.round(opts.graceMs / 1000)}s grace; Ctrl+C again to force)…`,
+      ),
+    );
 
     clearForceWindowTimer();
     forceWindowTimer = setTimeout(() => {
@@ -159,6 +169,17 @@ export function installShutdownHandler(child: ChildProcess, opts: ShutdownOption
 export async function writeFileLF(path: string, contents: string): Promise<void> {
   const normalized = contents.includes("\r\n") ? contents.replace(/\r\n/g, "\n") : contents;
   await writeFile(path, normalized, "utf8");
+}
+
+/**
+ * Write `data` to `path` atomically: bytes land in a `.partial` sibling
+ * first and are renamed into place, so an interrupted write never leaves a
+ * truncated file that an `existsSync`-style cache check would treat as
+ * valid. Use for every downloaded artifact that is cached by path.
+ */
+export async function writeFileAtomic(path: string, data: Uint8Array): Promise<void> {
+  await writeFile(`${path}.partial`, data);
+  await rename(`${path}.partial`, path);
 }
 
 /**

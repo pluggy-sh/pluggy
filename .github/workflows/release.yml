@@ -56,8 +56,10 @@ jobs:
 
       - name: Update CLI version in src/version.ts
         run: |
-          sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' src/version.ts
-          grep 'const CLI_VERSION' src/version.ts
+          sed -i -E 's/const CLI_VERSION(: string)? = ".*";/const CLI_VERSION: string = "${{ steps.get_version.outputs.version }}";/' src/version.ts
+          # grep -F fails the build if the substitution didn't take, so a
+          # drifted declaration can't ship a binary that reports 0.0.0.
+          grep -F 'const CLI_VERSION: string = "${{ steps.get_version.outputs.version }}";' src/version.ts
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

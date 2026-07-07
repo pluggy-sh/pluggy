@@ -14,15 +14,19 @@ import process from "node:process";
 
 import { Command } from "commander";
 
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import { toPosixPath } from "../portable.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   topologicalOrder,
   workspaceDependencyNames,
 } from "../workspace.ts";
 
 export interface WorkspacesCommandOptions {
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -45,9 +49,12 @@ export async function runWorkspacesCommand(
   opts: WorkspacesCommandOptions = {},
 ): Promise<WorkspacesCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_WORKSPACES_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const ordered = topologicalOrder(context.workspaces);
@@ -134,6 +141,6 @@ export function workspacesCommand(): Command {
   return new Command("workspaces")
     .description("List the workspaces declared in this project.")
     .action(async function action(this: Command) {
-      await runWorkspacesCommand({});
+      await runWorkspacesCommand({ project: this.optsWithGlobals().project });
     });
 }
