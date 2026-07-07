@@ -6,15 +6,15 @@ Remove build outputs from the selected workspaces. Scope respects the same flags
 
 ## What gets removed
 
-| Directory                        | Removed?           |
-| -------------------------------- | ------------------ |
-| `<workspace>/bin/`               | always             |
-| `<workspace>/docs/`              | only with `--docs` |
-| `<workspace>/.classpath`         | never              |
-| `<workspace>/.project`           | never              |
-| `<workspace>/.idea/`             | never              |
-| Outputs written via `--output X` | never (off-path)   |
-| User cache, lockfile, sources    | never              |
+| Directory                            | Removed?           |
+| ------------------------------------ | ------------------ |
+| `<workspace>/bin/`                   | always             |
+| `<workspace>/docs/<name>-<version>/` | only with `--docs` |
+| `<workspace>/.classpath`             | never              |
+| `<workspace>/.project`               | never              |
+| `<workspace>/.idea/`                 | never              |
+| Outputs written via `--output X`     | never (off-path)   |
+| User cache, lockfile, sources        | never              |
 
 ## Usage
 
@@ -31,13 +31,13 @@ At the repo root, `clean` sweeps every workspace by default. Inside a workspace,
 
 ## Flags
 
-| Flag                  | Effect                                                                  |
-| --------------------- | ----------------------------------------------------------------------- |
-| `--workspace <names>` | Limit the sweep to one or more workspaces. Repeatable; comma-separated. |
-| `--exclude <names>`   | Subtract one or more workspaces from the default sweep.                 |
-| `--workspaces`        | Explicit "every workspace" at the root.                                 |
-| `--docs`              | Also remove `<workspace>/docs/` directories.                            |
-| `--dry-run`           | Print what would be removed without touching disk.                      |
+| Flag                  | Effect                                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--workspace <names>` | Limit the sweep to one or more workspaces. Repeatable; comma-separated.                                                |
+| `--exclude <names>`   | Subtract one or more workspaces from the default sweep.                                                                |
+| `--workspaces`        | Explicit "every workspace" at the root.                                                                                |
+| `--docs`              | Also remove generated `docs/<name>-<version>/` directories. Anything else under `docs/` is left in place and reported. |
+| `--dry-run`           | Print what would be removed without touching disk.                                                                     |
 
 `--workspace` and `--exclude` share the syntax used by `build`, `test`, and `docs`. See [Workspaces: selection flags](../workspaces.md#selection-flags).
 

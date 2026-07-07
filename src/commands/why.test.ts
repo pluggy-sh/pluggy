@@ -147,4 +147,28 @@ describe("doWhy", () => {
     await writeProject();
     await expect(doWhy({ name: "anything", cwd: rootDir })).rejects.toThrow(/no pluggy\.lock/i);
   });
+
+  test("--project <path> resolves the project from outside its directory", async () => {
+    await writeProject();
+    await writeLockfile({
+      worldedit: {
+        source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
+        resolvedVersion: "7.3.15",
+        integrity: "sha256-we",
+        declaredBy: ["my-plugin"],
+      },
+    });
+
+    const elsewhere = await mkdtemp(join(tmpdir(), "pluggy-why-elsewhere-"));
+    try {
+      const result = await doWhy({
+        name: "worldedit",
+        cwd: elsewhere,
+        project: join(rootDir, "project.json"),
+      });
+      expect(result.paths[0].declaredBy).toEqual(["my-plugin"]);
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
 });

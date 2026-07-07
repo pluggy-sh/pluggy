@@ -20,9 +20,10 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
+import { confirm } from "@inquirer/prompts";
 
 import { UserError } from "../errors.ts";
-import { bold, dim, emit, log } from "../logging.ts";
+import { bold, dim, emit, isJsonMode, log } from "../logging.ts";
 import { toPosixPath, writeFileLF } from "../portable.ts";
 import { type Dependency, type Project, resolveProjectFile, writeProjectFile } from "../project.ts";
 
@@ -254,13 +255,19 @@ export interface WorkspaceRemoveOptions {
   name: string;
   /** Also delete the workspace's directory and contents. Default: leave files. */
   deleteFiles?: boolean;
+  /**
+   * Confirm `deleteFiles` without prompting. Required in `--json` /
+   * non-interactive runs; deleting source code is never the silent default.
+   */
+  yes?: boolean;
   /** Remove even if other workspaces declare a `workspace:<name>` dep. */
   force?: boolean;
   cwd?: string;
 }
 
 export interface WorkspaceRemoveResult {
-  status: "success";
+  /** `aborted` when the user declined the `--delete` confirmation; nothing was modified. */
+  status: "success" | "aborted";
   exitCode: 0;
   name: string;
   workspaceDir: string;
@@ -333,6 +340,33 @@ export async function runWorkspaceRemove(
           context: { dependents },
         },
       );
+    }
+  }
+
+  // Guard the irreversible part before any mutation: --delete recursively
+  // removes user source code, so it needs an explicit go-ahead.
+  if (opts.deleteFiles === true && opts.yes !== true) {
+    if (isJsonMode() || process.stdout.isTTY !== true || process.stdin.isTTY !== true) {
+      throw new UserError(`refusing to delete ${matchedDir} without confirmation`, {
+        code: "E_CONFIRM_REQUIRED",
+        hint: "Pass --yes to confirm deleting the workspace's files, or drop --delete to keep them.",
+        context: { workspaceDir: matchedDir },
+      });
+    }
+    const ok = await confirm({
+      message: `Recursively delete ${matchedDir} and everything in it?`,
+      default: false,
+    });
+    if (!ok) {
+      log.info("Aborted; nothing was removed.");
+      return {
+        status: "aborted",
+        exitCode: 0,
+        name: opts.name,
+        workspaceDir: matchedDir,
+        rootProjectFile,
+        deletedFiles: false,
+      };
     }
   }
 
@@ -588,14 +622,18 @@ function workspaceRenameSubcommand(): Command {
 function workspaceRemoveSubcommand(): Command {
   return new Command("remove")
     .alias("rm")
-    .description("Unwire a workspace from the root project.json (optionally deleting its files).")
+    .description(
+      "Unwire a workspace from the root project.json. Files are kept by default; --delete removes them.",
+    )
     .argument("<name>", "Workspace name to remove.")
-    .option("--delete", "Also recursively delete the workspace's directory.")
+    .option("--delete", "Also recursively delete the workspace's directory (prompts unless --yes).")
+    .option("-y, --yes", "Skip the --delete confirmation prompt. Required with --json.")
     .option("--force", "Remove even if other workspaces declare a workspace:<name> dep.")
     .action(async function action(this: Command, name: string, options) {
       await runWorkspaceRemove({
         name,
         deleteFiles: options.delete === true,
+        yes: options.yes === true,
         force: options.force === true,
       });
     });

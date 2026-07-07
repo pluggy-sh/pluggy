@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 
+import { UserError } from "../errors.ts";
 import { readLock } from "../lockfile.ts";
 
 import { doRemove } from "./remove.ts";
@@ -163,6 +164,8 @@ describe("doRemove", () => {
     });
 
     await expect(doRemove({ cwd: dir, plugin: "ghost" })).rejects.toThrow(/"ghost"/);
+    // UserError → exit code 2, matching other input errors.
+    await expect(doRemove({ cwd: dir, plugin: "ghost" })).rejects.toBeInstanceOf(UserError);
   });
 
   test("--workspaces tolerates workspaces that don't declare the dep", async () => {

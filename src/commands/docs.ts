@@ -184,7 +184,10 @@ function formatBytes(n: number): string {
 export function docsCommand(): Command {
   return new Command("docs")
     .description("Generate Javadoc HTML for the project.")
-    .option("--output <path>", "Output directory for the generated site.")
+    .option(
+      "--output <path>",
+      "Output directory for the generated site (default: docs/<name>-<version>/ in each workspace).",
+    )
     .option("--clean", "Wipe the output directory before generating.")
     .option("--private", "Include private members (passes -private to javadoc).")
     .option(

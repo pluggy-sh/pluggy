@@ -5,11 +5,13 @@ import { Command } from "commander";
 import { UserError } from "../errors.ts";
 import { type LockfileEntry, pulledInBy, readLock } from "../lockfile.ts";
 import { bold, dim, emit, log } from "../logging.ts";
-import { resolveWorkspaceContext } from "../workspace.ts";
+import { projectStartDir, resolveWorkspaceContext } from "../workspace.ts";
 
 export interface WhyOptions {
   /** Lockfile entry name to trace. */
   name: string;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -29,7 +31,7 @@ export interface WhyResult {
 
 export async function doWhy(opts: WhyOptions): Promise<WhyResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_WHY_NO_PROJECT",
@@ -139,8 +141,8 @@ function emitWhyResult(result: WhyResult): void {
 export function whyCommand(): Command {
   return new Command("why")
     .description("Trace which top-level dependency pulled in a locked dep.")
-    .argument("<name>", "Lockfile entry name to trace.")
+    .argument("<name>", "Dependency name (as shown by `pluggy list`).")
     .action(async function action(this: Command, name: string) {
-      await doWhy({ name });
+      await doWhy({ name, project: this.optsWithGlobals().project });
     });
 }

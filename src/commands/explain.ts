@@ -14,12 +14,20 @@ import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
 
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import type { Project, ResolvedProject } from "../project.ts";
-import { findWorkspace, resolveWorkspaceContext, type WorkspaceContext } from "../workspace.ts";
+import {
+  findWorkspace,
+  projectStartDir,
+  resolveWorkspaceContext,
+  type WorkspaceContext,
+} from "../workspace.ts";
 
 export interface ExplainCommandOptions {
   name?: string;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -62,9 +70,12 @@ export async function runExplainCommand(
   opts: ExplainCommandOptions = {},
 ): Promise<ExplainCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_EXPLAIN_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const { merged, raw, rootDir, name } = pickTarget(context, opts.name);
@@ -233,12 +244,14 @@ function formatMergedMap(
 /** Factory for the `pluggy explain` commander command. */
 export function explainCommand(): Command {
   return new Command("explain")
-    .description("Show a workspace's post-inheritance project view (declared vs inherited fields).")
+    .description(
+      "Show a workspace's post-inheritance project view (declared vs inherited fields; for where a dependency came from, see `pluggy why`).",
+    )
     .argument(
       "[name]",
       "Workspace to inspect. Defaults to the current workspace (or the root standalone project).",
     )
     .action(async function action(this: Command, name: string | undefined) {
-      await runExplainCommand({ name });
+      await runExplainCommand({ name, project: this.optsWithGlobals().project });
     });
 }

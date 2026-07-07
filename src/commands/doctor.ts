@@ -18,7 +18,7 @@ import {
   detectInstallMethod,
   findOtherInstalls,
 } from "../install-method.ts";
-import { bold, emit, emitErr, green, isJsonMode, log, red, yellow } from "../logging.ts";
+import { bold, dim, emit, emitErr, green, isJsonMode, log, red, yellow } from "../logging.ts";
 import { platforms } from "../platform/index.ts";
 import {
   getCachePath,
@@ -149,6 +149,14 @@ export async function runDoctorCommand(
   opts: DoctorCommandOptions = {},
 ): Promise<DoctorCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
+
+  // Several checks make sequential network calls with 3-5s timeouts, so a
+  // fully offline run can sit silent for 10-20s before the report prints.
+  // `--report` output must start with the markdown block, so the notice is
+  // suppressed there.
+  if (!isJsonMode() && opts.report !== true) {
+    log.info(dim("Running checks… (network checks may take ~10 seconds)"));
+  }
 
   // When `--fix` is set, run the structural-repair pass FIRST so the rest of
   // doctor can resolve the workspace context. `resolveWorkspaceContext`
@@ -375,7 +383,7 @@ function finalizeAndEmit(args: FinalizeArgs): DoctorCommandResult {
     return result;
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     status: ok ? "success" : "error",
     ok,
     environment,
@@ -384,6 +392,11 @@ function finalizeAndEmit(args: FinalizeArgs): DoctorCommandResult {
     failures,
     fixes,
   };
+  // Reaching here with `report` set means `--json` won; say so instead of
+  // dropping the flag silently (log.warn is muted in JSON mode).
+  if (opts.report === true) {
+    payload.warnings = ["--report was ignored because --json was set"];
+  }
   const printHuman = (): void => printHumanReport(result);
   if (ok) emit(payload, printHuman);
   else emitErr(payload, printHuman);
@@ -1552,10 +1565,14 @@ function escapeCell(value: string): string {
 export function doctorCommand(options: { pluggyVersion: string; repository: string }): Command {
   return new Command("doctor")
     .description("Check your environment and project for common issues.")
-    .option("--report", "Print a paste-friendly markdown report for issue filing.")
+    .option("--report", "Print a paste-friendly markdown report for issue filing (--json wins).")
     .option(
       "--fix",
       "Apply safe, non-destructive remediations (lockfile prune, missing workspaces).",
+    )
+    .addHelpText(
+      "after",
+      "\nDoctor exits 0 when every check passes (warnings allowed) and 1 when any check fails.",
     )
     .action(async function action(this: Command, cmdOptions: { report?: boolean; fix?: boolean }) {
       const result = await runDoctorCommand({

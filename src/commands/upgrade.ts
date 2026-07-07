@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { Command } from "commander";
+import { confirm } from "@inquirer/prompts";
 
 import {
   type InstallInfo,
@@ -13,7 +14,8 @@ import {
   detectInstallMethod,
   upgradeCommandFor,
 } from "../install-method.ts";
-import { bold, brightBlue, dim, log, red, yellow } from "../logging.ts";
+import { bold, brightBlue, dim, emit, isJsonMode, log, red, yellow } from "../logging.ts";
+import { CLI_VERSION } from "../version.ts";
 
 interface GithubReleaseAsset {
   name: string;
@@ -50,6 +52,11 @@ function currentAssetName(): string | undefined {
     "win32-x64": "pluggy-windows-amd64.exe",
   };
   return map[`${process.platform}-${process.arch}`];
+}
+
+/** True when release tag `tag` (with or without a leading `v`) names `version`. */
+export function tagMatchesVersion(tag: string, version: string): boolean {
+  return tag.replace(/^v/, "") === version;
 }
 
 async function fetchLatestRelease(repository: string, token?: string): Promise<GithubRelease> {
@@ -393,11 +400,38 @@ export function upgradeCommand(options: UpgradeOptions): Command {
       "--force",
       "Self-update even when pluggy was installed via a package manager. Not recommended; use the package manager's upgrade command instead.",
     )
+    .option("-y, --yes", "Skip the upgrade confirmation prompt.")
     .action(async function action(this: Command, cmdOptions) {
       const release = await fetchLatestRelease(options.repository, options.token);
 
       if (cmdOptions.printOnly === true) {
-        printManualInstructions(options.repository, release);
+        emit(
+          {
+            status: "success",
+            action: "print-only",
+            latest: release.tag_name,
+            currentVersion: CLI_VERSION,
+            publishedAt: release.published_at,
+            url: release.html_url,
+          },
+          () => printManualInstructions(options.repository, release),
+        );
+        return;
+      }
+
+      // "0.0.0" is the dev placeholder (releases stamp the real version), so
+      // comparing it against the latest tag would always report an upgrade.
+      if (CLI_VERSION !== "0.0.0" && tagMatchesVersion(release.tag_name, CLI_VERSION)) {
+        emit(
+          {
+            status: "success",
+            action: "upgrade",
+            upToDate: true,
+            version: CLI_VERSION,
+            latest: release.tag_name,
+          },
+          () => log.success(`pluggy is already up to date (v${CLI_VERSION})`),
+        );
         return;
       }
 
@@ -440,6 +474,23 @@ export function upgradeCommand(options: UpgradeOptions): Command {
 
       const downloadUrl = `https://github.com/${options.repository}/releases/download/${release.tag_name}/${assetName}`;
 
+      if (
+        cmdOptions.yes !== true &&
+        !isJsonMode() &&
+        process.stdout.isTTY === true &&
+        process.stdin.isTTY === true
+      ) {
+        const fromLabel = CLI_VERSION === "0.0.0" ? "to" : `v${CLI_VERSION} →`;
+        const ok = await confirm({
+          message: `Upgrade ${fromLabel} ${release.tag_name}?`,
+          default: true,
+        });
+        if (!ok) {
+          log.info("Aborted.");
+          return;
+        }
+      }
+
       log.info(`${bold("Upgrading to:")} ${brightBlue(release.tag_name)}`);
       log.info(`${dim(`downloading ${downloadUrl}`)}`);
 
@@ -456,8 +507,19 @@ export function upgradeCommand(options: UpgradeOptions): Command {
           assetName,
           options.repository,
         );
-        log.success(
-          `pluggy ${release.tag_name} installed at ${currentBinaryPath} (previous binary backed up to ${backupPath})`,
+        emit(
+          {
+            status: "success",
+            action: "upgrade",
+            from: CLI_VERSION,
+            to: release.tag_name,
+            binaryPath: currentBinaryPath,
+            backupPath,
+          },
+          () =>
+            log.success(
+              `pluggy ${release.tag_name} installed at ${currentBinaryPath} (previous binary backed up to ${backupPath})`,
+            ),
         );
       } catch (err) {
         log.error(`${red("✖")} ${(err as Error).message}`);

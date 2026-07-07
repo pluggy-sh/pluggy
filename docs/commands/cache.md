@@ -97,11 +97,11 @@ Delete cache entries. With no flag, wipes everything pluggy manages under the ca
 
 ```text
 $ pluggy cache clean --category versions
-? Delete the "versions" category (4.50 GB)? Yes
+? Delete the "versions" category (4.50 GB) under /Users/you/Library/Caches/pluggy? Yes
 ✓ Removed 12 entries (4.50 GB).
 ```
 
-`clean` is interactive by default. Pass `-y`/`--yes` to skip the confirmation; `--json` skips it implicitly. JDK manifest entries are reconciled automatically so subsequent `cache info` calls don't show ghost numbers.
+`clean` is interactive by default. Pass `-y`/`--yes` to skip the confirmation; in `--json` mode `--yes` is required — without it the command errors instead of deleting. Pass `--dry-run` to preview what would be removed without touching disk. JDK manifest entries are reconciled automatically so subsequent `cache info` calls don't show ghost numbers.
 
 ## `prune`
 

@@ -88,6 +88,36 @@ describe("doInfo: modrinth", () => {
     );
     await expect(doInfo("does-not-exist")).rejects.toThrow(/does-not-exist.*not found/);
   });
+
+  test("human output caps the version list at the newest 15 and points at --json", async () => {
+    const versions = Array.from({ length: 20 }, (_, i) => ({
+      id: `v${20 - i}`,
+      version_number: `7.3.${20 - i}`,
+      version_type: "release",
+      date_published: `2025-01-${String(20 - i).padStart(2, "0")}`,
+      game_versions: ["1.21.8"],
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL): Promise<Response> => {
+        const s = String(url);
+        if (s.endsWith("/project/worldedit")) return okJson({ slug: "worldedit" });
+        if (s.endsWith("/project/worldedit/version")) return okJson(versions);
+        throw new Error(`unexpected url: ${s}`);
+      }),
+    );
+
+    const captured: string[] = [];
+    console.log = (s: string) => {
+      captured.push(String(s));
+    };
+    await doInfo("worldedit");
+    const out = captured.join("\n");
+    expect(out).toContain("7.3.20");
+    expect(out).toContain("7.3.6");
+    expect(out).not.toContain("7.3.5 ");
+    expect(out).toContain("… and 5 more (use --json for all)");
+  });
 });
 
 describe("doInfo: file", () => {
@@ -159,6 +189,34 @@ describe("doInfo: workspace", () => {
     expect(result.name).toBe("suite-api");
     expect(result.version).toBe("0.1.0");
     expect(result.main).toBe("com.example.api.Plugin");
+  });
+
+  test("--project <path> resolves workspace identifiers without chdir", async () => {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(rootDir, "modules", "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./modules/api"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "modules", "api", "project.json"),
+      JSON.stringify({
+        name: "suite-api",
+        version: "0.1.0",
+        main: "com.example.api.Plugin",
+      }),
+    );
+
+    const result = await doInfo("workspace:suite-api", {
+      project: join(rootDir, "project.json"),
+    });
+    expect(result.kind).toBe("workspace");
+    expect(result.name).toBe("suite-api");
   });
 
   test("throws when the named workspace is not declared", async () => {

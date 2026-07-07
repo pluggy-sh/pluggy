@@ -4,6 +4,8 @@
  * versions and download server jars.
  */
 
+import { log } from "../../logging.ts";
+
 type Project = "paper" | "folia" | "travertine" | "velocity" | "waterfall";
 
 const PAPER_ENDPOINT = "https://fill.papermc.io/v3/projects";
@@ -113,31 +115,41 @@ export async function download(
       throw new Error(
         `No download URL for ${project} version ${version} build ${build} target ${target}`,
       );
-    const downloadRes = await fetch(url);
-    if (!downloadRes.ok)
-      throw new Error(
-        `Failed to download ${project} version ${version} build ${build}: ${downloadRes.statusText}`,
-      );
-    return {
-      version,
-      build,
-      output: await downloadRes.arrayBuffer(),
-    };
+    return { version, build, output: await fetchJar(url, project, version, build) };
   } else {
     const builds = (data as Array<{ id: number; downloads: Record<string, { url: string }> }>).sort(
       (a, b) => b.id - a.id,
     );
     if (builds.length === 0) throw new Error(`No builds found for ${project} version ${version}`);
     const latestBuild = builds[0];
-    const downloadRes = await fetch(latestBuild.downloads[target].url);
-    if (!downloadRes.ok)
-      throw new Error(
-        `Failed to download ${project} version ${version}: ${downloadRes.statusText}`,
-      );
     return {
       version,
       build: latestBuild.id,
-      output: await downloadRes.arrayBuffer(),
+      output: await fetchJar(latestBuild.downloads[target].url, project, version, latestBuild.id),
     };
   }
+}
+
+/**
+ * Fetch the jar at `url` and return its bytes. Logs a progress line once
+ * response headers arrive (with an approximate size when the response
+ * carries a `content-length`), before the body transfer that dominates
+ * the wait.
+ */
+async function fetchJar(
+  url: string,
+  project: Project,
+  version: string,
+  build: number,
+): Promise<ArrayBuffer> {
+  const res = await fetch(url);
+  if (!res.ok)
+    throw new Error(
+      `Failed to download ${project} version ${version} build ${build}: ${res.statusText}`,
+    );
+  const length = Number(res.headers.get("content-length"));
+  const sizeNote =
+    Number.isFinite(length) && length > 0 ? ` (~${Math.round(length / (1024 * 1024))} MB)` : "";
+  log.step(`Downloading ${project} ${version} build ${build}${sizeNote}…`);
+  return res.arrayBuffer();
 }

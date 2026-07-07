@@ -12,12 +12,12 @@ pluggy search [options] <query>
 
 ## Flags
 
-| Flag                 | Default | Notes                                            |
-| -------------------- | ------- | ------------------------------------------------ |
-| `--size <n>`         | `10`    | Page size.                                       |
-| `--page <n>`         | `0`     | Zero-indexed page offset.                        |
-| `--platform <id>`    | none    | Filter by platform tag (`paper`, `spigot`, ...). |
-| `--version <semver>` | none    | Filter by Minecraft version.                     |
+| Flag                     | Default | Notes                                                     |
+| ------------------------ | ------- | --------------------------------------------------------- |
+| `--size <n>`             | `10`    | Page size.                                                |
+| `--page <n>`             | `0`     | Zero-indexed page offset.                                 |
+| `--platform <id>`        | none    | Filter by platform tag (`paper`, `spigot`, ...).          |
+| `--mc-version <version>` | none    | Filter by Minecraft version (accepts `1.21` or `1.21.8`). |
 
 ## How it queries
 
@@ -49,7 +49,12 @@ LuckPerms  (luckperms)
   https://modrinth.com/plugin/luckperms
 
   ...
+
+Install with: pluggy install <slug>
+more: --page 1
 ```
+
+The install hint is printed once per result page; the `more:` line appears only when the page is full and further results exist.
 
 Game-version ranges are compacted to a `<lowest> ... <highest>` span when the plugin supports more than one. Single-version plugins show that one version verbatim. Plugins without version data omit the line.
 

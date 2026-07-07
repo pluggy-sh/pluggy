@@ -86,14 +86,63 @@ describe("runCleanCommand", () => {
     await stat(join(rootDir, "core", "bin"));
   });
 
-  test("--docs also removes docs/ output", async () => {
+  test("--docs removes only generated docs/<name>-<version>/ dirs, keeps foreign entries", async () => {
     await writeMulti();
-    await mkdir(join(rootDir, "api", "docs"), { recursive: true });
-    await writeFile(join(rootDir, "api", "docs", "index.html"), "x");
+    await mkdir(join(rootDir, "api", "docs", "api-0.1.0"), { recursive: true });
+    await writeFile(join(rootDir, "api", "docs", "api-0.1.0", "index.html"), "x");
+    await mkdir(join(rootDir, "api", "docs", "api-0.2.0-beta1"), { recursive: true });
+    await mkdir(join(rootDir, "api", "docs", "other-1.0.0"), { recursive: true });
+    await writeFile(join(rootDir, "api", "docs", "notes.md"), "keep me");
 
     const res = await runCleanCommand({ cwd: rootDir, docs: true });
-    expect(res.removed?.length).toBe(3); // api/bin + api/docs + core/bin
+    // api/bin + core/bin + the two api-* generated docs dirs
+    expect(res.removed?.length).toBe(4);
+    expect(res.skippedDocs?.sort()).toEqual([
+      join(rootDir, "api", "docs", "notes.md"),
+      join(rootDir, "api", "docs", "other-1.0.0"),
+    ]);
+    await expect(stat(join(rootDir, "api", "docs", "api-0.1.0"))).rejects.toThrow();
+    await expect(stat(join(rootDir, "api", "docs", "api-0.2.0-beta1"))).rejects.toThrow();
+    await stat(join(rootDir, "api", "docs", "notes.md"));
+    await stat(join(rootDir, "api", "docs", "other-1.0.0"));
+  });
+
+  test("--docs matches the workspace's exact version even when the shape regex does not", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "solo",
+        version: "1.0.0-beta.1",
+        main: "com.example.M",
+        compatibility: { versions: ["1.21"], platforms: ["paper"] },
+      }),
+    );
+    await mkdir(join(rootDir, "docs", "solo-1.0.0-beta.1"), { recursive: true });
+    await writeFile(join(rootDir, "docs", "solo-1.0.0-beta.1", "index.html"), "x");
+
+    const res = await runCleanCommand({ cwd: rootDir, docs: true });
+    expect(res.removed).toContain(join(rootDir, "docs", "solo-1.0.0-beta.1"));
+    expect(res.skippedDocs).toBeUndefined();
+    await expect(stat(join(rootDir, "docs", "solo-1.0.0-beta.1"))).rejects.toThrow();
+  });
+
+  test("--docs removes the docs/ dir itself once only generated output remains", async () => {
+    await writeMulti();
+    await mkdir(join(rootDir, "api", "docs", "api-0.1.0"), { recursive: true });
+    await writeFile(join(rootDir, "api", "docs", "api-0.1.0", "index.html"), "x");
+
+    const res = await runCleanCommand({ cwd: rootDir, docs: true });
+    expect(res.skippedDocs).toBeUndefined();
     await expect(stat(join(rootDir, "api", "docs"))).rejects.toThrow();
+  });
+
+  test("--docs --dry-run reports generated docs without touching disk", async () => {
+    await writeMulti();
+    await mkdir(join(rootDir, "api", "docs", "api-0.1.0"), { recursive: true });
+
+    const res = await runCleanCommand({ cwd: rootDir, docs: true, dryRun: true });
+    expect(res.wouldRemove).toContain(join(rootDir, "api", "docs", "api-0.1.0"));
+    await stat(join(rootDir, "api", "docs", "api-0.1.0"));
   });
 
   test("standalone project: cleans the root bin/", async () => {
@@ -127,5 +176,11 @@ describe("runCleanCommand", () => {
     const res = await runCleanCommand({ cwd: rootDir });
     expect(res.status).toBe("success");
     expect(res.removed).toHaveLength(0);
+  });
+
+  test("outside a project: UserError with E_CLEAN_NO_PROJECT", async () => {
+    await expect(runCleanCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_CLEAN_NO_PROJECT",
+    });
   });
 });

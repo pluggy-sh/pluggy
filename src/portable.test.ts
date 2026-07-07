@@ -13,6 +13,7 @@ import {
   resolveRelativeToConfig,
   safeJoin,
   toPosixPath,
+  writeFileAtomic,
   writeFileLF,
 } from "./portable.ts";
 
@@ -189,6 +190,35 @@ describe("writeFileLF", () => {
   });
 });
 
+describe("writeFileAtomic", () => {
+  let workDir: string;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), "pluggy-portable-atomic-"));
+  });
+
+  afterEach(async () => {
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  test("writes the bytes and leaves no .partial sibling", async () => {
+    const target = join(workDir, "artifact.jar");
+    const data = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    await writeFileAtomic(target, data);
+
+    expect(new Uint8Array(await readFile(target))).toEqual(data);
+    await expect(stat(`${target}.partial`)).rejects.toThrow();
+  });
+
+  test("replaces an existing file in place", async () => {
+    const target = join(workDir, "artifact.jar");
+    await writeFile(target, "stale");
+    await writeFileAtomic(target, new Uint8Array([1, 2, 3]));
+
+    expect(new Uint8Array(await readFile(target))).toEqual(new Uint8Array([1, 2, 3]));
+  });
+});
+
 describe("safeJoin", () => {
   const root = resolve("/tmp/pluggy-safe-root");
 
@@ -272,11 +302,17 @@ describe("installShutdownHandler", () => {
     // Wait for the child to attach its stdin listener.
     await new Promise((r) => setTimeout(r, 100));
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     process.emit("SIGINT");
 
     const result = await exited;
     expect(result.code).toBe(0);
     expect(result.signal).toBeNull();
+    const lines = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(
+      lines.some((l) => l.includes("stopping server (up to 2s grace; Ctrl+C again to force)…")),
+    ).toBe(true);
+    logSpy.mockRestore();
 
     dispose();
     disposers.pop();

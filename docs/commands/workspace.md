@@ -59,7 +59,7 @@ When `--main` is provided, `add` also writes a minimal Java stub at the matching
 
 ## `remove`
 
-Unwire a workspace from the root. By default, the workspace's files stay on disk; pass `--delete` to wipe them too.
+Unwire a workspace from the root. By default, the workspace's files stay on disk; pass `--delete` to wipe them too. `--delete` prompts for confirmation before deleting; pass `--yes` to skip the prompt (required with `--json` or when not running in a terminal).
 
 ```text
 $ pluggy workspace remove core
@@ -79,10 +79,11 @@ error [E_WORKSPACE_HAS_DEPENDENTS]: cannot remove "api": workspaces "core", "plu
 
 ### Flags
 
-| Flag       | Effect                                                             |
-| ---------- | ------------------------------------------------------------------ |
-| `--delete` | Recursively delete the workspace's directory after unwiring.       |
-| `--force`  | Unwire even when other workspaces declare `workspace:<name>` deps. |
+| Flag        | Effect                                                                               |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `--delete`  | Recursively delete the workspace's directory after unwiring. Prompts unless `--yes`. |
+| `-y, --yes` | Skip the `--delete` confirmation prompt. Required with `--json`.                     |
+| `--force`   | Unwire even when other workspaces declare `workspace:<name>` deps.                   |
 
 ## `rename`
 

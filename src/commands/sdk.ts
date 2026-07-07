@@ -12,6 +12,9 @@
  *   use <major>               Pin a JDK in the current project.json.
  *   remove <major>            Delete a cached JDK.
  *
+ * Every subcommand taking a major also accepts `<distribution> <major>`
+ * positionally (`pluggy sdk install temurin 21`), mirroring `sdk list` rows.
+ *
  * `--distribution` is an opt-in override; defaults to Temurin. Only the
  * curated allowlist is accepted (see `ALLOWED_DISTRIBUTIONS`). Adding
  * distributions later is non-breaking; narrowing isn't.
@@ -31,6 +34,8 @@ import {
 } from "../project.ts";
 import { bold, dim, emit, emitErr, green, log, red } from "../logging.ts";
 
+import { dirSize, formatBytes } from "../cache/index.ts";
+import { jdkCacheRoot } from "../sdk/cache.ts";
 import { ensureJdk, getCachedJdk, listInstalled, removeJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
 import {
@@ -63,22 +68,39 @@ export function sdkCommand(): Command {
 function installSubcommand(): Command {
   return new Command("install")
     .description("Download and cache a JDK. With no <major>, derives it from project.json.")
-    .argument("[major]", "Java major release, e.g. 21.")
+    .argument(
+      "[major-or-distribution]",
+      "Java major release (e.g. 21), or distribution if <major> follows. Omit to derive from project.json.",
+    )
+    .argument("[major]", "Java major release (when the first arg is a distribution).")
     .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
-    .option("--force", "Reinstall even if already cached. Wipes the slot and re-downloads.")
-    .action(async function action(this: Command, majorArg: string | undefined, options) {
+    .option(
+      "--force",
+      "Reinstall even if already cached. The replacement is downloaded and verified before the old JDK is removed.",
+    )
+    .action(async function action(
+      this: Command,
+      firstArg: string | undefined,
+      secondArg: string | undefined,
+      options,
+    ) {
       const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
-      const distribution = (options.distribution as AllowedDistribution | undefined) ?? "temurin";
-
-      const major =
-        majorArg !== undefined ? parseMajor(majorArg) : await majorFromProject(globalOpts);
-
-      if (options.force === true) {
-        await removeJdk(major, distribution);
-      }
+      const positionals =
+        firstArg !== undefined
+          ? splitMajorAndDistribution(firstArg, secondArg)
+          : { major: await majorFromProject(globalOpts), distribution: undefined };
+      const distribution =
+        resolveDistribution(
+          positionals.distribution,
+          options.distribution as AllowedDistribution | undefined,
+        ) ?? "temurin";
 
       // Explicit installs always write to the cache; never accept JAVA_HOME.
-      const resolved = await ensureJdk(major, { distribution, ignoreSystemJava: true });
+      const resolved = await ensureJdk(positionals.major, {
+        distribution,
+        ignoreSystemJava: true,
+        force: options.force === true,
+      });
 
       emit(
         {
@@ -93,11 +115,11 @@ function installSubcommand(): Command {
         () => {
           if (resolved.source === "cache") {
             log.info(
-              `${bold("sdk")} ${distribution} ${major} already installed at ${resolved.javaHome}`,
+              `${bold("sdk")} ${distribution} ${resolved.major} already installed at ${resolved.javaHome}`,
             );
           } else {
             log.success(
-              `${bold("sdk")} installed ${distribution} ${major} at ${resolved.javaHome}`,
+              `${bold("sdk")} installed ${distribution} ${resolved.major} at ${resolved.javaHome}`,
             );
           }
         },
@@ -124,19 +146,28 @@ function listSubcommand(): Command {
       }
 
       const installed = await listInstalled();
-      emit({ status: "success", installed }, () => {
-        if (installed.length === 0) {
+      const rows = await Promise.all(
+        installed.map(async (e) => ({
+          ...e,
+          sizeBytes: e.present ? await dirSize(e.slotPath) : 0,
+        })),
+      );
+      const cachePath = jdkCacheRoot();
+      emit({ status: "success", installed: rows, cachePath }, () => {
+        if (rows.length === 0) {
           log.info("No cached JDKs. Run `pluggy sdk install <major>` to install one.");
-          return;
+        } else {
+          log.info(bold("Cached JDKs:"));
+          for (const e of rows) {
+            const status = e.present ? green("✓") : red("✗");
+            const used = formatRelative(e.lastUsed);
+            log.info(
+              `  ${status} ${e.distribution} ${e.major}  ${dim(`(${e.fullVersion})`)}  ${formatBytes(e.sizeBytes)}  ${dim(`last used ${used}`)}`,
+            );
+          }
         }
-        log.info(bold("Cached JDKs:"));
-        for (const e of installed) {
-          const status = e.present ? green("✓") : red("✗");
-          const used = formatRelative(e.lastUsed);
-          log.info(
-            `  ${status} ${e.distribution} ${e.major}  ${dim(`(${e.fullVersion})`)}  ${dim(`last used ${used}`)}`,
-          );
-        }
+        log.info("");
+        log.info(dim(`stored under ${cachePath} — manage with \`pluggy cache\``));
       });
     });
 }
@@ -252,15 +283,28 @@ function removeSubcommand(): Command {
       const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
       const distribution = resolveDistribution(positional, options.distribution) ?? "temurin";
 
-      const removed = await removeJdk(major, distribution);
+      const result = await removeJdk(major, distribution);
 
-      emit({ status: "success", action: "remove", removed, major, distribution }, () => {
-        if (removed) {
-          log.success(`Removed ${distribution} ${major}`);
-        } else {
-          log.warn(`${distribution} ${major} was not installed`);
-        }
-      });
+      emit(
+        {
+          status: "success",
+          action: "remove",
+          removed: result.removed,
+          major,
+          distribution,
+          slotPath: result.slotPath,
+          freedBytes: result.freedBytes,
+        },
+        () => {
+          if (result.removed) {
+            log.success(
+              `Removed ${distribution} ${major} (freed ${formatBytes(result.freedBytes)}) from ${result.slotPath}`,
+            );
+          } else {
+            log.warn(`${distribution} ${major} was not installed`);
+          }
+        },
+      );
     });
 }
 

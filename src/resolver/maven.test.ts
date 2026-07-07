@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { initLogging } from "../logging.ts";
 import { getCachePath } from "../project.ts";
 
 import type { ResolveContext } from "./index.ts";
@@ -87,6 +88,44 @@ describe("resolveMaven", () => {
     const written = await readFile(got.jarPath);
     expect(new Uint8Array(written)).toEqual(bytes);
     expect(got.transitiveDeps).toEqual([]);
+  });
+
+  test("logs one resolution line for the top-level coordinate only", async () => {
+    initLogging({ noColor: true });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const pom = `
+      <project>
+        <dependencies>
+          <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>child</artifactId>
+            <version>2.0.0</version>
+          </dependency>
+        </dependencies>
+      </project>`;
+    const fetchMock = vi.fn(async (url: string | URL): Promise<Response> => {
+      const s = String(url);
+      if (s.endsWith(".jar")) return okBinary(new Uint8Array([1, 2, 3]));
+      if (s.endsWith("demo-1.0.0.pom")) return new Response(pom, { status: 200 });
+      return errorResponse(404, "Not Found");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const got = await resolveMaven("com.example", "demo", "1.0.0", {
+        ...baseCtx,
+        registries: ["https://repo.example.com/maven"],
+      });
+      expect(got.transitiveDeps).toHaveLength(1);
+
+      const resolving = logSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((line) => line.includes("Resolving") && line.includes("from Maven"));
+      expect(resolving).toHaveLength(1);
+      expect(resolving[0]).toContain("com.example:demo:1.0.0");
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   test("falls back to the second registry when the first 404s", async () => {

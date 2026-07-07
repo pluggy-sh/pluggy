@@ -21,6 +21,7 @@ import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
 
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces, type RunResult } from "../runner.ts";
 import { getCachedJdk } from "../sdk/index.ts";
@@ -69,7 +70,10 @@ export async function runRunCommand(opts: RunCommandOptions): Promise<RunCommand
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_RUN_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   if (opts.scriptName === undefined || opts.scriptName.length === 0) {
@@ -78,8 +82,7 @@ export async function runRunCommand(opts: RunCommandOptions): Promise<RunCommand
 
   const targets = selectWorkspaceTargets(context, opts, "run");
   // Filter to workspaces that actually define the requested script (after
-  // inheritance). A workspace that didn't inherit or override the script is
-  // silently skipped — `pluggy run <name>` only runs where it's defined.
+  // inheritance). `pluggy run <name>` only runs where it's defined.
   const eligible = targets.filter((node) => {
     const script = node.project.scripts?.[opts.scriptName as string];
     return typeof script === "string" && script.length > 0;
@@ -87,6 +90,14 @@ export async function runRunCommand(opts: RunCommandOptions): Promise<RunCommand
   if (eligible.length === 0) {
     throw new InvalidArgumentError(
       `script "${opts.scriptName}" is not defined in any selected workspace.`,
+    );
+  }
+  const withoutScript = targets.filter((node) => !eligible.includes(node));
+  if (withoutScript.length > 0) {
+    log.info(
+      dim(
+        `skipping ${withoutScript.length} workspace${withoutScript.length === 1 ? "" : "s"} where "${opts.scriptName}" is not defined: ${withoutScript.map((n) => n.name).join(", ")}`,
+      ),
     );
   }
 
@@ -194,6 +205,7 @@ function listScripts(context: ReturnType<typeof resolveWorkspaceContext>): RunCo
   emit(result as unknown as Record<string, unknown>, () => {
     if (scripts.length === 0) {
       log.info(dim("No scripts defined. Add a `scripts` block to project.json."));
+      log.info(dim("To start a dev server, use `pluggy dev`."));
       return;
     }
     log.heading("Available scripts");
@@ -298,6 +310,10 @@ export function tokenize(input: string): string[] {
 export function runCommand(): Command {
   return new Command("run")
     .description("Invoke a script defined under project.scripts across the selected workspaces.")
+    .addHelpText(
+      "after",
+      '\nScripts run without a shell: pipes, `&&`, and redirection are not supported. Put multi-step work in a script file and reference it (e.g. "deploy": "node scripts/deploy.mjs").\nTo start a dev server, use `pluggy dev`.',
+    )
     .argument("[name]", "Script name. Omit to list available scripts.")
     .argument(
       "[args...]",
@@ -311,7 +327,7 @@ export function runCommand(): Command {
     )
     .option(
       "--exclude <names>",
-      "Exclude workspaces from the default sweep (repeatable; comma-separated).",
+      "Exclude workspaces from an all-workspaces run (repeatable; comma-separated).",
       workspaceListOption,
       [] as string[],
     )

@@ -109,7 +109,33 @@ describe("runExplainCommand", () => {
     await expect(runExplainCommand({ cwd: rootDir })).rejects.toThrow(/pass a workspace name/);
   });
 
-  test("throws when not inside any pluggy project", async () => {
-    await expect(runExplainCommand({ cwd: rootDir })).rejects.toThrow(/no pluggy project/i);
+  test("throws E_EXPLAIN_NO_PROJECT when not inside any pluggy project", async () => {
+    await expect(runExplainCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_EXPLAIN_NO_PROJECT",
+      message: expect.stringMatching(/no pluggy project/i),
+    });
+  });
+
+  test("--project <path> resolves the project from outside its directory", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "solo",
+        version: "1.0.0",
+        main: "com.example.M",
+        compatibility: { versions: ["1.21"], platforms: ["paper"] },
+      }),
+    );
+
+    const elsewhere = await mkdtemp(join(tmpdir(), "pluggy-explain-elsewhere-"));
+    try {
+      const res = await runExplainCommand({
+        cwd: elsewhere,
+        project: join(rootDir, "project.json"),
+      });
+      expect(res.name).toBe("solo");
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
   });
 });

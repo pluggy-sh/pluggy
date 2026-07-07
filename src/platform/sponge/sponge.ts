@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { log } from "../../logging.ts";
+import { writeFileAtomic } from "../../portable.ts";
 import { spongeDescriptor } from "../descriptor/sponge.ts";
 import { createPlatform, type Version } from "../platform.ts";
 import { SPONGE_RUNTIME } from "../runtime.ts";
@@ -231,10 +233,14 @@ export default createPlatform((ctx) => ({
     if (!jarRes.ok) {
       throw new Error(`Failed to download SpongeVanilla ${artifact.key}: ${jarRes.statusText}`);
     }
+    const length = Number(jarRes.headers.get("content-length"));
+    const sizeNote =
+      Number.isFinite(length) && length > 0 ? ` (~${Math.round(length / (1024 * 1024))} MB)` : "";
+    log.step(`Downloading SpongeVanilla ${artifact.key}${sizeNote}…`);
     const output = new Uint8Array(await jarRes.arrayBuffer());
 
     await mkdir(join(CACHE_PATH, "versions"), { recursive: true });
-    await writeFile(JAR_PATH, output);
+    await writeFileAtomic(JAR_PATH, output);
 
     return { version: artifact.minecraft, build: artifact.build, output };
   },

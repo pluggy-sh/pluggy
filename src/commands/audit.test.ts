@@ -210,4 +210,124 @@ describe("doAudit", () => {
     await writeProject();
     await expect(doAudit({ cwd: rootDir })).rejects.toThrow(/no pluggy\.lock/i);
   });
+
+  test("--project <path> resolves the project from outside its directory", async () => {
+    await writeProject();
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      `${JSON.stringify({ version: 2, entries: {} }, null, 2)}\n`,
+    );
+    const elsewhere = await mkdtemp(join(tmpdir(), "pluggy-audit-elsewhere-"));
+    try {
+      const result = await doAudit({ cwd: elsewhere, project: join(rootDir, "project.json") });
+      expect(result.ok).toBe(true);
+      expect(result.rows).toEqual([]);
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  describe("human output", () => {
+    let stdoutLines: string[];
+    let stderrLines: string[];
+    const origLog = console.log;
+    const origErr = console.error;
+
+    beforeEach(() => {
+      stdoutLines = [];
+      stderrLines = [];
+      console.log = (s: string) => {
+        stdoutLines.push(String(s));
+      };
+      console.error = (s: string) => {
+        stderrLines.push(String(s));
+      };
+      initLogging({ json: false, verbose: false, noColor: true });
+    });
+
+    afterEach(() => {
+      console.log = origLog;
+      console.error = origErr;
+    });
+
+    test("failure summary carries the full counts and tampered rows get a heal hint", async () => {
+      await writeProject();
+      const goodBytes = "good-bytes";
+      await writeJar(["modrinth", "good", "1.0.0.jar"], goodBytes);
+      await writeJar(["modrinth", "bad", "1.0.0.jar"], "tampered-content");
+      await writeFile(
+        join(rootDir, "pluggy.lock"),
+        `${JSON.stringify(
+          {
+            version: 2,
+            entries: {
+              good: {
+                source: { kind: "modrinth", slug: "good", version: "1.0.0" },
+                resolvedVersion: "1.0.0",
+                integrity: sha256(goodBytes),
+                declaredBy: ["my-plugin"],
+              },
+              bad: {
+                source: { kind: "modrinth", slug: "bad", version: "1.0.0" },
+                resolvedVersion: "1.0.0",
+                integrity: sha256("original-content"),
+                declaredBy: ["my-plugin"],
+              },
+              uncached: {
+                source: { kind: "modrinth", slug: "uncached", version: "1.0.0" },
+                resolvedVersion: "1.0.0",
+                integrity: "sha256-abc",
+                declaredBy: ["my-plugin"],
+              },
+              sibling: {
+                source: { kind: "workspace", name: "sibling", version: "*" },
+                resolvedVersion: "1.0.0",
+                integrity: "sha256-x",
+                declaredBy: ["my-plugin"],
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      await doAudit({ cwd: rootDir });
+
+      const out = stdoutLines.join("\n");
+      expect(out).toContain("1 tampered, 1 ok, 1 not cached, 1 skipped (workspace)");
+      expect(out).toContain(
+        "Run `pluggy install` to re-download; it detects tampering and heals the cache.",
+      );
+    });
+
+    test("everything missing is not rendered as a clean success", async () => {
+      await writeProject();
+      await writeFile(
+        join(rootDir, "pluggy.lock"),
+        `${JSON.stringify(
+          {
+            version: 2,
+            entries: {
+              foo: {
+                source: { kind: "modrinth", slug: "foo", version: "1.0.0" },
+                resolvedVersion: "1.0.0",
+                integrity: "sha256-abc",
+                declaredBy: ["my-plugin"],
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      const result = await doAudit({ cwd: rootDir });
+
+      expect(result.exitCode).toBe(0);
+      const out = stdoutLines.join("\n");
+      expect(out).toContain("0 verified; nothing cached yet. Run `pluggy install` first.");
+      expect(out).not.toContain("✓");
+    });
+  });
 });

@@ -181,4 +181,96 @@ describe("doOutdated", () => {
     await writeProject();
     await expect(doOutdated({ cwd: rootDir })).rejects.toThrow(/no pluggy\.lock/i);
   });
+
+  test("--project <path> resolves the project from outside its directory", async () => {
+    await writeProject();
+    await writeLockfile({
+      fresh: {
+        source: { kind: "modrinth", slug: "fresh", version: "1.2.3" },
+        resolvedVersion: "1.2.3",
+        integrity: "sha256-x",
+        declaredBy: ["my-plugin"],
+      },
+    });
+    vi.mocked(getLatestModrinthVersion).mockResolvedValue("1.2.3");
+
+    const elsewhere = await mkdtemp(join(tmpdir(), "pluggy-outdated-elsewhere-"));
+    try {
+      const result = await doOutdated({ cwd: elsewhere, project: join(rootDir, "project.json") });
+      expect(result.rows).toHaveLength(1);
+      expect(result.outdatedCount).toBe(0);
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  describe("human output", () => {
+    let stdoutLines: string[];
+    let stderrLines: string[];
+    const origLog = console.log;
+    const origErr = console.error;
+
+    beforeEach(() => {
+      stdoutLines = [];
+      stderrLines = [];
+      console.log = (s: string) => {
+        stdoutLines.push(String(s));
+      };
+      console.error = (s: string) => {
+        stderrLines.push(String(s));
+      };
+      initLogging({ json: false, verbose: false, noColor: true });
+    });
+
+    afterEach(() => {
+      console.log = origLog;
+      console.error = origErr;
+    });
+
+    test("all lookups failing never prints the unqualified all-clear", async () => {
+      await writeProject();
+      await writeLockfile({
+        alpha: {
+          source: { kind: "modrinth", slug: "alpha", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-x",
+          declaredBy: ["my-plugin"],
+        },
+        fresh: {
+          source: { kind: "modrinth", slug: "fresh", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-x",
+          declaredBy: ["my-plugin"],
+        },
+      });
+      vi.mocked(getLatestModrinthVersion).mockImplementation(async (slug) => {
+        if (slug === "alpha") throw new Error("fetch failed: offline");
+        return "1.0.0";
+      });
+
+      await doOutdated({ cwd: rootDir });
+
+      const out = stdoutLines.join("\n");
+      expect(out).not.toMatch(/All \d+ dependencies up to date/);
+      expect(out).toContain("1 up to date, 1 could not be checked (network error).");
+      expect(stderrLines.join("\n")).toContain("alpha: fetch failed: offline");
+    });
+
+    test("stale deps end with an update-path hint", async () => {
+      await writeProject();
+      await writeLockfile({
+        stale: {
+          source: { kind: "modrinth", slug: "stale", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-x",
+          declaredBy: ["my-plugin"],
+        },
+      });
+      vi.mocked(getLatestModrinthVersion).mockResolvedValue("2.0.0");
+
+      await doOutdated({ cwd: rootDir });
+
+      expect(stdoutLines.join("\n")).toContain("Update with: pluggy install <name>@<version>");
+    });
+  });
 });

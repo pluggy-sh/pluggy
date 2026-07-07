@@ -240,6 +240,23 @@ describe("runWorkspaces", () => {
       expect(idxB2 - idxB1).toBe(1);
     });
 
+    test("single workspace streams live by default even with concurrency > 1", async () => {
+      const a = makeNode("a");
+
+      let seenWhileRunning = false;
+      await runWorkspaces(
+        [a],
+        async () => {
+          log.info("live-line");
+          seenWhileRunning = stdoutSpy.mock.calls.some((c: unknown[]) => c[0] === "live-line");
+          return null;
+        },
+        { concurrency: 4 },
+      );
+
+      expect(seenWhileRunning).toBe(true);
+    });
+
     test("bufferOutput:false streams output live even with concurrency > 1", async () => {
       const a = makeNode("a");
       const b = makeNode("b");

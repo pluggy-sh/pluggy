@@ -10,19 +10,19 @@ pluggy dev [options]
 
 ## Flags
 
-| Flag                 | Default                              | Notes                                                                           |
-| -------------------- | ------------------------------------ | ------------------------------------------------------------------------------- |
-| `--workspace <name>` | none                                 | Pick a workspace at the root. Required when more than one workspace has `main`. |
-| `--platform <id>`    | `project.compatibility.platforms[0]` | Override the platform (for example `paper` to `spigot`).                        |
-| `--version <semver>` | `project.compatibility.versions[0]`  | Override the Minecraft version.                                                 |
-| `--port <n>`         | `project.dev.port` or `25565`        | Written into `server.properties`.                                               |
-| `--memory <x>`       | `project.dev.memory` or `2G`         | JVM heap size; becomes `-Xmx<value>`.                                           |
-| `--clean`            | off                                  | Wipe `dev/` before staging.                                                     |
-| `--fresh-world`      | off                                  | Keep `dev/` but delete every `dev/world*` subdirectory.                         |
-| `--no-watch`         | watch on                             | Run once. Don't restart on change.                                              |
-| `--reload`           | off                                  | Prefer Bukkit's `/reload confirm` when hotswap can't apply a change.            |
-| `--no-hotswap`       | hotswap on                           | Disable HotswapAgent and JBR. Use `/reload` or restart only.                    |
-| `--offline`          | off                                  | Force `online-mode=false` in `server.properties`.                               |
+| Flag                     | Default                              | Notes                                                                                                                              |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `--workspace <name>`     | none                                 | Pick a workspace at the root. Only needed when shipping workspaces span platforms; same-platform workspaces co-host on one server. |
+| `--platform <id>`        | `project.compatibility.platforms[0]` | Override the platform (for example `paper` to `spigot`).                                                                           |
+| `--mc-version <version>` | `project.compatibility.versions[0]`  | Override the Minecraft version (accepts `1.21` or `1.21.8`).                                                                       |
+| `--port <n>`             | `project.dev.port` or `25565`        | Written into `server.properties`.                                                                                                  |
+| `--memory <x>`           | `project.dev.memory` or `2G`         | JVM heap size; becomes `-Xmx<value>`.                                                                                              |
+| `--clean`                | off                                  | Wipe `dev/` before staging.                                                                                                        |
+| `--fresh-world`          | off                                  | Keep `dev/` but delete every `dev/world*` subdirectory.                                                                            |
+| `--no-watch`             | watch on                             | Run once. Don't restart on change.                                                                                                 |
+| `--reload`               | off                                  | Prefer Bukkit's `/reload confirm` when hotswap can't apply a change.                                                               |
+| `--no-hotswap`           | hotswap on                           | Disable HotswapAgent and JBR. Use `/reload` or restart only.                                                                       |
+| `--offline`              | off                                  | Force `online-mode=false` in `server.properties`.                                                                                  |
 
 ## What it does
 

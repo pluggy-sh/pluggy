@@ -3,16 +3,19 @@ import process from "node:process";
 import { Command } from "commander";
 
 import { UserError } from "../errors.ts";
-import { type Lockfile, type LockfileEntry, readLock } from "../lockfile.ts";
+import { type Lockfile, readLock } from "../lockfile.ts";
 import { bold, dim, emit, log, yellow } from "../logging.ts";
 import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
 import { getLatestMavenVersion } from "../resolver/maven.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
+import type { ResolvedSource } from "../source.ts";
 import { compareVersions } from "../update-check.ts";
-import { resolveWorkspaceContext, type WorkspaceContext } from "../workspace.ts";
+import { projectStartDir, resolveWorkspaceContext, type WorkspaceContext } from "../workspace.ts";
 
 export interface OutdatedOptions {
   beta?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -36,7 +39,7 @@ export interface OutdatedResult {
 /** Resolve every lockfile entry's latest upstream version and compare. */
 export async function doOutdated(opts: OutdatedOptions = {}): Promise<OutdatedResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_OUTDATED_NO_PROJECT",
@@ -85,7 +88,7 @@ async function checkOne(
   }
 
   try {
-    const latest = await fetchLatest(entry, registries, includePrerelease);
+    const latest = await latestUpstreamVersion(entry.source, registries, includePrerelease);
     if (latest === undefined) {
       return { name, source: sourceKind, current, diff: "unknown", topLevel };
     }
@@ -97,16 +100,23 @@ async function checkOne(
   }
 }
 
-async function fetchLatest(
-  entry: LockfileEntry,
+/**
+ * Latest upstream version for a dependency source. Modrinth and Maven kinds
+ * query their registries (Maven walks `registries` in order); file and
+ * workspace sources have no upstream and resolve to `undefined`. Shared by
+ * `pluggy outdated` and `pluggy list --outdated` so both report the same
+ * latest version.
+ */
+export async function latestUpstreamVersion(
+  source: ResolvedSource,
   registries: string[],
   includePrerelease: boolean,
 ): Promise<string | undefined> {
-  switch (entry.source.kind) {
+  switch (source.kind) {
     case "modrinth":
-      return getLatestModrinthVersion(entry.source.slug, includePrerelease);
+      return getLatestModrinthVersion(source.slug, includePrerelease);
     case "maven":
-      return getLatestMavenVersion(entry.source.groupId, entry.source.artifactId, registries);
+      return getLatestMavenVersion(source.groupId, source.artifactId, registries);
     default:
       return undefined;
   }
@@ -159,8 +169,18 @@ function emitOutdatedResult(result: OutdatedResult): void {
       const stale = result.rows.filter(
         (r) => r.diff === "major" || r.diff === "minor" || r.diff === "patch",
       );
+      const errs = result.rows.filter((r) => r.diff === "error");
       if (stale.length === 0) {
-        log.success(`All ${result.rows.length} dependencies up to date`);
+        if (errs.length === 0) {
+          log.success(`All ${result.rows.length} dependencies up to date`);
+          return;
+        }
+        for (const row of errs) {
+          log.warn(`${row.name}: ${row.error ?? "lookup failed"}`);
+        }
+        const upToDate = result.rows.filter((r) => r.diff === "same").length;
+        log.info("");
+        log.info(`${upToDate} up to date, ${errs.length} could not be checked (network error).`);
         return;
       }
 
@@ -180,7 +200,6 @@ function emitOutdatedResult(result: OutdatedResult): void {
           `  ${pad(bold(row.name), nameWidth, row.name)}  ${pad(row.current, curWidth)}  ${pad(change, latestWidth, latest)}  ${dim(sourceTag)}`,
         );
       }
-      const errs = result.rows.filter((r) => r.diff === "error");
       if (errs.length > 0) {
         log.info("");
         for (const row of errs) {
@@ -188,7 +207,11 @@ function emitOutdatedResult(result: OutdatedResult): void {
         }
       }
       log.info("");
-      log.info(`${result.outdatedCount} top-level outdated, ${stale.length} entries total stale.`);
+      const unchecked = errs.length > 0 ? `, ${errs.length} could not be checked` : "";
+      log.info(
+        `${result.outdatedCount} top-level outdated, ${stale.length} entries total stale${unchecked}.`,
+      );
+      log.info(dim("Update with: pluggy install <name>@<version>"));
     },
   );
 }
@@ -204,6 +227,9 @@ export function outdatedCommand(): Command {
     .description("Show locked dependencies that have a newer upstream version.")
     .option("--beta", "Include pre-release versions when computing latest.")
     .action(async function action(this: Command, options) {
-      await doOutdated({ beta: options.beta === true });
+      await doOutdated({
+        beta: options.beta === true,
+        project: this.optsWithGlobals().project,
+      });
     });
 }

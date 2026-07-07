@@ -10,12 +10,13 @@ The graph is derived from each workspace's `workspace:` dependencies (see [Works
 $ pluggy graph
 
 Workspace graph
+  a → b: a depends on b
   api
-  core ← api
-  plugin ← api, core
+  core → api
+  plugin → api, core
 ```
 
-The arrow reads "depends on." Nodes appear in [topological order](../glossary.md#topological-order), so each line's dependencies are listed above it.
+The arrow reads "depends on" (`core → api`: core depends on api), matching the edge direction of the Mermaid output. Nodes appear in [topological order](../glossary.md#topological-order), so each line's dependencies are listed above it.
 
 ## Mermaid output
 

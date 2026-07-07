@@ -3,7 +3,7 @@
  * selection for workspace-aware commands.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
 
@@ -83,6 +83,26 @@ export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefin
     current: undefined,
     workspaces: [],
   };
+}
+
+/**
+ * Directory workspace discovery starts from, honoring the global
+ * `--project <path>` flag. With the flag set, resolution starts from the
+ * given `project.json`'s directory (a directory path is accepted too);
+ * otherwise from `cwd`. Throws `UserError` when the flag points at a path
+ * that doesn't exist.
+ */
+export function projectStartDir(projectPath: string | undefined, cwd: string): string {
+  if (projectPath === undefined) return cwd;
+  const abs = resolve(cwd, projectPath);
+  if (!existsSync(abs)) {
+    throw new UserError(`Project file not found at ${projectPath}.`, {
+      code: "E_PROJECT_FLAG_NOT_FOUND",
+      hint: "Pass --project the path to a project.json (or its directory).",
+      context: { project: projectPath },
+    });
+  }
+  return statSync(abs).isDirectory() ? abs : dirname(abs);
 }
 
 /**
@@ -345,16 +365,18 @@ export interface ResolvedScope {
 
 /**
  * Resolve which workspaces a command should act on, from cwd plus per-command
- * flags. Throws `InvalidArgumentError` for user-input problems (no project,
- * unknown workspace name, ambiguous root scope).
+ * flags. Throws `UserError` when cwd is not inside a project, and
+ * `InvalidArgumentError` for the other user-input problems (unknown
+ * workspace name, ambiguous root scope). Both exit 2.
  */
 export function resolveScope(opts: ScopeOptions): ResolvedScope {
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new InvalidArgumentError(
-      `${opts.commandName}: no pluggy project found at or above "${cwd}"`,
-    );
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: `E_${opts.commandName.toUpperCase()}_NO_PROJECT`,
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   if (opts.workspace !== undefined) {

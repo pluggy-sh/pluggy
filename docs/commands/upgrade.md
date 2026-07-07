@@ -13,11 +13,12 @@ pluggy upgrade [options]
 | Flag           | Default | Notes                                                                                                                       |
 | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `--print-only` | off     | Skip the download and print manual install instructions instead.                                                            |
+| `-y, --yes`    | off     | Skip the upgrade confirmation prompt.                                                                                       |
 | `--force`      | off     | Self-update even when pluggy was installed via Homebrew or Scoop. Not recommended; corrupts the package manager's tracking. |
 
 ## What it does
 
-1. Queries `https://api.github.com/repos/pluggy-sh/pluggy/releases/latest`.
+1. Queries `https://api.github.com/repos/pluggy-sh/pluggy/releases/latest`. If the release matches the running version, it prints `pluggy is already up to date (vX.Y.Z)` and stops. Dev builds (`0.0.0`) always proceed.
 2. Maps `process.platform` × `process.arch` to a release asset name:
 
    | Platform | Arch    | Asset                      |
@@ -28,12 +29,15 @@ pluggy upgrade [options]
    | `linux`  | `x64`   | `pluggy-linux-amd64`       |
    | `win32`  | `x64`   | `pluggy-windows-amd64.exe` |
 
-3. Downloads the asset to `<tmp>/pluggy-upgrade-<rand>/pluggy-new` and
+3. Asks `Upgrade v0.1.0 → v0.2.0?` when running interactively. `--yes` skips
+   the prompt; `--json` and non-TTY runs proceed without asking (the `.old`
+   backup makes the swap reversible).
+4. Downloads the asset to `<tmp>/pluggy-upgrade-<rand>/pluggy-new` and
    `chmod +x` on POSIX.
-4. Renames the current binary to `<current>.old`, then renames the staged
+5. Renames the current binary to `<current>.old`, then renames the staged
    new binary into place. On Windows this works because Node's `rename`
    will swap an open executable.
-5. If the second rename fails, the `.old` backup is restored atomically.
+6. If the second rename fails, the `.old` backup is restored atomically.
 
 Without an asset mapped for your platform, pluggy prints the manual
 install instructions and exits clean.
@@ -42,10 +46,13 @@ install instructions and exits clean.
 
 ```text
 $ pluggy upgrade
+? Upgrade v0.1.0 → v0.2.0? Yes
 Upgrading to: v0.2.0
 downloading https://github.com/pluggy-sh/pluggy/releases/download/v0.2.0/pluggy-darwin-arm64
 ✓ pluggy v0.2.0 installed at ~/.pluggy/bin/pluggy (previous binary backed up to ~/.pluggy/bin/pluggy.old)
 ```
+
+Under `--json`, success, already-up-to-date, and `--print-only` each emit a single structured envelope (`{"status":"success","action":"upgrade",...}`).
 
 With `--print-only`:
 

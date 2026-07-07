@@ -163,13 +163,40 @@ function cleanSubcommand(): Command {
   return new Command("clean")
     .description("Delete all cached entries (or just one category).")
     .option("--category <name>", "Limit cleaning to one category.", parseCategoryArg)
-    .option("-y, --yes", "Skip the confirmation prompt.")
+    .option("--dry-run", "Print what would be removed without touching disk.")
+    .option("-y, --yes", "Skip the confirmation prompt. Required with --json.")
     .action(async function action(this: Command, options) {
       const category: CategoryId | "all" = (options.category as CategoryId | undefined) ?? "all";
-      const skipPrompt = options.yes === true || isJsonMode();
 
       const summary = await scanCache();
       const target = describeTarget(category, summary);
+
+      if (options.dryRun === true) {
+        const groups = await listCacheEntries(category);
+        const wouldRemove = groups.flatMap((g) =>
+          g.entries.map((e) => ({ id: e.id, path: e.path, bytes: e.bytes, category: g.category })),
+        );
+        const freedBytes = wouldRemove.reduce((acc, e) => acc + e.bytes, 0);
+        emit(
+          { status: "success", action: "clean", category, dryRun: true, wouldRemove, freedBytes },
+          () => {
+            if (wouldRemove.length === 0) {
+              log.info(`Nothing to clean${category !== "all" ? ` in "${category}"` : ""}.`);
+              return;
+            }
+            for (const e of wouldRemove) {
+              log.info(
+                `  ${yellow("-")} ${e.category}/${e.id} ${dim(`(${formatBytes(e.bytes)})`)}`,
+              );
+            }
+            log.success(
+              `Would remove ${wouldRemove.length} entr${wouldRemove.length === 1 ? "y" : "ies"} (${formatBytes(freedBytes)}).`,
+            );
+          },
+        );
+        return;
+      }
+
       if (target.bytes === 0) {
         emit({ status: "success", action: "clean", category, removed: [], freedBytes: 0 }, () => {
           log.info(`Nothing to clean${category !== "all" ? ` in "${category}"` : ""}.`);
@@ -177,9 +204,12 @@ function cleanSubcommand(): Command {
         return;
       }
 
-      if (!skipPrompt) {
+      if (options.yes !== true) {
+        if (isJsonMode()) {
+          throw new InvalidArgumentError("pass --yes to confirm deletion in --json mode");
+        }
         const ok = await confirm({
-          message: `Delete ${target.label} (${formatBytes(target.bytes)})?`,
+          message: `Delete ${target.label} (${formatBytes(target.bytes)}) under ${summary.cachePath}?`,
           default: false,
         });
         if (!ok) {

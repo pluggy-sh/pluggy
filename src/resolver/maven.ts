@@ -48,6 +48,10 @@ export async function resolveMaven(
     );
   }
 
+  // One line per top-level coordinate; transitives stay at debug so a deep
+  // dependency tree doesn't flood the console.
+  log.step(`Resolving ${groupId}:${artifactId}:${version} from Maven…`);
+
   const visited = new Set<string>();
   return resolveOne(
     groupId,

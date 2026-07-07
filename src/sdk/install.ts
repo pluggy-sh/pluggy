@@ -8,13 +8,14 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { RuntimeError } from "../errors.ts";
 import { log } from "../logging.ts";
+import { writeFileAtomic } from "../portable.ts";
 
 import {
   archivePath,
@@ -34,12 +35,22 @@ export interface InstallResult {
   javaPath: string;
 }
 
+export interface InstallJdkOptions {
+  /** Drop any cached archive and re-download. `sdk install --force` sets this. */
+  freshArchive?: boolean;
+}
+
 /**
  * Download (if needed) and extract `spec` into the cache. Atomic: a partial
- * extract on crash leaves no slot behind. Records the install in the
- * manifest so `pluggy cache prune` can LRU-evict later.
+ * extract on crash leaves no slot behind, and an existing slot is only
+ * replaced after the new archive is downloaded, verified, and extracted, so
+ * a failed reinstall never strands the user without a JDK. Records the
+ * install in the manifest so `pluggy cache prune` can LRU-evict later.
  */
-export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
+export async function installJdk(
+  spec: JdkSpec,
+  opts: InstallJdkOptions = {},
+): Promise<InstallResult> {
   await ensureCacheDirs();
 
   const parts: CacheKeyParts = {
@@ -51,6 +62,10 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
   const key = cacheKey(parts);
   const slot = slotPath(key);
   const archive = archivePath(key, spec.archiveType);
+
+  if (opts.freshArchive === true) {
+    await rm(archive, { force: true });
+  }
 
   // Download archive if missing. We deliberately keep archives around in
   // <cacheRoot>/jdk/archives so a re-extract (after manual slot deletion)
@@ -73,27 +88,40 @@ export async function installJdk(spec: JdkSpec): Promise<InstallResult> {
     await downloadArchive(spec, archive);
   }
 
-  // Extract into a per-run staging dir; rename atomically into the slot.
-  // If the slot already exists from a previous (broken) install, drop it.
-  if (existsSync(slot)) {
-    await rm(slot, { recursive: true, force: true });
-  }
-  await extractArchive(archive, spec.archiveType, slot);
+  // Extract into a per-run staging dir and verify the layout there. Only
+  // then is any existing slot dropped and the staged tree renamed into
+  // place, so every failure mode up to the swap leaves the old JDK usable.
+  const stagingDir = join(tmpdir(), `pluggy-jdk-${Date.now()}-${process.pid}`);
+  await mkdir(stagingDir, { recursive: true });
+  try {
+    const extractedRoot = await extractToStaging(archive, spec.archiveType, stagingDir);
+    const stagedJava = javaBinaryPath(extractedRoot, spec.os);
+    if (!existsSync(stagedJava)) {
+      throw new RuntimeError(
+        `Extraction completed but ${stagedJava} is missing; archive layout may differ from expectation`,
+        {
+          code: "E_SDK_EXTRACT_LAYOUT",
+          hint: "Wipe the JDK cache with `pluggy cache clean --category jdk` and retry.",
+          context: {
+            javaPath: stagedJava,
+            distribution: spec.distribution,
+            version: spec.fullVersion,
+          },
+        },
+      );
+    }
 
-  const javaPath = javaBinaryPath(slot, spec.os);
-  if (!existsSync(javaPath)) {
-    throw new RuntimeError(
-      `Extraction completed but ${javaPath} is missing; archive layout may differ from expectation`,
-      {
-        code: "E_SDK_EXTRACT_LAYOUT",
-        hint: "Wipe the JDK cache with `pluggy cache clean --category jdk` and retry.",
-        context: { javaPath, distribution: spec.distribution, version: spec.fullVersion },
-      },
-    );
+    if (existsSync(slot)) {
+      await rm(slot, { recursive: true, force: true });
+    }
+    await rename(extractedRoot, slot);
+    log.debug(`JDK ready at ${slot}`);
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
   }
 
   await recordEntry(key, parts, spec.fullVersion);
-  return { slotRoot: slot, javaPath };
+  return { slotRoot: slot, javaPath: javaBinaryPath(slot, spec.os) };
 }
 
 async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
@@ -126,7 +154,6 @@ async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
   }
 
   await mkdir(dirname(destPath), { recursive: true });
-  const tmpPath = `${destPath}.partial`;
   // We allocate a single buffer rather than streaming to disk because Bun's
   // standalone binary doesn't ship a `Readable.fromWeb` polyfill that's
   // reliable across platforms; and JDK archives are bounded (≈200 MB).
@@ -159,8 +186,7 @@ async function downloadArchive(spec: JdkSpec, destPath: string): Promise<void> {
     );
   }
 
-  await writeFile(tmpPath, buf);
-  await rename(tmpPath, destPath);
+  await writeFileAtomic(destPath, buf);
   log.debug(`Cached JDK archive at ${destPath} (${buf.byteLength} bytes)`);
 }
 
@@ -173,53 +199,44 @@ async function hashFile(
 }
 
 /**
- * Extract `archive` (.tar.gz or .zip) into `expectedRoot`. The archive is
- * unpacked into a sibling temp dir first; we then verify exactly one
- * top-level directory and rename it into place. This matches `dev/jbr.ts`'s
- * approach so a partial extract never poisons the cache.
+ * Extract `archive` (.tar.gz or .zip) into `stagingDir`, verify exactly one
+ * top-level directory, and return that directory's path. The caller owns
+ * `stagingDir` cleanup and the rename into the cache slot; this matches
+ * `dev/jbr.ts`'s approach so a partial extract never poisons the cache.
  */
-async function extractArchive(
+async function extractToStaging(
   archive: string,
   archiveType: "tar.gz" | "zip",
-  expectedRoot: string,
-): Promise<void> {
-  const stagingDir = join(tmpdir(), `pluggy-jdk-${Date.now()}-${process.pid}`);
-  await mkdir(stagingDir, { recursive: true });
-
+  stagingDir: string,
+): Promise<string> {
   log.step("Extracting JDK…");
-  try {
-    if (archiveType === "tar.gz") {
-      await runTar(archive, stagingDir);
-    } else {
-      await runUnzip(archive, stagingDir);
-    }
+  if (archiveType === "tar.gz") {
+    await runTar(archive, stagingDir);
+  } else {
+    await runUnzip(archive, stagingDir);
+  }
 
-    const entries = await readdir(stagingDir, { withFileTypes: true });
-    const dirs = entries.filter((e) => e.isDirectory());
-    if (dirs.length === 0) {
-      throw new RuntimeError(`JDK archive produced no directories inside ${stagingDir}`, {
+  const entries = await readdir(stagingDir, { withFileTypes: true });
+  const dirs = entries.filter((e) => e.isDirectory());
+  if (dirs.length === 0) {
+    throw new RuntimeError(`JDK archive produced no directories inside ${stagingDir}`, {
+      code: "E_SDK_EXTRACT_LAYOUT",
+      hint: "Wipe the JDK cache with `pluggy cache clean --category jdk` and retry.",
+      context: { stagingDir },
+    });
+  }
+  if (dirs.length > 1) {
+    throw new RuntimeError(
+      `JDK archive produced ${dirs.length} top-level directories; expected exactly one`,
+      {
         code: "E_SDK_EXTRACT_LAYOUT",
         hint: "Wipe the JDK cache with `pluggy cache clean --category jdk` and retry.",
-        context: { stagingDir },
-      });
-    }
-    if (dirs.length > 1) {
-      throw new RuntimeError(
-        `JDK archive produced ${dirs.length} top-level directories; expected exactly one`,
-        {
-          code: "E_SDK_EXTRACT_LAYOUT",
-          hint: "Wipe the JDK cache with `pluggy cache clean --category jdk` and retry.",
-          context: { stagingDir, dirs: dirs.map((d) => d.name) },
-        },
-      );
-    }
-
-    const extractedSrc = join(stagingDir, dirs[0].name);
-    await rename(extractedSrc, expectedRoot);
-    log.debug(`JDK ready at ${expectedRoot}`);
-  } finally {
-    await rm(stagingDir, { recursive: true, force: true });
+        context: { stagingDir, dirs: dirs.map((d) => d.name) },
+      },
+    );
   }
+
+  return join(stagingDir, dirs[0].name);
 }
 
 function runTar(archive: string, destDir: string): Promise<void> {

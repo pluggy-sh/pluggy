@@ -121,7 +121,9 @@ export function parseSource(source: string, version: string): ResolvedSource {
  * Parse a CLI install identifier. Accepts `<slug>[@<version>]` (Modrinth),
  * `<path>.jar` (local file), `maven:<groupId>:<artifactId>@<version>`, and
  * `workspace:<name>`. Absent Modrinth/Maven versions resolve to `"*"` (latest
- * stable); the resolver concretizes. Throws on malformed input.
+ * stable); the resolver concretizes. ASCII uppercase in a Modrinth slug is
+ * folded to lowercase (`EssentialsX` → `essentialsx`). Throws on malformed
+ * input.
  */
 export function parseIdentifier(input: string): ResolvedSource {
   if (typeof input !== "string" || input.length === 0) {
@@ -228,10 +230,20 @@ export function parseIdentifier(input: string): ResolvedSource {
     }
   }
   if (!SLUG_RE.test(slug)) {
-    throw new UserError(`Invalid identifier: "${input}"; slug must match /^[a-z0-9][a-z0-9-_]*$/`, {
-      code: "E_IDENTIFIER_BAD_MODRINTH",
-      hint: 'Modrinth slugs are lowercase, e.g. "worldedit".',
-    });
+    // Users often type the project's display name ("EssentialsX"); the
+    // Modrinth slug is its lowercase form, so fold ASCII uppercase before
+    // rejecting.
+    const lowered = slug.replace(/[A-Z]/g, (c) => c.toLowerCase());
+    if (!SLUG_RE.test(lowered)) {
+      throw new UserError(
+        `Invalid identifier: "${input}"; Modrinth slugs use only lowercase letters, digits, hyphens, and underscores`,
+        {
+          code: "E_IDENTIFIER_BAD_MODRINTH",
+          hint: 'Example: "worldedit" or "worldedit@7.3.15".',
+        },
+      );
+    }
+    slug = lowered;
   }
   return { kind: "modrinth", slug, version };
 }

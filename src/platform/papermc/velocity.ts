@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { writeFileAtomic } from "../../portable.ts";
 import { velocityDescriptor } from "../descriptor/velocity.ts";
 import { createPlatform, type Version } from "../platform.ts";
 import { VELOCITY_RUNTIME } from "../runtime.ts";
@@ -76,7 +77,7 @@ export default createPlatform((ctx) => ({
     const output = new Uint8Array(result.output);
 
     await mkdir(join(CACHE_PATH, "versions"), { recursive: true });
-    await writeFile(JAR_PATH, output);
+    await writeFileAtomic(JAR_PATH, output);
     return { version: version.version, build: release.build, output };
   },
 }));

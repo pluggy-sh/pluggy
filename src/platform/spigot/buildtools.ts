@@ -19,6 +19,8 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { classMajorToJava } from "../../jar.ts";
+import { log } from "../../logging.ts";
+import { writeFileAtomic } from "../../portable.ts";
 import type { PlatformContext } from "../platform.ts";
 
 const BUILDTOOLS_URL =
@@ -59,14 +61,24 @@ export async function download(ctx: PlatformContext, ignoreCache = false): Promi
 
   const res = await fetch(BUILDTOOLS_URL);
   if (!res.ok) throw new Error(`Failed to download BuildTools: ${res.statusText}`);
+  const length = Number(res.headers.get("content-length"));
+  const sizeNote =
+    Number.isFinite(length) && length > 0 ? ` (~${Math.round(length / (1024 * 1024))} MB)` : "";
+  log.step(`Downloading BuildTools.jar${sizeNote}…`);
   const data = new Uint8Array(await res.arrayBuffer());
   const sha = createHash("sha256").update(data).digest("hex");
-  await writeFile(BUILDTOOLS_PATH, data);
+  await writeFileAtomic(BUILDTOOLS_PATH, data);
   await writeFile(SHA_PATH, `${sha}\n`);
   return BUILDTOOLS_PATH;
 }
 
 export type PlatformType = "craftbukkit" | "spigot" | "none";
+
+function displayName(type: PlatformType): string {
+  if (type === "spigot") return "Spigot";
+  if (type === "craftbukkit") return "CraftBukkit";
+  return type;
+}
 
 /** Live handle for a running BuildTools compile. */
 export type Compiler = {
@@ -74,7 +86,11 @@ export type Compiler = {
   version: string;
   /** Async iterator of combined stdout+stderr lines from the child. */
   stream: AsyncGenerator<string>;
-  /** Await the child's exit and return the final jar bytes. */
+  /**
+   * Await the child's exit and return the final jar bytes. Drains whatever
+   * remains of `stream`, echoing lines at debug and logging a periodic
+   * elapsed heartbeat at info.
+   */
   output(): Promise<Uint8Array>;
 };
 
@@ -95,6 +111,10 @@ export async function compile(
 
   if (ignoreCache) await rm(BUILDTOOLS_CACHE, { recursive: true, force: true }).catch(() => {});
   await mkdir(BUILDTOOLS_CACHE, { recursive: true });
+
+  log.info(
+    `Compiling ${displayName(type)} ${version} with BuildTools. This typically takes 10-30 minutes on first run; the jar is cached afterwards.`,
+  );
 
   const OUTPUT_JAR = join(BUILDTOOLS_CACHE, `${type}-${version}.jar`);
 
@@ -156,8 +176,22 @@ export async function compile(
     type,
     version,
     async output() {
-      for await (const _ of stream) {
-        // Drain so the child is allowed to exit.
+      const started = Date.now();
+      // Heartbeat so a multi-minute BuildTools run never looks hung at the
+      // default log level; the full child output streams under --verbose.
+      const heartbeat = setInterval(() => {
+        const minutes = Math.floor((Date.now() - started) / 60_000);
+        log.step(`BuildTools still compiling… ${minutes}m elapsed`);
+      }, 60_000);
+      heartbeat.unref();
+      try {
+        for await (const text of stream) {
+          for (const line of text.split(/\r?\n/)) {
+            if (line.trim().length > 0) log.debug(`buildtools: ${line}`);
+          }
+        }
+      } finally {
+        clearInterval(heartbeat);
       }
       const code = await exited;
       const ok = await stat(OUTPUT_JAR)

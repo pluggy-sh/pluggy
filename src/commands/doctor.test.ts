@@ -213,6 +213,14 @@ describe("runDoctorCommand", () => {
     }
   });
 
+  test("--json with --report records that --report was ignored", async () => {
+    initLogging({ json: true });
+    await runDoctorCommand({ cwd: rootDir, checks: passingHooks(), report: true });
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    const parsed = JSON.parse(stdoutSpy.mock.calls[0][0] as string);
+    expect(parsed.warnings).toEqual(["--report was ignored because --json was set"]);
+  });
+
   test("--report emits markdown wrapped in <details>", async () => {
     await runDoctorCommand({ cwd: rootDir, checks: passingHooks(), report: true });
     expect(stdoutSpy).toHaveBeenCalled();

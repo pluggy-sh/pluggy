@@ -99,7 +99,66 @@ describe("runGraphCommand", () => {
     expect(res.mermaid).toContain("plugin --> core");
   });
 
-  test("throws when not inside any pluggy project", async () => {
-    await expect(runGraphCommand({ cwd: rootDir })).rejects.toThrow(/no pluggy project/i);
+  test("throws E_GRAPH_NO_PROJECT when not inside any pluggy project", async () => {
+    await expect(runGraphCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_GRAPH_NO_PROJECT",
+      message: expect.stringMatching(/no pluggy project/i),
+    });
+  });
+
+  test("--project <path> resolves the project from outside its directory", async () => {
+    await writeTrio();
+    const elsewhere = await mkdtemp(join(tmpdir(), "pluggy-graph-elsewhere-"));
+    try {
+      const res = await runGraphCommand({
+        cwd: elsewhere,
+        project: join(rootDir, "project.json"),
+      });
+      expect(res.nodes).toEqual(["api", "core", "plugin"]);
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  describe("human output", () => {
+    let stdoutLines: string[];
+    const origLog = console.log;
+
+    beforeEach(() => {
+      stdoutLines = [];
+      console.log = (s: string) => {
+        stdoutLines.push(String(s));
+      };
+    });
+
+    afterEach(() => {
+      console.log = origLog;
+    });
+
+    test("text arrows point the same way as mermaid (depender → dependency) with a legend", async () => {
+      await writeTrio();
+      await runGraphCommand({ cwd: rootDir });
+      const out = stdoutLines.join("\n");
+      expect(out).toContain("a → b: a depends on b");
+      expect(out).toContain("core → api");
+      expect(out).toContain("plugin → api, core");
+      expect(out).not.toContain("←");
+    });
+
+    test("standalone empty state points at `pluggy list --tree`", async () => {
+      await writeFile(
+        join(rootDir, "project.json"),
+        JSON.stringify({
+          name: "solo",
+          version: "1.0.0",
+          main: "com.example.M",
+          compatibility: { versions: ["1.21"], platforms: ["paper"] },
+        }),
+      );
+      await runGraphCommand({ cwd: rootDir });
+      expect(stdoutLines.join("\n")).toContain(
+        "No workspaces declared. For the dependency tree, run `pluggy list --tree`.",
+      );
+    });
   });
 });

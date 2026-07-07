@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { writeFileAtomic } from "../../portable.ts";
 import { bungeeDescriptor } from "../descriptor/bungee.ts";
 import { createPlatform, type Version } from "../platform.ts";
 import { BUNGEE_RUNTIME } from "../runtime.ts";
@@ -60,7 +61,7 @@ export default createPlatform((ctx) => ({
     const output = new Uint8Array(result.output);
 
     await mkdir(join(CACHE_PATH, "versions"), { recursive: true });
-    await writeFile(JAR_PATH, output);
+    await writeFileAtomic(JAR_PATH, output);
     return { version: result.version, build: result.build, output };
   },
 }));

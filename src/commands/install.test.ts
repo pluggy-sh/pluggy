@@ -344,7 +344,33 @@ describe("doInstall: no plugin argument", () => {
   });
 
   test("errors when no project is found at or above cwd", async () => {
-    await expect(doInstall({ cwd: dir })).rejects.toThrow(/no pluggy project found/);
+    await expect(doInstall({ cwd: dir })).rejects.toThrow(/no pluggy project found/i);
+  });
+
+  test("zero declared deps → says so instead of claiming the lockfile is fresh", async () => {
+    await writeFile(
+      join(dir, "project.json"),
+      JSON.stringify({
+        name: "demo",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      }),
+    );
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const result = await doInstall({ cwd: dir });
+      expect(result.installed).toEqual([]);
+      expect(result.skipped).toEqual([]);
+      expect(mockedResolveDependency).not.toHaveBeenCalled();
+
+      const output = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(output).toContain("No dependencies declared");
+      expect(output).not.toContain("lockfile is fresh");
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   test("persists the full transitive closure when the resolver returns one", async () => {

@@ -4,6 +4,7 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { runDev, singleTarget, type DevTarget } from "../dev/index.ts";
+import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import { primaryPlatform, type ResolvedProject } from "../project.ts";
 import {
@@ -15,12 +16,12 @@ import {
   type WorkspaceNode,
 } from "../workspace.ts";
 
-import { parseInteger, parsePlatform, parseSemver } from "./parsers.ts";
+import { parseInteger, parseMcVersion, parsePlatform } from "./parsers.ts";
 
 export interface DevCommandOptions {
   workspace?: string;
   platform?: string;
-  version?: string;
+  mcVersion?: string;
   port?: number;
   memory?: string;
   clean?: boolean;
@@ -53,14 +54,17 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
   const context = resolveWorkspaceContext(cwd);
   if (context === undefined) {
-    throw new Error("No pluggy project found. Run this from inside a project directory.");
+    throw new UserError("No pluggy project found. Run this from inside a project directory.", {
+      code: "E_DEV_NO_PROJECT",
+      hint: "Run `pluggy init` to create a new project, or cd into an existing one.",
+    });
   }
 
   const target = selectDevTarget(context, opts);
   const { server, plugins } = target;
 
   const platformId = opts.platform ?? server.compatibility?.platforms?.[0];
-  const mcVersion = opts.version ?? server.compatibility?.versions?.[0];
+  const mcVersion = opts.mcVersion ?? server.compatibility?.versions?.[0];
   const port = opts.port ?? server.dev?.port ?? 25565;
   const devDir = join(server.rootDir, "dev");
   emit(
@@ -83,7 +87,7 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
 
   await runDev(target, {
     platform: opts.platform,
-    version: opts.version,
+    version: opts.mcVersion,
     port: opts.port,
     memory: opts.memory,
     clean: opts.clean,
@@ -225,9 +229,12 @@ function parseFallback(value: string): "manual" | "reload" | "restart" {
 export function devCommand(): Command {
   return new Command("dev")
     .description("Start a development server for the project.")
-    .option("--workspace <name>", "Required when run at a root with workspaces.")
+    .option(
+      "--workspace <name>",
+      "Target one workspace (only needed when shipping workspaces span platforms).",
+    )
     .option("--platform <name>", "Override the primary platform.", parsePlatform)
-    .option("--version <ver>", "Override the primary MC version.", parseSemver)
+    .option("--mc-version <version>", "Override the primary MC version.", parseMcVersion)
     .option("--port <n>", "Server listen port.", parseInteger)
     .option("--memory <x>", "JVM heap size (e.g. 2G, 512M).")
     .option("--clean", "Wipe dev/ before starting.")
@@ -255,7 +262,7 @@ export function devCommand(): Command {
       await runDevCommand({
         workspace: options.workspace,
         platform: options.platform,
-        version: options.version,
+        mcVersion: options.mcVersion,
         port: options.port,
         memory: options.memory,
         clean: options.clean === true,

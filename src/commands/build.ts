@@ -369,7 +369,7 @@ export function buildCommand(): Command {
     .description("Build the project and output a plugin jar.")
     .option("--output <path>", "Output jar path.")
     .option("--clean", "Wipe build cache before building.")
-    .option("--skip-classpath", "Don't regenerate .classpath.")
+    .option("--skip-classpath", "Don't regenerate the Eclipse .classpath file.")
     .option(
       "--workspace <names>",
       "Build one or more workspaces (repeatable; comma-separated).",
@@ -378,7 +378,7 @@ export function buildCommand(): Command {
     )
     .option(
       "--exclude <names>",
-      "Exclude workspaces from the default sweep (repeatable; comma-separated).",
+      "Exclude workspaces from an all-workspaces build (repeatable; comma-separated).",
       workspaceListOption,
       [] as string[],
     )
