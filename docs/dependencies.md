@@ -1,6 +1,14 @@
 # Dependencies
 
-Four [source kinds](./glossary.md#source-kind), one grammar, one [lockfile](./glossary.md#lockfile). Every dependency you install ends up in one of these four categories.
+A dependency is anything your plugin needs at build time or runtime that isn't your own source code. pluggy resolves dependencies from four [source kinds](./glossary.md#source-kind), records them in `project.json:dependencies`, and pins exact versions in [`pluggy.lock`](./glossary.md#lockfile).
+
+Most installs look like this:
+
+```text
+pluggy install worldedit
+```
+
+The CLI works out the source kind from the identifier, resolves the latest stable version, and writes both files for you. The four source kinds and the full identifier grammar are below.
 
 ## Source kinds
 
@@ -162,10 +170,6 @@ Transitives are referenced by key, not duplicated inline. To follow the graph fo
 Top-level entries have non-empty `declaredBy`. Pure transitives have `declaredBy: []` and reach the build only because some top-level lists them in `transitives`.
 
 The file is written atomically: pluggy creates a `.<pid>.<rand>.tmp` sibling and `rename`s over the target. Entries are sorted by key so diffs are deterministic. Trailing LF.
-
-### Migrating from version 1
-
-Version 1 lockfiles nested transitives inline (`transitives: LockfileEntry[]`). Version 2 flattens everything by name. Lockfiles are regenerated on the next `pluggy install`, so the migration is automatic. Delete `pluggy.lock` and run `pluggy install` if you hit a parse error from a stale file.
 
 ### When pluggy rewrites it
 

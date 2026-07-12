@@ -63,23 +63,6 @@ Rebuild triggered for 2 workspaces (core, plugin)
 
 `--watch` is for tight iteration loops. For a running test server that reloads on rebuild, use [`pluggy dev`](./dev.md).
 
-## Pipeline
-
-For each target workspace, pluggy runs the steps below in order. Every step lives in its own module under `src/build/`.
-
-1. **Pick the descriptor.** Check that every declared platform shares the same [descriptor family](../glossary.md#descriptor-family). Errors with "Split them into separate workspaces, one per family." if they don't.
-2. **Stage directory.** Under `<workspace>/.pluggy-build/<hash>/`, where `<hash>` is the first 12 hex chars of `sha256(name \0 version \0 rootDir)`. `--clean` wipes this first.
-3. **Resolve dependencies.** Every declared dep, plus the primary platform's `api()` Maven coordinate. Registries are the platform's own repos first, followed by `project.registries`, with order-preserving dedup.
-4. **Write IDE files.** Writes `.classpath` and `.project` at the project root unless `--skip-classpath` was passed. Failures are logged at debug but don't abort the build.
-5. **Stage resources.** Copy `project.resources` into the staging dir, and run `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, and `.md` files through the `${project.x}` template substitution.
-6. **Generate the descriptor.** Unless a resource entry already claims the descriptor path (`plugin.yml` and friends), pluggy writes the generated one to the staging dir.
-7. **Compile.** `javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`. The classpath separator is `:` on POSIX and `;` on Windows, handled by Node's `path.delimiter`.
-8. **Shade.** For each entry in `project.shading`, unzip the matching `include` entries from the dep jar and write them into the staging dir. `exclude` is subtracted after.
-9. **Zip.** Walk the staging dir, sort entries lexicographically, write a zip with forward-slashed entry paths.
-10. **Platform compile-check.** For every non-primary platform declared in `compatibility.platforms` (`platforms[1..]`), pluggy runs `checkPlatformCompile`: a `javac` invocation against that platform's API jar with no artifacts emitted. The primary platform was already compiled in step 7, so this catches cases where your source is Paper-clean but references a symbol missing on Spigot, Folia, or a Bungee-family platform. A failing check logs a warning and sets the exit code to `1`, but the primary jar still ships.
-
-The output jar is written to `<output>` after the staging dir is zipped.
-
 ## Output
 
 Human, single workspace:
@@ -152,6 +135,25 @@ Exit code is `0` when everything succeeds, `1` otherwise.
 ## Single-workspace vs multi-workspace failure
 
 Single-workspace builds rethrow the first exception. The CLI's top-level handler prints it. Multi-workspace builds continue past a failed workspace, report everyone's status in the summary, and exit `1` if anything failed.
+
+## Pipeline
+
+You can skip this section unless you're debugging a build failure or planning a `shading` rule. For typical use, the high-level summary at the top of this page is enough.
+
+For each target workspace, pluggy runs the steps below in order:
+
+1. **Pick the descriptor.** Check that every declared platform shares the same [descriptor family](../glossary.md#descriptor-family). Errors with "Split them into separate workspaces, one per family." if they don't.
+2. **Stage directory.** Under `<workspace>/.pluggy-build/<hash>/`, where `<hash>` is the first 12 hex chars of `sha256(name \0 version \0 rootDir)`. `--clean` wipes this first.
+3. **Resolve dependencies.** Every declared dep, plus the primary platform's `api()` Maven coordinate. Registries are the platform's own repos first, followed by `project.registries`, with order-preserving dedup.
+4. **Write IDE files.** Writes `.classpath` and `.project` at the project root unless `--skip-classpath` was passed. Failures are logged at debug but don't abort the build.
+5. **Stage resources.** Copy `project.resources` into the staging dir, and run `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, and `.md` files through the `${project.x}` template substitution.
+6. **Generate the descriptor.** Unless a resource entry already claims the descriptor path (`plugin.yml` and friends), pluggy writes the generated one to the staging dir.
+7. **Compile.** `javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`. The classpath separator is `:` on POSIX and `;` on Windows, handled by Node's `path.delimiter`.
+8. **Shade.** For each entry in `project.shading`, unzip the matching `include` entries from the dep jar and write them into the staging dir. `exclude` is subtracted after.
+9. **Zip.** Walk the staging dir, sort entries lexicographically, write a zip with forward-slashed entry paths.
+10. **Platform compile-check.** For every non-primary platform declared in `compatibility.platforms` (`platforms[1..]`), pluggy runs `checkPlatformCompile`: a `javac` invocation against that platform's API jar with no artifacts emitted. The primary platform was already compiled in step 7, so this catches cases where your source is Paper-clean but references a symbol missing on Spigot, Folia, or a Bungee-family platform. A failing check logs a warning and sets the exit code to `1`, but the primary jar still ships.
+
+The output jar is written to `<output>` after the staging dir is zipped.
 
 ## Error cases
 

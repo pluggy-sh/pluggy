@@ -4,25 +4,11 @@ A full walkthrough of what `pluggy build` does between reading `project.json` an
 
 ## The high-level sequence
 
-```text
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│  pick         │ → │  stage        │ → │  resolve      │
-│  descriptor   │   │  directory    │   │  dependencies │
-└───────────────┘   └───────────────┘   └───────────────┘
-                                              │
-                     ┌────────────────────────┘
-                     ↓
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│  write IDE    │ → │  stage        │ → │  generate     │
-│  files        │   │  resources    │   │  descriptor   │
-└───────────────┘   └───────────────┘   └───────────────┘
-                                              │
-                     ┌────────────────────────┘
-                     ↓
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│  compile      │ → │  apply        │ → │  zip          │
-│  (javac)      │   │  shading      │   │  to jar       │
-└───────────────┘   └───────────────┘   └───────────────┘
+```mermaid
+flowchart LR
+    A[pick descriptor] --> B[stage directory] --> C[resolve dependencies]
+    C --> D[write IDE files] --> E[stage resources] --> F[generate descriptor]
+    F --> G[compile with javac] --> H[apply shading] --> I[zip to jar]
 ```
 
 Each box corresponds to a module under `src/build/`.
