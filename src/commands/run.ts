@@ -28,6 +28,7 @@ import { getCachedJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
 import { replace } from "../template.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
@@ -42,6 +43,8 @@ export interface RunCommandOptions {
   exclude?: string[];
   workspaces?: boolean;
   concurrency?: number;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -68,7 +71,7 @@ interface RunOneResult {
 
 export async function runRunCommand(opts: RunCommandOptions): Promise<RunCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_RUN_NO_PROJECT",
@@ -345,6 +348,7 @@ export function runCommand(): Command {
       extraArgs: string[],
       options,
     ) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runRunCommand({
         scriptName: name,
         extraArgs,
@@ -352,6 +356,7 @@ export function runCommand(): Command {
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
         concurrency: options.concurrency,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

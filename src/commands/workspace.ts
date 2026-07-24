@@ -663,7 +663,7 @@ function workspaceAddSubcommand(): Command {
           .filter((s) => s.length > 0),
     )
     .option("--dir <path>", "Override the on-disk directory (default: ./<name>).")
-    .option("--version <semver>", "Initial workspace version (default: 0.1.0).")
+    .option("--project-version <semver>", "Initial workspace version (default: 0.1.0).")
     .action(async function action(this: Command, name: string, options) {
       await runWorkspaceAdd({
         name,
@@ -671,7 +671,7 @@ function workspaceAddSubcommand(): Command {
         platforms: options.platforms,
         depends: options.depends,
         dir: options.dir,
-        version: options.version,
+        version: options.projectVersion,
       });
     });
 }

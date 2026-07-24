@@ -6,6 +6,7 @@ import { generateDocs, type DocsResult } from "../docs/index.ts";
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces } from "../runner.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
@@ -23,6 +24,8 @@ export interface DocsCommandOptions {
   workspaces?: boolean;
   /** Cap on workspaces documenting simultaneously. */
   concurrency?: number;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -52,7 +55,7 @@ export interface DocsCommandResult {
  */
 export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
@@ -217,6 +220,7 @@ export function docsCommand(): Command {
       return n;
     })
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runDocsCommand({
         output: options.output,
         clean: options.clean === true,
@@ -226,6 +230,7 @@ export function docsCommand(): Command {
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
         concurrency: options.concurrency,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

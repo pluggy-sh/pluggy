@@ -10,6 +10,7 @@ import type { ResolvedProject } from "../project.ts";
 import { runWorkspaces } from "../runner.ts";
 import type { TestCase } from "../test/runner.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
@@ -24,6 +25,8 @@ export interface TestCommandOptions {
   workspace?: string[];
   exclude?: string[];
   workspaces?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
   /** Narrow the matrix to one or more MC versions. Empty = no filter. */
   mcVersions?: string[];
@@ -98,7 +101,7 @@ interface WorkspaceTestOutcome {
  */
 export async function runTestCommand(opts: TestCommandOptions): Promise<TestCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_TEST_NO_PROJECT",
@@ -615,6 +618,7 @@ export function testCommand(): Command {
       },
     )
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runTestCommand({
         filter: options.filter,
         failFast: options.failFast === true,
@@ -625,6 +629,7 @@ export function testCommand(): Command {
         mcVersions: options.mcVersion,
         platforms: options.platform,
         concurrency: options.concurrency,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

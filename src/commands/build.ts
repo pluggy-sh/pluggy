@@ -9,6 +9,7 @@ import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, log, red } from "../logging.ts";
 import { runWorkspaces } from "../runner.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   topologicalOrder,
@@ -36,6 +37,8 @@ export interface BuildCommandOptions {
   /** Debounce interval (ms) for watch-mode file events. Default: 100. */
   watchDebounceMs?: number;
   json?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -82,7 +85,7 @@ interface BuildOneResult {
  */
 export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_BUILD_NO_PROJECT",
@@ -399,6 +402,7 @@ export function buildCommand(): Command {
       "After the initial build, watch source and rebuild affected workspaces on change.",
     )
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runBuildCommand({
         output: options.output,
         clean: options.clean === true,
@@ -408,6 +412,7 @@ export function buildCommand(): Command {
         workspaces: options.workspaces === true,
         concurrency: options.concurrency,
         watch: options.watch === true,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

@@ -246,7 +246,7 @@ export function initCommand(): Command {
     .description("Initialize a new project with interactive prompts.")
     .argument("[path]", "Target directory for the new project.")
     .option("--name <name>", "Project name.")
-    .option("--version <version>", "Project version.", parseSemver)
+    .option("--project-version <semver>", "Version to write to project.json.", parseSemver)
     .option("--description <description>", "Project description.")
     .option("--main <main>", "Main class name.")
     .addOption(
@@ -471,7 +471,7 @@ export function initCommand(): Command {
 
       let INITIAL_PROJECT: Project = {
         name: projectName,
-        version: options.version || "1.0.0",
+        version: options.projectVersion || "1.0.0",
         description: options.description || "A simple Minecraft plugin",
         compatibility: {
           versions,

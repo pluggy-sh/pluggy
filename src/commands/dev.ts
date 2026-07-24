@@ -9,6 +9,7 @@ import { bold, dim, emit, log } from "../logging.ts";
 import { primaryPlatform, type ResolvedProject } from "../project.ts";
 import {
   findWorkspace,
+  projectStartDir,
   resolveWorkspaceContext,
   topologicalOrder,
   workspaceDependencyNames,
@@ -40,6 +41,8 @@ export interface DevCommandOptions {
   /** `--debug-expose` → bind JDWP to all interfaces (unauthenticated). */
   debugExpose?: boolean;
   offline?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -52,7 +55,7 @@ export interface DevCommandOptions {
  */
 export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_DEV_NO_PROJECT",
@@ -259,6 +262,7 @@ export function devCommand(): Command {
     )
     .option("--offline", "Set online-mode=false in server.properties.")
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       await runDevCommand({
         workspace: options.workspace,
         platform: options.platform,
@@ -279,6 +283,7 @@ export function devCommand(): Command {
         debugSuspend: options.debugSuspend,
         debugExpose: options.debugExpose,
         offline: options.offline === true,
+        project: globalOpts.project,
       });
     });
 }
