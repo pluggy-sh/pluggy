@@ -151,7 +151,7 @@ describe("doAudit", () => {
     expect(row?.actual).toBe(sha256("tampered-content"));
   });
 
-  test("missing cache jar is reported as 'missing', not a failure", async () => {
+  test("missing cache jar counts as unverified and fails the audit", async () => {
     await writeProject();
     await writeFile(
       join(rootDir, "pluggy.lock"),
@@ -174,7 +174,8 @@ describe("doAudit", () => {
 
     const result = await doAudit({ cwd: rootDir });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBe(1);
     expect(result.summary.missing).toBe(1);
     expect(result.rows.find((r) => r.name === "foo")?.status).toBe("missing");
   });
@@ -295,7 +296,7 @@ describe("doAudit", () => {
       await doAudit({ cwd: rootDir });
 
       const out = stdoutLines.join("\n");
-      expect(out).toContain("1 tampered, 1 ok, 1 not cached, 1 skipped (workspace)");
+      expect(out).toContain("1 tampered, 1 verified, 1 unverified, 1 skipped (workspace)");
       expect(out).toContain(
         "Run `pluggy install` to re-download; it detects tampering and heals the cache.",
       );
@@ -324,9 +325,12 @@ describe("doAudit", () => {
 
       const result = await doAudit({ cwd: rootDir });
 
-      expect(result.exitCode).toBe(0);
+      // A cold cache is the normal state of a fresh CI runner. Exiting 0 here
+      // made `pluggy audit` a gate that passed having hashed nothing.
+      expect(result.exitCode).toBe(1);
       const out = stdoutLines.join("\n");
-      expect(out).toContain("0 verified; nothing cached yet. Run `pluggy install` first.");
+      expect(out).toContain("1 unverified (not cached), 0 verified");
+      expect(out).toContain("Run `pluggy audit --fix` to download and verify them.");
       expect(out).not.toContain("✓");
     });
   });
