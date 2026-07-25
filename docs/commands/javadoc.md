@@ -6,10 +6,7 @@ Generate Javadoc HTML for the project. Reuses the same [JDK](../glossary.md#jdk)
 
 ```text
 pluggy javadoc [options]
-pluggy docs    [options]
 ```
-
-`docs` remains as an alias for the command's former name.
 
 ## Flags
 
@@ -21,7 +18,7 @@ pluggy docs    [options]
 | `--link <url>`        | none                                 | Cross-link to an external javadoc site. Repeatable.                                    |
 | `--workspace <names>` | none                                 | Document one or more workspaces. Repeatable; comma-separated. Overrides `docs: false`. |
 | `--exclude <names>`   | none                                 | Subtract one or more workspaces from the default sweep.                                |
-| `--workspaces`        | off                                  | Explicit all-workspaces docs run from the root.                                        |
+| `--workspaces`        | off                                  | Every workspace, even when run from inside one.                                        |
 | `--concurrency <n>`   | `min(cpus, 4)`                       | Cap on workspaces documenting simultaneously.                                          |
 
 A workspace can opt out of the default sweep by setting `"docs": false` in its `project.json`. See [Workspaces: per-workspace opt-out](../workspaces.md#per-workspace-opt-out).
@@ -34,7 +31,7 @@ A workspace can opt out of the default sweep by setting `"docs": false` in its `
 | Inside workspace `X`           | none                    | `X`.                                    |
 | Repo root, workspaces declared | none                    | Every workspace, topologically ordered. |
 | Repo root, workspaces declared | `--workspace A`         | Just `A`.                               |
-| Inside workspace `X`           | `--workspaces`          | **Error**. Only valid at the root.      |
+| Inside workspace `X`           | `--workspaces`          | Documents every workspace.              |
 | Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error**. Run from the root.           |
 
 Each workspace gets its own output tree under `<workspace>/docs/<name>-<version>/`. There is no aggregated index across workspaces.

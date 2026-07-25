@@ -17,7 +17,7 @@ pluggy b     [options]
 | `--clean`             | off                                    | Wipe the staging directory before building.                                 |
 | `--workspace <names>` | none                                   | Build one or more workspaces. Repeatable; comma-separated.                  |
 | `--exclude <names>`   | none                                   | Subtract one or more workspaces from the default sweep.                     |
-| `--workspaces`        | off                                    | Explicit all-workspaces build from the root.                                |
+| `--workspaces`        | off                                    | Every workspace, even when run from inside one.                             |
 | `--concurrency <n>`   | `min(cpus, 4)`                         | Cap on workspaces building simultaneously. Use `1` for serial, live output. |
 | `--watch`             | off                                    | After the initial build, rebuild changed workspaces and dependents on save. |
 
@@ -31,7 +31,7 @@ See [Workspaces: selection flags](../workspaces.md#selection-flags) for the shar
 | Inside workspace `X`           | none                    | `X`.                                    |
 | Repo root, workspaces declared | none                    | Every workspace, topologically ordered. |
 | Repo root, workspaces declared | `--workspace A`         | Just `A`.                               |
-| Inside workspace `X`           | `--workspaces`          | **Error**. Only valid at the root.      |
+| Inside workspace `X`           | `--workspaces`          | Builds every workspace.                 |
 | Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error**. Run from the root.           |
 
 [Topological order](../glossary.md#topological-order) is driven by `workspace:` dependencies. A sibling's built jar must exist before a workspace that shades it builds. Running from the root handles this for you.

@@ -299,3 +299,38 @@ describe("selectBuildTargets", () => {
     );
   });
 });
+
+describe("runBuildCommand: nothing to build", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-build-empty-"));
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  // Skipping every candidate is not success. Reporting `{"results": []}` with
+  // exit 0 told CI the jars had been produced.
+  test("fails when no selected workspace has a main class", async () => {
+    await mkdir(join(rootDir, "core"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./core"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "core", "project.json"),
+      JSON.stringify({ name: "core", version: "0.1.0" }),
+    );
+
+    await expect(runBuildCommand({ cwd: rootDir })).rejects.toMatchObject({
+      code: "E_BUILD_NOTHING_TO_BUILD",
+    });
+  });
+});

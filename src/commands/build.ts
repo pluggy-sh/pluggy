@@ -107,6 +107,19 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
     }
   }
 
+  // Skipping every candidate is not a successful build. Reporting success with
+  // an empty result set told CI the jars were produced.
+  if (targets.length === 0 && selected.length > 0) {
+    throw new UserError(
+      "No workspace produced a jar: none of the selected workspaces has `main`.",
+      {
+        code: "E_BUILD_NOTHING_TO_BUILD",
+        hint: "Give a workspace a `main` class, or name a buildable one with --workspace.",
+        context: { skipped: selected.map((node) => node.name) },
+      },
+    );
+  }
+
   const initial = await buildTargets(targets, opts, cwd);
 
   if (opts.watch === true) {
@@ -226,7 +239,7 @@ async function buildTargets(
     results,
   };
   const printSummary = (): void => {
-    if (!anyFailed && targets.length <= 1) {
+    if (!anyFailed && targets.length === 1) {
       log.info(dim("Run it: pluggy dev"));
       return;
     }

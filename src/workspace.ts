@@ -263,7 +263,12 @@ export function selectWorkspaceTargets(
     // things depending on which command it was attached to.
     if (opts.workspaces === true && includes.length === 0) {
       const remaining = applyExcludes(context.workspaces, excludes, context);
-      return ensureNonEmpty(topologicalOrder(remaining), includes, excludes);
+      const ordered = topologicalOrder(remaining);
+      // Same selection as the root branch, so it needs the same guard: without
+      // it, excluding a workspace others depend on failed fast at the root but
+      // died mid-build with E_WORKSPACE_DEP_NOT_BUILT from inside one.
+      assertNoOrphanedDependents(ordered, context);
+      return ensureNonEmpty(ordered, includes, excludes);
     }
     if (excludes.length > 0) {
       throw new InvalidArgumentError(
@@ -431,7 +436,19 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     });
   }
 
+  // `--exclude` only means something when the selection spans workspaces.
+  // Dropping it silently on the other branches let `--workspace shop
+  // --exclude core` look like it had been honoured, while the sweep commands
+  // rejected the same combination.
+  const rejectUnusableExclude = (reason: string): void => {
+    if ((opts.exclude?.length ?? 0) === 0) return;
+    throw new InvalidArgumentError(`${opts.commandName}: --exclude ${reason}`);
+  };
+
   if (opts.workspace !== undefined) {
+    rejectUnusableExclude(
+      "cannot be combined with --workspace; it subtracts from an all-workspaces run.",
+    );
     if (context.workspaces.length === 0) {
       throw new InvalidArgumentError(
         `${opts.commandName}: --workspace "${opts.workspace}" was given but this project has no workspaces`,
@@ -459,6 +476,9 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
   }
 
   if (context.current !== undefined) {
+    rejectUnusableExclude(
+      `is only valid with --workspaces or at the repo root; you're inside workspace "${context.current.name}".`,
+    );
     return {
       context,
       targets: [{ name: context.current.name, project: context.current.project }],
@@ -479,6 +499,7 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     };
   }
 
+  rejectUnusableExclude("given but this project declares no workspaces.");
   return {
     context,
     targets: [{ name: context.root.name, project: context.root }],

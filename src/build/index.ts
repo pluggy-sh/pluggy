@@ -26,7 +26,6 @@ export interface BuildOptions {
   output?: string;
   /** Wipe build cache before building. */
   clean?: boolean;
-  /** Skip `.classpath` regeneration. */
   /**
    * Exploded staging directory to build in. Defaults to the deterministic
    * `projectStagingDir`. The dev runtime overrides this with a session-private

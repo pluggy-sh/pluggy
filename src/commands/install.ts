@@ -42,6 +42,13 @@ export interface InstallOptions {
   cwd?: string;
   /** Suppress the success line so a calling command can render its own. */
   quiet?: boolean;
+  /**
+   * Write the dependency under this key instead of the one derived from the
+   * identifier. `update` needs it: a long-form entry may be keyed differently
+   * from its slug, and resolving by slug would otherwise add a second entry
+   * beside the one being updated.
+   */
+  depName?: string;
 }
 
 export interface InstallResult {
@@ -206,7 +213,7 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
   const resolveCtx = buildResolveContext(scope.context, { beta: opts.beta, force: opts.force });
   const resolved = await resolveDependency(identifier, resolveCtx);
 
-  const depName = pickDepName(identifier);
+  const depName = opts.depName ?? pickDepName(identifier);
   await writeDependencyToProject(target, depName, {
     source: stringifySource(resolved.source),
     version: resolved.source.version,
@@ -247,9 +254,8 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
  * cache was poisoned, manually replaced, or partially written. Install
  * should re-resolve those rather than serve tampered bytes.
  *
- * Entries whose jar isn't in the cache yet are silently skipped (build/dev
- * will populate the cache via the resolver later); a present-but-corrupt
- * jar is the only signal worth treating as drift.
+ * A jar that is absent counts as drift too, not just one whose bytes differ:
+ * treating "not cached" as clean made a fresh clone install nothing.
  */
 async function verifyCachedIntegrity(
   byName: Map<string, { source: ReturnType<typeof parseSource>; declaredBy: string[] }>,

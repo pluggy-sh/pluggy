@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { InvalidArgumentError } from "commander";
 
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
@@ -239,19 +239,4 @@ function formatMergedMap(
     parts.push(`${key}=${v}${owned ? "" : dim(" (inherited)")}`);
   }
   return parts.join(", ");
-}
-
-/** Factory for the `pluggy explain` commander command. */
-export function explainCommand(): Command {
-  return new Command("explain")
-    .description(
-      "Show a workspace's declared vs inherited fields. Alias of `pluggy why <workspace>`.",
-    )
-    .argument(
-      "[name]",
-      "Workspace to inspect. Defaults to the current workspace (or the root standalone project).",
-    )
-    .action(async function action(this: Command, name: string | undefined) {
-      await runExplainCommand({ name, project: this.optsWithGlobals().project });
-    });
 }

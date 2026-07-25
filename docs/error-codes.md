@@ -133,10 +133,11 @@ Every workspace-aware command raises its own variant when it cannot find a `proj
 
 ## Other
 
-| Code              | Raised when                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| `E_CLEAN_CACHE`   | `pluggy clean cache` was used; the global cache is cleared with `pluggy cache clean`. |
-| `E_COMMAND_MOVED` | A renamed command was called by its old name. The hint names the replacement.         |
+| Code                       | Raised when                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| `E_BUILD_NOTHING_TO_BUILD` | Every selected workspace was skipped for having no `main`, so no jar was produced.    |
+| `E_CLEAN_CACHE`            | `pluggy clean cache` was used; the global cache is cleared with `pluggy cache clean`. |
+| `E_COMMAND_MOVED`          | A renamed command was called by its old name. The hint names the replacement.         |
 
 ## See also
 

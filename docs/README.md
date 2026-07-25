@@ -19,9 +19,11 @@ Every subcommand, with its flags, JSON envelope, and sample output. The groups m
 
 ### Start
 
-| Command                      | Summary                                       |
-| ---------------------------- | --------------------------------------------- |
-| [`init`](./commands/init.md) | Scaffold a new project in an empty directory. |
+| Command                                | Summary                                                  |
+| -------------------------------------- | -------------------------------------------------------- |
+| [`init`](./commands/init.md)           | Scaffold a new project in an empty directory.            |
+| [`platforms`](./commands/platforms.md) | Show targetable platforms and the versions they publish. |
+| [`templates`](./commands/templates.md) | Show the scaffolds `init --template` accepts.            |
 
 ### Dependencies
 

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -42,6 +42,34 @@ async function writeProject(dependencies: Record<string, unknown>): Promise<void
   );
 }
 
+async function writeRoot(workspaces: string[]): Promise<void> {
+  await writeFile(
+    join(rootDir, "project.json"),
+    `${JSON.stringify(
+      {
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+async function writeWorkspace(name: string, dependencies: Record<string, unknown>): Promise<void> {
+  await mkdir(join(rootDir, name), { recursive: true });
+  await writeFile(
+    join(rootDir, name, "project.json"),
+    `${JSON.stringify(
+      { name, version: "0.1.0", main: `com.example.${name}.Main`, dependencies },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 async function writeLock(entries: Record<string, unknown>): Promise<void> {
   await writeFile(
     join(rootDir, "pluggy.lock"),
@@ -68,10 +96,50 @@ describe("doUpdate", () => {
     const result = await doUpdate({ cwd: rootDir });
 
     expect(result.updated).toEqual([
-      { name: "worldedit", identifier: "worldedit", from: "7.4.3", to: "7.4.4" },
+      {
+        name: "worldedit",
+        identifier: "worldedit",
+        from: "7.4.3",
+        to: "7.4.4",
+        declaredBy: ["my-plugin"],
+      },
     ]);
     expect(vi.mocked(doInstall)).toHaveBeenCalledWith(
-      expect.objectContaining({ plugin: "worldedit@7.4.4" }),
+      expect.objectContaining({ plugin: "worldedit@7.4.4", depName: "worldedit" }),
+    );
+  });
+
+  // `install` refuses a plugin argument without a single target, so `update`
+  // has to name the declaring workspace. Mocking `doInstall` hid this: at a
+  // monorepo root the real call died on E_INSTALL_AT_ROOT_AMBIGUOUS after the
+  // plan had already been printed.
+  test("installs into the workspace that declared the dependency", async () => {
+    await writeRoot(["./core", "./shop"]);
+    await writeWorkspace("core", {});
+    await writeWorkspace("shop", {
+      worldedit: { source: "modrinth:worldedit", version: "7.4.3" },
+    });
+    vi.mocked(getLatestModrinthVersion).mockResolvedValue("7.4.4");
+
+    await doUpdate({ cwd: rootDir });
+
+    expect(vi.mocked(doInstall)).toHaveBeenCalledWith(
+      expect.objectContaining({ plugin: "worldedit@7.4.4", workspace: "shop" }),
+    );
+  });
+
+  // A long-form entry may be keyed differently from its slug. Resolving the
+  // key 404s; resolving the slug without pinning `depName` would add a second
+  // entry beside the one being updated.
+  test("resolves by slug but writes back under the declared key", async () => {
+    await writeProject({ we: { source: "modrinth:worldedit", version: "7.4.3" } });
+    vi.mocked(getLatestModrinthVersion).mockResolvedValue("7.4.4");
+
+    const result = await doUpdate({ cwd: rootDir });
+
+    expect(result.updated[0]?.identifier).toBe("worldedit");
+    expect(vi.mocked(doInstall)).toHaveBeenCalledWith(
+      expect.objectContaining({ plugin: "worldedit@7.4.4", depName: "we" }),
     );
   });
 

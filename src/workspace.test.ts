@@ -608,6 +608,18 @@ describe("selectWorkspaceTargets", () => {
     expect([...names].sort()).toEqual(["api", "core", "plugin"]);
   });
 
+  // The root branch guards this; the inside-a-workspace branch added later
+  // bypassed it, so the same flags failed fast at the root and died mid-build
+  // with E_WORKSPACE_DEP_NOT_BUILT from inside one.
+  test("--workspaces --exclude still rejects orphaned dependents inside a workspace", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(join(rootDir, "api"))!;
+
+    expect(() =>
+      selectWorkspaceTargets(ctx, { workspaces: true, exclude: ["core"] }, "build"),
+    ).toThrow(/depends on "core"/);
+  });
+
   test("--workspaces composes with --exclude inside a workspace", async () => {
     await writeTrio();
     const ctx = resolveWorkspaceContext(join(rootDir, "api"))!;

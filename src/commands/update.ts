@@ -48,6 +48,8 @@ export interface UpdatePlanEntry {
   identifier: string;
   from: string;
   to: string;
+  /** Workspaces that declare this dependency; `install` writes one at a time. */
+  declaredBy: string[];
 }
 
 export interface UpdateResult {
@@ -68,10 +70,20 @@ export async function doUpdate(opts: UpdateOptions = {}): Promise<UpdateResult> 
   });
 
   const declared = collectDeclared(scope.targets);
-  const byName = new Map<string, ResolvedSource>();
-  for (const { name, value } of declared) {
+  // `install` writes into exactly one workspace, so each entry has to remember
+  // which ones declared it. Without that, `update` at a monorepo root asked
+  // `install` to place a plugin with no target and died on
+  // E_INSTALL_AT_ROOT_AMBIGUOUS after already printing its plan.
+  const byName = new Map<string, { source: ResolvedSource; declaredBy: string[] }>();
+  for (const { name, value, declaredBy } of declared) {
     const canonical = canonicalizeDeclared(name, value);
-    byName.set(name, parseSource(canonical.source, canonical.version));
+    const source = parseSource(canonical.source, canonical.version);
+    const existing = byName.get(name);
+    if (existing === undefined) {
+      byName.set(name, { source, declaredBy: [declaredBy] });
+      continue;
+    }
+    if (!existing.declaredBy.includes(declaredBy)) existing.declaredBy.push(declaredBy);
   }
 
   const requested = opts.names ?? [];
@@ -90,7 +102,7 @@ export async function doUpdate(opts: UpdateOptions = {}): Promise<UpdateResult> 
   const plan: UpdatePlanEntry[] = [];
   const unchanged: string[] = [];
 
-  for (const [name, source] of targets) {
+  for (const [name, { source, declaredBy }] of targets) {
     if (source.kind === "file" || source.kind === "workspace") {
       // Local jars and sibling workspaces have no upstream to move to.
       if (requested.includes(name)) {
@@ -105,23 +117,29 @@ export async function doUpdate(opts: UpdateOptions = {}): Promise<UpdateResult> 
     }
     plan.push({
       name,
-      identifier: installIdentifier(source, name),
+      identifier: installIdentifier(source),
       from: source.version,
       to: latest,
+      declaredBy,
     });
   }
 
+  // Only pass a workspace when there are workspaces to name; for a standalone
+  // project `declaredBy` is the root's own name, which is not a workspace.
+  const hasWorkspaces = scope.context.workspaces.length > 0;
   if (plan.length > 0 && opts.dryRun !== true) {
     for (const entry of plan) {
-      await doInstall({
-        plugin: `${entry.identifier}@${entry.to}`,
-        beta: opts.beta,
-        workspace: opts.workspace,
-        workspaces: opts.workspaces,
-        project: opts.project,
-        cwd,
-        quiet: true,
-      });
+      for (const workspace of entry.declaredBy) {
+        await doInstall({
+          plugin: `${entry.identifier}@${entry.to}`,
+          depName: entry.name,
+          beta: opts.beta,
+          workspace: hasWorkspaces ? workspace : undefined,
+          project: opts.project,
+          cwd,
+          quiet: true,
+        });
+      }
     }
   }
 
@@ -169,8 +187,22 @@ function notDeclared(name: string, context: WorkspaceContext): UserError {
   });
 }
 
-function installIdentifier(source: ResolvedSource, name: string): string {
-  return source.kind === "maven" ? `maven:${source.groupId}:${source.artifactId}` : name;
+/**
+ * The identifier `install` resolves for a locked entry. Derived from the
+ * parsed source, never from the `project.json` key: a long-form entry may be
+ * keyed `we` while its slug is `worldedit`, and resolving the key 404s.
+ */
+function installIdentifier(source: ResolvedSource): string {
+  switch (source.kind) {
+    case "maven":
+      return `maven:${source.groupId}:${source.artifactId}`;
+    case "modrinth":
+      return source.slug;
+    case "file":
+      return `file:${source.path}`;
+    case "workspace":
+      return `workspace:${source.name}`;
+  }
 }
 
 function unionRegistries(context: WorkspaceContext): string[] {

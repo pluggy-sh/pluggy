@@ -12,7 +12,7 @@ Everything that inspects or changes the workspace graph. Bare `pluggy workspace`
 
 To see which fields a single workspace declared and which it inherited from the root, run [`pluggy why <workspace>`](./why.md#workspace-names).
 
-`pluggy workspaces` and `pluggy graph` still work as hidden aliases for `workspace list` and `workspace graph`. They are removed in the next minor; move scripts over now.
+`pluggy workspaces` and `pluggy graph` are gone. Typing either names its replacement and exits 2.
 
 ## `list`
 
@@ -64,13 +64,13 @@ The order matters for crash recovery. A failure between step 3 and step 4 leaves
 
 ### Flags
 
-| Flag                         | Effect                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `--main <fqcn>`              | Entry-point class. Derived from the root's package when omitted.                            |
-| `--platforms <list>`         | Comma-separated platforms (e.g. `paper,sponge`). Omit to inherit `compatibility` from root. |
-| `--depends <list>`           | Comma-separated workspace names to wire as `workspace:<name>` deps.                         |
-| `--dir <path>`               | Override the on-disk directory. Defaults to `./<name>`.                                     |
-| `--project-version <semver>` | Initial `version`. Defaults to `0.1.0`.                                                     |
+| Flag                         | Effect                                                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--main <fqcn>`              | Entry-point class. Derived from the root's package when omitted.                                                                                |
+| `--platform <ids>`           | Platforms for this workspace (repeatable; comma-separated). Omit to inherit `compatibility` from root. Validated against the platform registry. |
+| `--depends <list>`           | Comma-separated workspace names to wire as `workspace:<name>` deps.                                                                             |
+| `--dir <path>`               | Override the on-disk directory. Defaults to `./<name>`.                                                                                         |
+| `--project-version <semver>` | Initial `version`. Defaults to `0.1.0`.                                                                                                         |
 
 Every buildable workspace is a plugin, so `add` always writes a `main` and a matching Java stub. Without `--main` it derives one from the root project's package: root `com.example.suite.Main` plus workspace `core` gives `com.example.suite.core.Core`. A root with no `main` falls back to the `com.example` package.
 
@@ -89,7 +89,7 @@ The stub lands at the matching package path (`util/src/com/example/util/Util.jav
 Add a shipping workspace with an explicit main class and platform pin:
 
 ```text
-$ pluggy workspace add plugin --main com.example.MyPlugin --platforms paper --depends api,core
+$ pluggy workspace add plugin --main com.example.MyPlugin --platform paper --depends api,core
 ```
 
 ## `remove`
@@ -175,7 +175,7 @@ graph TD
 
 Paste the block into a GitHub Markdown file inside a fenced `mermaid` code block and the graph renders inline. Workspace names containing `.` or `-` are sanitized to identifiers; the original name is preserved as the node label.
 
-`--mermaid` is a deprecated alias for `--format mermaid` and still works.
+`--mermaid` was replaced by `--format mermaid`.
 
 A project with no workspaces exits 0 with an empty graph, which is the right answer for a single-`project.json` project:
 

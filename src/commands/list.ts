@@ -1,6 +1,6 @@
 import process from "node:process";
 
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
@@ -159,15 +159,30 @@ function selectTargets(
   options: ListOptions,
   scope: "root" | "workspace" | "standalone",
 ): DepTarget[] {
+  // `--exclude` subtracts from an all-workspaces view, so on any single-target
+  // scope it cannot apply. Ignoring it made `--workspace shop --exclude core`
+  // look honoured while the sweep commands rejected the same combination.
+  const rejectUnusableExclude = (reason: string): void => {
+    if ((options.exclude?.length ?? 0) === 0) return;
+    throw new InvalidArgumentError(`list: --exclude ${reason}`);
+  };
+
   if (scope === "standalone") {
+    rejectUnusableExclude("given but this project declares no workspaces.");
     return [{ declaringName: ctx.root.name, project: ctx.root }];
   }
   if (scope === "workspace") {
     if (options.workspace !== undefined) {
+      rejectUnusableExclude(
+        "cannot be combined with --workspace; it subtracts from an all-workspaces run.",
+      );
       const node = findWorkspace(ctx, options.workspace);
       return [{ declaringName: node.name, project: node.project }];
     }
     if (ctx.current) {
+      rejectUnusableExclude(
+        `is only valid with --workspaces or at the repo root; you're inside workspace "${ctx.current.name}".`,
+      );
       return [{ declaringName: ctx.current.name, project: ctx.current.project }];
     }
   }

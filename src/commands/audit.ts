@@ -68,7 +68,7 @@ export async function doAudit(opts: AuditOptions = {}): Promise<AuditResult> {
     // `install` re-downloads anything absent and replaces bytes that don't
     // match the lockfile, so it is the repair path for both states.
     log.step("Re-downloading unverified dependencies…");
-    await doInstall({ project: opts.project, cwd });
+    await doInstall({ project: opts.project, cwd, quiet: true });
     rows = await audit();
   }
 
