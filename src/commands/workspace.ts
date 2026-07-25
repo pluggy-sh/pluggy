@@ -25,7 +25,13 @@ import { confirm } from "@inquirer/prompts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, isJsonMode, log } from "../logging.ts";
 import { toPosixPath, writeFileLF } from "../portable.ts";
-import { type Dependency, type Project, resolveProjectFile, writeProjectFile } from "../project.ts";
+import {
+  type Dependency,
+  type Project,
+  type ResolvedProject,
+  resolveProjectFile,
+  writeProjectFile,
+} from "../project.ts";
 
 export interface WorkspaceAddOptions {
   name: string;
@@ -111,9 +117,14 @@ export async function runWorkspaceAdd(opts: WorkspaceAddOptions): Promise<Worksp
           }
         : (undefined as unknown as Project["compatibility"]),
   };
-  if (opts.main !== undefined && opts.main.length > 0) {
-    newProject.main = opts.main;
-  }
+  // Every buildable workspace is a plugin (see `src/build/index.ts`: Java
+  // isolates each plugin's classloader, so shared code has to be its own
+  // plugin that siblings `depend` on). Scaffolding without a `main` produced a
+  // workspace that `pluggy build` then refused, which broke the documented
+  // monorepo flow on the very next command. Derive one from the root's package
+  // when the user doesn't supply it.
+  newProject.main =
+    opts.main !== undefined && opts.main.length > 0 ? opts.main : deriveMain(root, opts.name);
   if (opts.depends !== undefined && opts.depends.length > 0) {
     const deps: Record<string, Dependency> = {};
     for (const depName of opts.depends) {
@@ -234,6 +245,22 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * A `main` for a new workspace, derived from the root project's package so
+ * siblings land under one namespace: root `com.example.suite.Main` plus
+ * workspace `core` gives `com.example.suite.core.Core`.
+ */
+function deriveMain(root: ResolvedProject, workspaceName: string): string {
+  const segment = workspaceName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "plugin";
+  const className = segment.charAt(0).toUpperCase() + segment.slice(1);
+  const rootMain = root.main;
+  const rootPackage =
+    typeof rootMain === "string" && rootMain.includes(".")
+      ? rootMain.slice(0, rootMain.lastIndexOf("."))
+      : "com.example";
+  return `${rootPackage}.${segment}.${className}`;
 }
 
 async function scaffoldMain(workspaceDir: string, mainClass: string): Promise<void> {
@@ -643,7 +670,7 @@ function workspaceAddSubcommand(): Command {
   return new Command("add")
     .description("Scaffold a new workspace and wire it into the root project.json.")
     .argument("<name>", "Workspace name (becomes the workspace's project.name).")
-    .option("--main <fqcn>", "Fully-qualified main class; omit to scaffold an internal workspace.")
+    .option("--main <fqcn>", "Entry-point class. Derived from the root's package when omitted.")
     .option(
       "--platforms <list>",
       "Comma-separated platforms (e.g. paper,sponge). Omit to inherit from root.",

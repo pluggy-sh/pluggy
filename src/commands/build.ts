@@ -92,7 +92,18 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
     });
   }
 
-  const targets = selectBuildTargets(context, opts);
+  const selected = selectBuildTargets(context, opts);
+
+  // A workspace with no `main` isn't a plugin and can't produce a jar. When
+  // one was named explicitly, let `buildProject` explain why; on a sweep,
+  // skipping it beats failing the run and every workspace downstream of it.
+  const explicit = (opts.workspace?.length ?? 0) > 0;
+  const targets = explicit ? selected : selected.filter((node) => hasMain(node));
+  for (const node of selected) {
+    if (!targets.includes(node)) {
+      log.info(dim(`skipping ${node.name}: no \`main\`, so it produces no plugin jar`));
+    }
+  }
 
   const initial = await buildTargets(targets, opts, cwd);
 
@@ -355,6 +366,10 @@ export function selectBuildTargets(
   opts: Pick<BuildCommandOptions, "workspace" | "exclude" | "workspaces">,
 ): WorkspaceNode[] {
   return selectWorkspaceTargets(context, opts, "build");
+}
+
+function hasMain(node: WorkspaceNode): boolean {
+  return typeof node.project.main === "string" && node.project.main.length > 0;
 }
 
 function formatBytes(n: number): string {

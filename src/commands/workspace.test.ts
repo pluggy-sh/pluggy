@@ -46,10 +46,30 @@ describe("runWorkspaceAdd", () => {
     expect(child).toBeDefined();
     expect(child?.name).toBe("core");
     expect(child?.version).toBe("0.1.0");
-    expect(child?.main).toBeUndefined();
+    // A workspace without `main` isn't a plugin, and `pluggy build` refuses
+    // it — so scaffolding one made the documented monorepo flow fail on the
+    // very next command. The root's package is reused so siblings share a
+    // namespace.
+    expect(child?.main).toBe("com.example.core.Core");
 
     const root = resolveProjectFile(join(rootDir, "project.json"));
     expect(root?.workspaces).toEqual(["./core"]);
+  });
+
+  test("derives the main class from the root project's package", async () => {
+    await writeRoot({ main: "org.acme.suite.Entry" });
+    await runWorkspaceAdd({ cwd: rootDir, name: "shop" });
+
+    const child = resolveProjectFile(join(rootDir, "shop", "project.json"));
+    expect(child?.main).toBe("org.acme.suite.shop.Shop");
+  });
+
+  test("an explicit --main wins over the derived one", async () => {
+    await writeRoot({ main: "org.acme.suite.Entry" });
+    await runWorkspaceAdd({ cwd: rootDir, name: "shop", main: "com.custom.Thing" });
+
+    const child = resolveProjectFile(join(rootDir, "shop", "project.json"));
+    expect(child?.main).toBe("com.custom.Thing");
   });
 
   test("writes child project.json BEFORE updating root array", async () => {

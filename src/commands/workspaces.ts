@@ -3,7 +3,7 @@
  * their role, platforms, dep graph position, and built-jar output path.
  *
  * Role is derived: a workspace with `main` is `shipping` (gets loaded by a
- * platform); the rest are `internal` (typically shaded into a sibling or
+ * platform); the rest are `internal` (declared but not buildable as a plugin, so
  * consumed via `workspace:` deps).
  *
  * JSON output ships with `schemaVersion: 1` from day one — CI scripts will
