@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
 import type { Command } from "commander";
 import { expect, test } from "vite-plus/test";
 
@@ -42,4 +45,51 @@ test("command groups either act or delegate to subcommands", () => {
       (command as Command & { _actionHandler?: unknown })._actionHandler !== undefined;
     expect(actionable, `${path} has neither an action nor subcommands`).toBe(true);
   }
+});
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) return sourceFiles(path);
+    return path.endsWith(".ts") && !path.endsWith(".test.ts") ? [path] : [];
+  });
+}
+
+// `src/errors.ts` calls `code` a "stable identifier for scripting" — a
+// contract. Sixty of the seventy-odd codes appeared nowhere in the docs, so
+// there was no way for a script author to discover what they could branch on.
+// This keeps the reference honest without anyone having to remember.
+test("every error code is documented in docs/error-codes.md", () => {
+  const reference = readFileSync("docs/error-codes.md", "utf8");
+  const declared = new Set<string>();
+  for (const file of sourceFiles("src")) {
+    for (const match of readFileSync(file, "utf8").matchAll(/code:\s*["'`](E_[A-Z0-9_]+)["'`]/g)) {
+      declared.add(match[1]);
+    }
+  }
+
+  expect(declared.size).toBeGreaterThan(50);
+  const undocumented = [...declared].filter((code) => !reference.includes(code)).sort();
+  expect(undocumented).toEqual([]);
+});
+
+test("docs/error-codes.md lists no codes that no longer exist", () => {
+  const reference = readFileSync("docs/error-codes.md", "utf8");
+  const declared = new Set<string>();
+  for (const file of sourceFiles("src")) {
+    for (const match of readFileSync(file, "utf8").matchAll(/code:\s*["'`](E_[A-Z0-9_]+)["'`]/g)) {
+      declared.add(match[1]);
+    }
+  }
+
+  // Trailing `_` excludes the `E_IDENTIFIER_*` style wildcards used in prose.
+  const documented = [
+    ...new Set([...reference.matchAll(/\bE_[A-Z0-9_]*[A-Z0-9]\b/g)].map((m) => m[0])),
+  ];
+  // `E_<COMMAND>_NO_PROJECT` is assembled at runtime by `resolveScope`, so the
+  // page lists variants that never appear as a literal in the source.
+  const stale = documented
+    .filter((code) => !declared.has(code) && !code.endsWith("_NO_PROJECT"))
+    .sort();
+  expect(stale).toEqual([]);
 });

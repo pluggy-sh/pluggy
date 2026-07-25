@@ -78,6 +78,7 @@ These pages explain how pluggy works once you've outgrown the tutorial. They ass
 - [Workspaces](./workspaces.md): monorepo layout, inheritance rules, the `workspace:` source kind, topological build order.
 - [IDE integration](./ide.md): which project files pluggy writes, when, and how to opt out.
 - [Cross-platform notes](./cross-platform.md): install paths, cache paths, line endings, signal handling.
+- [Error codes](./error-codes.md): every `code` a script can branch on, and what raises it.
 - [Troubleshooting](./troubleshooting.md): common failures, the error messages the code actually prints, and what to do about them.
 - [Uninstalling](./uninstall.md): exact paths to remove for each install method, plus the cache and state directories.
 
