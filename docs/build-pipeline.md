@@ -34,7 +34,7 @@ pluggy looks at `project.compatibility.platforms`. The first platform is _primar
 | Family     | Platforms                    | Path                           |
 | ---------- | ---------------------------- | ------------------------------ |
 | Bukkit     | paper, folia, spigot, bukkit | `plugin.yml`                   |
-| BungeeCord | waterfall, travertine        | `bungee.yml`                   |
+| BungeeCord | waterfall                    | `bungee.yml`                   |
 | Velocity   | velocity                     | `velocity-plugin.json`         |
 | Sponge     | sponge                       | `META-INF/sponge_plugins.json` |
 
@@ -78,7 +78,7 @@ The classpath is the flattened list of jar paths: dep jars first, then the platf
 
 ## 4. Write IDE files
 
-Writes `.classpath` and `.project` at the project root, populated from the resolved classpath. Skipped when `--skip-classpath` is passed. Failures are caught and logged at `--verbose` (`build: IDE scaffolding failed (non-fatal): ...`) so a broken IDE integration doesn't block the build.
+Writes `.classpath` and `.project` at the project root, populated from the resolved classpath. Failures are caught and logged at `--verbose` (`build: IDE scaffolding failed (non-fatal): ...`) so a broken IDE integration doesn't block the build.
 
 See [IDE integration](./ide.md) for which IDEs consume these files.
 

@@ -3,95 +3,16 @@ import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
 
-import { auditCommand } from "./commands/audit.ts";
-import { buildCommand } from "./commands/build.ts";
-import { cacheCommand } from "./commands/cache.ts";
-import { cleanCommand } from "./commands/clean.ts";
-import { completeWorkspacesCommand, completionsCommand } from "./commands/completions.ts";
-import { devCommand } from "./commands/dev.ts";
-import { docsCommand } from "./commands/docs.ts";
-import { doctorCommand } from "./commands/doctor.ts";
-import { explainCommand } from "./commands/explain.ts";
-import { graphCommand } from "./commands/graph.ts";
-import { infoCommand } from "./commands/info.ts";
-import { initCommand } from "./commands/init.ts";
-import { installCommand } from "./commands/install.ts";
-import { listCommand } from "./commands/list.ts";
-import { outdatedCommand } from "./commands/outdated.ts";
-import { removeCommand } from "./commands/remove.ts";
-import { runCommand } from "./commands/run.ts";
-import { searchCommand } from "./commands/search.ts";
-import { sdkCommand } from "./commands/sdk.ts";
-import { testCommand } from "./commands/test.ts";
-import { upgradeCommand } from "./commands/upgrade.ts";
-import { whyCommand } from "./commands/why.ts";
-import { workspaceCommand } from "./commands/workspace.ts";
-import { workspacesCommand } from "./commands/workspaces.ts";
 import { causeMessages, formatSource, isTypedError, UserError } from "./errors.ts";
 import { dim, emitError, initLogging } from "./logging.ts";
+import { createProgram, REPOSITORY } from "./program.ts";
 import { startUpdateCheck } from "./update-check.ts";
 import { CLI_VERSION } from "./version.ts";
 
 // Side-effect import: platform providers self-register via createPlatform.
 import "./platform/index.ts";
 
-const REPOSITORY = "pluggy-sh/pluggy";
-
-const program = new Command()
-  .name("pluggy")
-  .description("A CLI for developing Minecraft plugins.")
-  .version(CLI_VERSION, "-V, --version", "Print pluggy's version and exit.")
-  .option("-v, --verbose", "Enable verbose output.")
-  .option("-p, --project <path>", "Path to a custom project file.")
-  .option("--json", "Output results as JSON.")
-  .option("--no-color", "Disable colored output.")
-  .addHelpText(
-    "after",
-    `\nExamples:\n  $ pluggy init            Create a new plugin project\n  $ pluggy init --help     Get help for a command\n\nDocs: https://github.com/${REPOSITORY}/tree/main/docs`,
-  );
-
-program.commandsGroup("Start:");
-program.addCommand(initCommand());
-
-program.commandsGroup("Dependencies:");
-program.addCommand(installCommand());
-program.addCommand(removeCommand());
-program.addCommand(infoCommand());
-program.addCommand(searchCommand());
-program.addCommand(listCommand());
-program.addCommand(whyCommand());
-program.addCommand(outdatedCommand());
-program.addCommand(auditCommand());
-
-program.commandsGroup("Develop:");
-program.addCommand(runCommand());
-program.addCommand(buildCommand());
-program.addCommand(testCommand());
-program.addCommand(docsCommand());
-program.addCommand(devCommand());
-
-program.commandsGroup("Maintain:");
-program.addCommand(doctorCommand({ pluggyVersion: CLI_VERSION, repository: REPOSITORY }));
-program.addCommand(sdkCommand());
-program.addCommand(cacheCommand());
-program.addCommand(cleanCommand());
-program.addCommand(upgradeCommand({ repository: REPOSITORY }));
-program.addCommand(completionsCommand(program));
-
-program.commandsGroup("Workspaces:");
-program.addCommand(workspaceCommand());
-program.addCommand(workspacesCommand());
-program.addCommand(explainCommand());
-program.addCommand(graphCommand());
-
-// Commander's implicit `help` command skips group assignment when created
-// lazily and would render under a stray "Commands:" heading; declaring it
-// explicitly files it under Maintain with the other meta commands.
-program.commandsGroup("Maintain:");
-program.helpCommand("help [command]", "Display help for a command.");
-// Hidden helper used by shell completion scripts. Lives at the top level so
-// it's invokable as `pluggy __complete-workspaces`; not surfaced in --help.
-program.addCommand(completeWorkspacesCommand(), { hidden: true });
+const program = createProgram();
 
 // Pre-parse the global flags so logging is initialized before any command
 // runs. Commander mutates the program when dispatching to a subcommand, so
@@ -132,9 +53,12 @@ const isUpgradeRun = globalProbe.args[0] === "upgrade";
 // and the exit-2 usage convention enforced by the handler below. In --json
 // mode commander's own error printing is silenced so the envelope is the
 // only output.
+// `writeErr` is silenced too: commander renders the help body for a missing
+// subcommand through it rather than through `outputError`, which would print a
+// screen of human text ahead of the envelope.
 function overrideExit(cmd: Command): void {
   cmd.exitOverride();
-  if (wantsJson) cmd.configureOutput({ outputError: () => {} });
+  if (wantsJson) cmd.configureOutput({ outputError: () => {}, writeErr: () => {} });
   for (const sub of cmd.commands) overrideExit(sub);
 }
 overrideExit(program);
@@ -172,12 +96,21 @@ try {
   updateCheck.dispose();
   const error = err as Error & { code?: string; exitCode?: number };
 
-  if (
-    error.code === "commander.help" ||
-    error.code === "commander.helpDisplayed" ||
-    error.code === "commander.version"
-  ) {
+  if (error.code === "commander.version" || error.code === "commander.helpDisplayed") {
     process.exit(0);
+  }
+
+  // Commander renders help for two very different situations and tells them
+  // apart only by exit code: an explicit `--help` (0) and "you named a command
+  // group but no subcommand" (1). The latter is a usage error — exiting 0 with
+  // an empty stdout made `pluggy workspace > out && parse out` silently pass.
+  if (error.code === "commander.help") {
+    if (error.exitCode === 0) process.exit(0);
+    const group = globalProbe.args[0];
+    const hint =
+      group === undefined ? "Run `pluggy --help`." : `Run \`pluggy ${group} --help\` to see them.`;
+    if (wantsJson) emitError("missing subcommand", 2, { hint });
+    process.exit(2);
   }
 
   // @inquirer/prompts throws ExitPromptError on Ctrl+C: a deliberate abort,

@@ -37,8 +37,21 @@ See `conventions/` for the full conventions with examples in both TypeScript and
 - **`conventions/PERFORMANCE.md`** - Performance: data structure selection, bounded collections, early exits, signal over polling, hot-path allocations, batching, coordination.
 - **`conventions/DOCUMENTATION.md`** - Writing docs: lead with the answer, active voice, "must" vs "we recommend", show the artifact (code, tree, config) instead of describing it, rarely use em-dashes, sentence-case headings with intro paragraphs, descriptive links, no duplicated facts.
 - **`conventions/COMMENTS.md`** - When a comment earns its place: default to none; keep only contract docs, non-obvious rationale, and TODOs; never how-narration, meta, restated values, banners, or label-filler.
+- **`conventions/UX.md`** - How the CLI should feel: every capability a reachable leaf, one name one meaning, list any set you validate against, errors that name the fix, nothing silently succeeds, help text that changes a decision.
 
-If the contents of any of those four files are not visible in your current context, read the file before doing any task that touches code or prose. They are the source of truth; do not guess.
+If the contents of any of those five files are not visible in your current context, read the file before doing any task that touches code or prose. They are the source of truth; do not guess.
+
+## Pre-1.0: prefer the right shape over the compatible one
+
+pluggy has not shipped 1.0. Until it does, a better surface beats a stable one, and you do not need permission to break something that is wrong.
+
+- Rename it, move it, or delete it. Do not add a second spelling and keep the first.
+- Do not add deprecation windows, `--legacy-*` flags, or aliases that exist only to avoid a break. Two names for one thing is the cost you were trying to avoid.
+- A removed or renamed command keeps a hidden tombstone that names its replacement and exits 2. That is not a compatibility shim, it is an error message: it keeps the guidance a user gets, and costs nothing in `--help`. See `MOVED_COMMANDS` in `src/program.ts`.
+- Removing an upstream integration needs evidence, not a hunch. `travertine` went because PaperMC last built it in 2021 and it stops at Minecraft 1.16, checked against the live API, not because it felt old.
+- Say what broke. Mark the commit `!` per Conventional Commits, and describe the change from the user's side: what they typed before, what they type now.
+
+After 1.0 this section is deleted and the usual semver rules apply.
 
 ## Runtime & tooling
 

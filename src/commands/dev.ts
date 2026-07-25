@@ -9,14 +9,17 @@ import { bold, dim, emit, log } from "../logging.ts";
 import { primaryPlatform, type ResolvedProject } from "../project.ts";
 import {
   findWorkspace,
+  projectStartDir,
   resolveWorkspaceContext,
+  singleWorkspace,
+  workspaceListOption,
   topologicalOrder,
   workspaceDependencyNames,
   type WorkspaceContext,
   type WorkspaceNode,
 } from "../workspace.ts";
 
-import { parseInteger, parseMcVersion, parsePlatform } from "./parsers.ts";
+import { parseInteger, parseMcVersion, parseMemory, parsePlatform } from "./parsers.ts";
 
 export interface DevCommandOptions {
   workspace?: string;
@@ -28,7 +31,6 @@ export interface DevCommandOptions {
   freshWorld?: boolean;
   /** `--no-watch` → `false`; flag absence → `undefined` (treated as on). */
   watch?: boolean;
-  reload?: boolean;
   /** What to do on a hotswap miss: manual (default), restart, or reload. */
   fallback?: "manual" | "reload" | "restart";
   /** `--no-hotswap` → `false`; flag absence → `undefined` (config decides). */
@@ -37,9 +39,9 @@ export interface DevCommandOptions {
   debug?: boolean | number;
   /** `--debug-suspend` → wait for a debugger before starting. */
   debugSuspend?: boolean;
-  /** `--debug-expose` → bind JDWP to all interfaces (unauthenticated). */
-  debugExpose?: boolean;
   offline?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -52,7 +54,7 @@ export interface DevCommandOptions {
  */
 export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_DEV_NO_PROJECT",
@@ -93,12 +95,10 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
     clean: opts.clean,
     freshWorld: opts.freshWorld,
     watch: opts.watch,
-    reload: opts.reload,
     fallback: opts.fallback,
     hotswap: opts.hotswap,
     debug: opts.debug,
     debugSuspend: opts.debugSuspend,
-    debugExpose: opts.debugExpose,
     offline: opts.offline,
     args: server.dev?.jvmArgs,
   });
@@ -230,37 +230,38 @@ export function devCommand(): Command {
   return new Command("dev")
     .description("Start a development server for the project.")
     .option(
-      "--workspace <name>",
+      "--workspace <names>",
       "Target one workspace (only needed when shipping workspaces span platforms).",
+      workspaceListOption,
     )
     .option("--platform <name>", "Override the primary platform.", parsePlatform)
     .option("--mc-version <version>", "Override the primary MC version.", parseMcVersion)
-    .option("--port <n>", "Server listen port.", parseInteger)
-    .option("--memory <x>", "JVM heap size (e.g. 2G, 512M).")
+    .option("--port <n>", "Port the server listens on.", parseInteger)
+    .option("--memory <size>", "JVM heap size, e.g. 2G or 512M.", parseMemory)
     .option("--clean", "Wipe dev/ before starting.")
     .option("--fresh-world", "Keep dev/ but delete dev/world*.")
     .option("--no-watch", "Run once, don't watch or rebuild.")
     .option(
       "--fallback <mode>",
-      "What to do when a change can't be hotswapped: manual (default; notify and wait), restart, or reload.",
+      "What to do when a change can't be hotswapped: manual (default; notify and wait), restart, or reload (uses Bukkit's deprecated /reload).",
       parseFallback,
     )
-    .option("--reload", "Legacy alias for --fallback reload (uses the deprecated /reload command).")
-    .option("--no-hotswap", "Disable hotswap (JBR + agent); rebuild-and-restart on change.")
+    .option("--no-hotswap", "Rebuild and restart the server on change instead of hotswapping.")
     .option(
       "--debug [port]",
       "Attach a JDWP debug agent for IDE breakpoints (default port 5005).",
       parseDebug,
     )
     .option("--debug-suspend", "With --debug, wait for a debugger to attach before starting.")
-    .option(
-      "--debug-expose",
-      "Bind the JDWP agent to all interfaces instead of loopback (unauthenticated; container/WSL2 only).",
-    )
-    .option("--offline", "Set online-mode=false in server.properties.")
+    .option("--offline", "Let accounts connect without Mojang authentication.")
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       await runDevCommand({
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "dev",
+          "One server hosts one platform.",
+        ),
         platform: options.platform,
         mcVersion: options.mcVersion,
         port: options.port,
@@ -269,7 +270,6 @@ export function devCommand(): Command {
         freshWorld: options.freshWorld === true,
         // commander's `--no-watch` yields watch:false; absence yields true.
         watch: options.watch,
-        reload: options.reload === true,
         fallback: options.fallback,
         // `--no-hotswap` → false; absence → undefined (let config decide).
         hotswap: options.hotswap === false ? false : undefined,
@@ -277,8 +277,8 @@ export function devCommand(): Command {
         debug: options.debug ?? (options.debugSuspend === true ? true : undefined),
         // Forward raw (undefined when absent) so project dev.debug.suspend can apply.
         debugSuspend: options.debugSuspend,
-        debugExpose: options.debugExpose,
         offline: options.offline === true,
+        project: globalOpts.project,
       });
     });
 }

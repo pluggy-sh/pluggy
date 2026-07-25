@@ -130,7 +130,7 @@ pluggy build --clean
 
 # 3. Fix compile errors in your editor
 # 4. Update Modrinth deps as needed
-pluggy list --outdated
+pluggy outdated
 pluggy install worldedit@7.3.15
 
 # 5. Reset the dev world and try it

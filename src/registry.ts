@@ -4,6 +4,7 @@
  * appended by default to every project's effective list.
  */
 
+import { UserError } from "./errors.ts";
 import type { Registry } from "./project.ts";
 
 /** Maven registries appended to every project's declared list. */
@@ -14,8 +15,12 @@ const ALIASES: Record<string, (rest: string) => string> = {
 };
 
 /**
- * Expand a scheme alias like `github:owner/repo` into a full URL. Bare
- * `http(s)://…` URLs and unknown schemes pass through unchanged.
+ * Expand a scheme alias like `github:owner/repo` into a full URL.
+ *
+ * An unrecognised scheme is an error rather than a passthrough. `gitlab:me/x`
+ * used to survive as a literal string and surface much later as an
+ * unresolvable dependency, with the registry that caused it never named.
+ * `host:port` forms (digits after the colon) still pass through untouched.
  */
 export function expandRegistryAlias(url: string): string {
   const colon = url.indexOf(":");
@@ -23,8 +28,18 @@ export function expandRegistryAlias(url: string): string {
   const scheme = url.slice(0, colon);
   if (scheme === "http" || scheme === "https") return url;
   const expander = ALIASES[scheme];
-  if (expander === undefined) return url;
-  return expander(url.slice(colon + 1));
+  if (expander !== undefined) return expander(url.slice(colon + 1));
+
+  const rest = url.slice(colon + 1);
+  if (/^\d/.test(rest)) return url;
+
+  throw new UserError(`Unknown registry scheme "${scheme}:" in "${url}".`, {
+    code: "E_REGISTRY_UNKNOWN_SCHEME",
+    hint: `Use a full https:// URL, or one of: ${Object.keys(ALIASES)
+      .map((s) => `${s}:`)
+      .join(", ")}.`,
+    context: { url, scheme, known: Object.keys(ALIASES) },
+  });
 }
 
 /** Pull the URL out of a Registry entry, expanding any alias. */

@@ -67,7 +67,7 @@ Compile dependencies and plugin dependencies are the same list in `project.json:
 | Platform                     | Descriptor path                |
 | ---------------------------- | ------------------------------ |
 | paper, folia, spigot, bukkit | `plugin.yml`                   |
-| waterfall, travertine        | `bungee.yml`                   |
+| waterfall                    | `bungee.yml`                   |
 | velocity                     | `velocity-plugin.json`         |
 | sponge                       | `META-INF/sponge_plugins.json` |
 
@@ -89,35 +89,43 @@ On any event, pluggy sets a 200-millisecond debounce timer. Subsequent events wi
 
 ## Hotswap
 
-Hotswap is the default. It applies most code changes to the running server without a restart by using HotswapAgent and the JetBrains Runtime (a JDK with enhanced class redefinition).
+Hotswap is the default. It applies most code changes to the running server without a restart, using pluggy's own Java agent on top of the JetBrains Runtime (a JDK with enhanced class redefinition).
 
 On the first run with hotswap on, pluggy provisions:
 
-- The JetBrains Runtime to `<cache>/jbr/`.
-- HotswapAgent to `<cache>/agents/hotswap-agent-<version>.jar`.
+- The JetBrains Runtime to `<cache>/jbr/`, integrity-checked against a pinned SHA-256.
+- The dev agent, embedded in the pluggy binary, to `<cache>/agents/pluggy-agent-<hash>.jar`.
 
-Both downloads are integrity-checked against pinned SHA-256 hashes. After that, hotswap startup is instant.
+After that, hotswap startup is instant.
 
-When you save a `.java` file, pluggy debounces, rebuilds, and lets HotswapAgent redefine the changed classes inside the running JVM. The agent prints a success or failure marker in the server log; pluggy parses that marker and either reports success or falls back.
+When you save a `.java` file, pluggy debounces, rebuilds, and asks the agent to redefine the changed classes inside the running JVM. The agent connects back to pluggy over a loopback socket, so the result comes back on that channel rather than through the server log.
 
-Disable hotswap with `--no-hotswap`, or with `dev.hotswap: false` in `project.json`. Configure the JDK source and fallback action under `dev.hotswap`:
+Disable hotswap with `--no-hotswap`, or with `"hotswap": false` under `dev` in `project.json`. The action for changes hotswap can't apply is `dev.fallback`:
 
 ```json
 "dev": {
-  "hotswap": {
-    "jdk": "jbr",
-    "fallback": "reload"
-  }
+  "hotswap": false,
+  "fallback": "restart"
 }
 ```
 
-See [project.json reference](./project-json.md#devhotswap) for the schema.
+See the [`dev` block in the `project.json` reference](./project-json.md#dev-optional) for the schema.
 
-## Restart vs reload
+## Manual, restart, and reload
 
-When hotswap is off, or when a change is too deep for hotswap to apply (a new supertype, a removed method that's still referenced), pluggy falls back to one of:
+When hotswap is off, or when a change is too deep for hotswap to apply (a new supertype, a removed method that's still referenced), `--fallback` (or `dev.fallback`) decides what pluggy does. The default is `manual` with hotswap on, `restart` with `--no-hotswap`.
 
-### Default fallback: full restart
+### `manual`: notify and wait
+
+```text
+(file save detected; debounce timer starts)
+(rebuild succeeds)
+(logs `· restart to apply`)
+```
+
+Nothing else happens until you type `restart` (or `rs`) in the console. An unprompted restart in the middle of testing is disruptive, so with hotswap on this is the default.
+
+### `restart`: full restart
 
 ```text
 (file save detected; debounce timer starts)
@@ -129,7 +137,7 @@ When hotswap is off, or when a change is too deep for hotswap to apply (a new su
 
 A full shutdown and restart. Safe, slow, predictable. Expect 10 to 30 seconds depending on world size and plugin count.
 
-### `--reload`: Bukkit reload
+### `reload`: Bukkit reload
 
 ```text
 (file save detected; debounce timer starts)
@@ -138,9 +146,9 @@ A full shutdown and restart. Safe, slow, predictable. Expect 10 to 30 seconds de
 (sends `reload confirm\n` to server stdin)
 ```
 
-Seconds, not tens of seconds. Bukkit's `/reload` is notoriously unreliable, though. Static caches pinned by the old ClassLoader, listeners registered through Bukkit's API that survive reload, scheduler tasks that reference old classes: all of these lead to subtle bugs.
+Seconds, not tens of seconds. Bukkit's `/reload` is deprecated and notoriously unreliable, though. Static caches pinned by the old ClassLoader, listeners registered through Bukkit's API that survive reload, scheduler tasks that reference old classes: all of these lead to subtle bugs.
 
-Use `--reload` (or `dev.hotswap.fallback: "reload"`) only when you know your plugin is reload-clean. Otherwise default to restart.
+Pick `--fallback reload` only when you know your plugin is reload-clean. Otherwise stay on `manual` or `restart`.
 
 ### When rebuild fails
 
@@ -181,7 +189,7 @@ No shell is spawned. Windows handles `.exe` lookup internally when the command i
 - Hotswap is on by default and is much faster than restart for most code changes. Leave it on unless you have a reason to turn it off.
 - Use a separate `jvmArgs` for dev that cranks G1GC (`-XX:+UseG1GC`, `-XX:MaxGCPauseMillis=50`). The default heap is 2G. Bump with `--memory 4G` if your plugin is heavy.
 - `--fresh-world` between runs makes startup predictable without paying the world-regeneration cost on every change.
-- If you're iterating on a pure command handler and don't care about world state, `--reload` (or `dev.hotswap.fallback: "reload"`) is fine, despite the caveat above.
+- If you're iterating on a pure command handler and don't care about world state, `--fallback reload` is fine, despite the caveat above.
 
 ## See also
 

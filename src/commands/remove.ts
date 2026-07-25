@@ -9,13 +9,19 @@ import { writeFileLF } from "../portable.ts";
 import { type Project } from "../project.ts";
 import { type Lockfile, pruneOrphans, readLock, writeLock } from "../lockfile.ts";
 
-import { resolveScope, type ScopeTarget } from "../workspace.ts";
+import {
+  resolveScope,
+  singleWorkspace,
+  workspaceListOption,
+  type ScopeTarget,
+} from "../workspace.ts";
 
 export interface RemoveOptions {
   plugin: string;
   keepFile?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   project?: string;
   cwd?: string;
 }
@@ -48,6 +54,7 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
     cwd: opts.cwd,
     workspace: opts.workspace,
     workspaces: opts.workspaces,
+    exclude: opts.exclude,
     requireExplicitAtRoot: true,
     commandName: "remove",
   });
@@ -211,17 +218,27 @@ export function removeCommand(): Command {
   return new Command("remove")
     .alias("rm")
     .description("Remove a plugin from the project config and optionally delete its jar.")
-    .argument("<plugin>", "Plugin identifier.")
+    .argument("<plugin>", "Plugin name as shown by `pluggy list`.")
     .option("--keep-file", "Keep the cached jar on disk instead of deleting it.")
-    .option("--workspace <name>", "Target a specific workspace.")
+    .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Remove from every workspace that declares it.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces remove (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .action(async function action(this: Command, plugin: string, options) {
       const globalOpts = this.optsWithGlobals();
       await doRemove({
         plugin,
         keepFile: options.keepFile,
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "remove",
+          "A plugin is removed from one workspace.",
+        ),
         workspaces: options.workspaces,
+        exclude: options.exclude as string[] | undefined,
         project: globalOpts.project,
       });
     });

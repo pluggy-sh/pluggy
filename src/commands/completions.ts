@@ -85,12 +85,20 @@ export function completeWorkspacesCommand(): Command {
     });
 }
 
+/** Commander marks hidden commands with a private `_hidden` field. */
+function isHidden(command: Command): boolean {
+  return (command as Command & { _hidden?: boolean })._hidden === true;
+}
+
 function introspect(program: Command): Snapshot {
   return {
     program: program.name(),
     globalFlags: program.options.map(snapshotOption),
     subcommands: program.commands
-      .filter((c) => c.name() !== "completions" && c.name() !== "help")
+      // `_hidden` covers commands registered with `{hidden: true}` (the
+      // `__complete-workspaces` helper these scripts call into). Filtering by
+      // name alone leaked it into the menus completion exists to curate.
+      .filter((c) => !isHidden(c) && c.name() !== "completions" && c.name() !== "help")
       .map((c) => ({
         name: c.name(),
         aliases: c.aliases(),

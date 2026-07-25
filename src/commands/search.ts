@@ -1,10 +1,42 @@
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 
 import { bold, dim, emit, log } from "../logging.ts";
 
-import { parseInteger, parseMcVersion, parsePlatform } from "./parsers.ts";
+import { parseInteger, parseMcVersion } from "./parsers.ts";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
+
+/**
+ * Loaders Modrinth indexes for plugins (`GET /v2/tag/loader`, filtered to
+ * `supported_project_types` containing "plugin").
+ *
+ * `--platform` filters a Modrinth query, so it has to be validated against
+ * Modrinth's vocabulary rather than pluggy's: the two sets overlap but are not
+ * the same. Modrinth indexes `purpur`, `bungeecord`, and `geyser`, which
+ * pluggy cannot build for, and pluggy's registry accepted ids Modrinth has
+ * never heard of, which returned zero hits as though the query matched
+ * nothing.
+ */
+const MODRINTH_PLUGIN_LOADERS = [
+  "bukkit",
+  "bungeecord",
+  "folia",
+  "geyser",
+  "paper",
+  "purpur",
+  "spigot",
+  "sponge",
+  "velocity",
+  "waterfall",
+] as const;
+
+export function parseSearchLoader(value: string): string {
+  const id = value.toLowerCase();
+  if ((MODRINTH_PLUGIN_LOADERS as readonly string[]).includes(id)) return id;
+  throw new InvalidArgumentError(
+    `"${value}" is not a Modrinth plugin loader. Available: ${MODRINTH_PLUGIN_LOADERS.join(", ")}.`,
+  );
+}
 
 interface ModrinthSearchHit {
   slug: string;
@@ -160,9 +192,13 @@ export function searchCommand(): Command {
   return new Command("search")
     .description("Search Modrinth for plugins by keyword.")
     .argument("<query>", "Search query.")
-    .option("--size <size>", "Page size (default: 10).", parseInteger, 10)
-    .option("--page <page>", "Page number (default: 0).", parseInteger, 0)
-    .option("--platform <name>", "Filter by platform.", parsePlatform)
+    .option("--size <size>", "Results per page.", parseInteger, 10)
+    .option("--page <page>", "Zero-based page to fetch.", parseInteger, 0)
+    .option(
+      "--platform <loader>",
+      "Filter by Modrinth loader (paper, velocity, …).",
+      parseSearchLoader,
+    )
     .option("--mc-version <version>", "Filter by Minecraft version (e.g. 1.21.8).", parseMcVersion)
     .action(async function action(this: Command, query: string, options) {
       await doSearch(query, {

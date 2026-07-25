@@ -101,7 +101,7 @@ export async function ensureJdk(major: number, opts: EnsureJdkOptions = {}): Pro
   if (process.env.PLUGGY_NO_AUTO_INSTALL === "1") {
     throw new Error(
       `sdk: ${distribution} JDK ${major} is not installed and PLUGGY_NO_AUTO_INSTALL=1.\n` +
-        `Run: pluggy sdk install ${major}${distribution === "temurin" ? "" : ` --distribution ${distribution}`}`,
+        `Run: pluggy sdk install ${distribution}@${major}`,
     );
   }
 

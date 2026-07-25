@@ -18,7 +18,7 @@ pluggy t    [options]
 | `--clean`             | off            | Wipe the test staging dir before running (compiled classes + cached reports).      |
 | `--workspace <names>` | none           | Test one or more workspaces. Repeatable; comma-separated. Overrides `test: false`. |
 | `--exclude <names>`   | none           | Subtract one or more workspaces from the default sweep.                            |
-| `--workspaces`        | off            | Explicit all-workspaces test from the root.                                        |
+| `--workspaces`        | off            | Every workspace, even when run from inside one.                                    |
 | `--concurrency <n>`   | `min(cpus, 4)` | Cap on workspaces running simultaneously. Forced to `1` under `--fail-fast`.       |
 
 A workspace can opt out of the default sweep by setting `"test": false` in its `project.json`. See [Workspaces: per-workspace opt-out](../workspaces.md#per-workspace-opt-out).
@@ -31,7 +31,7 @@ A workspace can opt out of the default sweep by setting `"test": false` in its `
 | Inside workspace `X`           | none                    | `X`.                                    |
 | Repo root, workspaces declared | none                    | Every workspace, topologically ordered. |
 | Repo root, workspaces declared | `--workspace A`         | Just `A`.                               |
-| Inside workspace `X`           | `--workspaces`          | **Error**. Only valid at the root.      |
+| Inside workspace `X`           | `--workspaces`          | Tests every workspace.                  |
 | Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error**. Run from the root.           |
 
 A workspace with no `test/` directory or no `.java` sources under it is skipped, not failed. That keeps `--workspaces` runs ergonomic when only some workspaces have tests.
@@ -76,7 +76,7 @@ For each target workspace, pluggy runs the steps below in order.
 7. **Run.** `java -Dpluggy.test.mainJar=<.../main.jar> -jar junit-platform-console-standalone.jar execute ...`. The runtime classpath is `main-runtime.jar` plus main deps, test deps, and JUnit. `--filter` translates to `--include-tag`, `--select-method`, or `--include-classname`. `--fail-fast` translates to `--fail-fast`.
 8. **Parse.** Read every `TEST-*.xml` from `reports/` and flatten into a single `{ total, passed, failed, skipped, cases[] }` shape. The launcher's own stdout and stderr are discarded; pluggy renders its own output from the XML.
 
-`testDependencies` follows the same grammar as `dependencies`. See [`project.json` reference](../project-json.md#testdependencies).
+`testDependencies` follows the same grammar as `dependencies`. See [`project.json` reference](../project-json.md#testdependencies-optional).
 
 ## Mocking-framework hand-off
 
@@ -292,7 +292,7 @@ A non-zero JUnit exit _with_ reports is treated as a normal failed run. The laun
 
 ## See also
 
-- [`project.json` reference](../project-json.md#testdependencies): declaring test-only deps.
+- [`project.json` reference](../project-json.md#testdependencies-optional): declaring test-only deps.
 - [`pluggy build`](./build.md): the same compile pipeline minus tests.
 - [Testing with MockBukkit](../recipes/testing-with-mockbukkit.md): a worked recipe.
 - [Troubleshooting](../troubleshooting.md): `javac` and `java` not found, and other common issues.

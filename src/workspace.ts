@@ -170,9 +170,43 @@ export function parseWorkspaceList(input: string[]): string[] {
   return out;
 }
 
-/** Commander callback that funnels into `parseWorkspaceList`. */
-export function workspaceListOption(value: string, prev: string[]): string[] {
-  return parseWorkspaceList([...prev, value]);
+/**
+ * Commander callback that funnels into `parseWorkspaceList`. `prev` is
+ * `undefined` on the first occurrence because these options declare no default
+ * — seeding them with `[]` made commander render a meaningless
+ * "(default: [])" in every help listing.
+ */
+export function workspaceListOption(value: string, prev: string[] | undefined): string[] {
+  return parseWorkspaceList([...(prev ?? []), value]);
+}
+
+/**
+ * Collapse a `--workspace` list to the single target a command can act on.
+ *
+ * `--workspace` parsed two different ways depending on which command it was
+ * attached to: a repeatable comma-separated list on the sweep commands, and a
+ * bare string on the rest. On the latter, `--workspace a,b` looked up a
+ * workspace literally named "a,b" and `--workspace a --workspace b` silently
+ * took the last one. Every command now accepts the same grammar; the ones that
+ * genuinely operate on one workspace say so instead of guessing.
+ */
+export function singleWorkspace(
+  value: string[] | undefined,
+  commandName: string,
+  reason: string,
+): string | undefined {
+  if (value === undefined || value.length === 0) return undefined;
+  if (value.length > 1) {
+    throw new UserError(
+      `${commandName} works on one workspace, but ${value.length} were selected (${value.join(", ")}).`,
+      {
+        code: "E_WORKSPACE_NOT_SINGLE",
+        hint: `${reason} Pick one: --workspace ${value[0]}`,
+        context: { commandName, selected: value },
+      },
+    );
+  }
+  return value[0];
 }
 
 export interface WorkspaceFilterOptions {
@@ -223,9 +257,22 @@ export function selectWorkspaceTargets(
   }
 
   if (context.current !== undefined) {
+    // `--workspaces` means "every workspace, wherever you are". It already
+    // meant that on install/remove/list; on the sweep commands it was a
+    // no-op at the root and a hard error here, so the same flag did opposite
+    // things depending on which command it was attached to.
+    if (opts.workspaces === true && includes.length === 0) {
+      const remaining = applyExcludes(context.workspaces, excludes, context);
+      const ordered = topologicalOrder(remaining);
+      // Same selection as the root branch, so it needs the same guard: without
+      // it, excluding a workspace others depend on failed fast at the root but
+      // died mid-build with E_WORKSPACE_DEP_NOT_BUILT from inside one.
+      assertNoOrphanedDependents(ordered, context);
+      return ensureNonEmpty(ordered, includes, excludes);
+    }
     if (excludes.length > 0) {
       throw new InvalidArgumentError(
-        `--exclude is only valid at the repo root; you're inside workspace "${context.current.name}".`,
+        `--exclude is only valid with --workspaces or at the repo root; you're inside workspace "${context.current.name}".`,
       );
     }
     if (includes.length > 0) {
@@ -330,6 +377,8 @@ export interface ScopeOptions {
   cwd?: string;
   workspace?: string;
   workspaces?: boolean;
+  /** Names to subtract from an all-workspaces run. */
+  exclude?: string[];
   /**
    * Refuse to implicitly span all workspaces at a root. `remove` sets this:
    * running at the root without an explicit flag is ambiguous. `install`
@@ -363,6 +412,14 @@ export interface ResolvedScope {
   spansAllWorkspaces: boolean;
 }
 
+/** Every workspace minus `opts.exclude`, validating each excluded name. */
+function applyExclude(context: WorkspaceContext, opts: ScopeOptions): ScopeTarget[] {
+  const excluded = new Set((opts.exclude ?? []).map((name) => findWorkspace(context, name).name));
+  return context.workspaces
+    .filter((w) => !excluded.has(w.name))
+    .map((w) => ({ name: w.name, project: w.project }));
+}
+
 /**
  * Resolve which workspaces a command should act on, from cwd plus per-command
  * flags. Throws `UserError` when cwd is not inside a project, and
@@ -379,7 +436,19 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     });
   }
 
+  // `--exclude` only means something when the selection spans workspaces.
+  // Dropping it silently on the other branches let `--workspace shop
+  // --exclude core` look like it had been honoured, while the sweep commands
+  // rejected the same combination.
+  const rejectUnusableExclude = (reason: string): void => {
+    if ((opts.exclude?.length ?? 0) === 0) return;
+    throw new InvalidArgumentError(`${opts.commandName}: --exclude ${reason}`);
+  };
+
   if (opts.workspace !== undefined) {
+    rejectUnusableExclude(
+      "cannot be combined with --workspace; it subtracts from an all-workspaces run.",
+    );
     if (context.workspaces.length === 0) {
       throw new InvalidArgumentError(
         `${opts.commandName}: --workspace "${opts.workspace}" was given but this project has no workspaces`,
@@ -401,12 +470,15 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     }
     return {
       context,
-      targets: context.workspaces.map((w) => ({ name: w.name, project: w.project })),
+      targets: applyExclude(context, opts),
       spansAllWorkspaces: true,
     };
   }
 
   if (context.current !== undefined) {
+    rejectUnusableExclude(
+      `is only valid with --workspaces or at the repo root; you're inside workspace "${context.current.name}".`,
+    );
     return {
       context,
       targets: [{ name: context.current.name, project: context.current.project }],
@@ -422,11 +494,12 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     }
     return {
       context,
-      targets: context.workspaces.map((w) => ({ name: w.name, project: w.project })),
+      targets: applyExclude(context, opts),
       spansAllWorkspaces: true,
     };
   }
 
+  rejectUnusableExclude("given but this project declares no workspaces.");
   return {
     context,
     targets: [{ name: context.root.name, project: context.root }],

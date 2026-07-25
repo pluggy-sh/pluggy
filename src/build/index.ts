@@ -26,8 +26,6 @@ export interface BuildOptions {
   output?: string;
   /** Wipe build cache before building. */
   clean?: boolean;
-  /** Skip `.classpath` regeneration. */
-  skipClasspath?: boolean;
   /**
    * Exploded staging directory to build in. Defaults to the deterministic
    * `projectStagingDir`. The dev runtime overrides this with a session-private
@@ -125,12 +123,10 @@ export async function buildProject(
     ensureJdkForProject(project),
   ]);
 
-  if (!opts.skipClasspath) {
-    try {
-      await writeIdeFiles(project, classpath, stagingDir);
-    } catch (err) {
-      log.debug(`build: IDE scaffolding failed (non-fatal): ${(err as Error).message}`);
-    }
+  try {
+    await writeIdeFiles(project, classpath, stagingDir);
+  } catch (err) {
+    log.debug(`build: IDE scaffolding failed (non-fatal): ${(err as Error).message}`);
   }
 
   await stageResources(project, stagingDir);

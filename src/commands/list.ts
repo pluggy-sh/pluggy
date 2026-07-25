@@ -1,29 +1,28 @@
 import process from "node:process";
 
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 
 import { UserError } from "../errors.ts";
-import { bold, dim, emit, log, yellow } from "../logging.ts";
+import { bold, dim, emit, log } from "../logging.ts";
 import { type LockfileEntry, readLock } from "../lockfile.ts";
 import type { Dependency, ResolvedProject } from "../project.ts";
 import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
 import { parseSource, type ResolvedSource } from "../source.ts";
-import { compareVersions } from "../update-check.ts";
 import {
   findWorkspace,
   projectStartDir,
   resolveWorkspaceContext,
+  singleWorkspace,
+  workspaceListOption,
   type WorkspaceContext,
   type WorkspaceNode,
 } from "../workspace.ts";
 
-import { latestUpstreamVersion } from "./outdated.ts";
-
 export interface ListOptions {
   tree?: boolean;
-  outdated?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
   cwd?: string;
@@ -36,12 +35,6 @@ export interface DepEntry {
   resolvedVersion: string | null;
   integrity: string | null;
   declaredBy: string[];
-  /** Latest upstream (Modrinth or Maven) version, populated only when `--outdated` ran. `null` when not queried, has no upstream, or the query failed. */
-  latestVersion?: string | null;
-  /** True when `latestVersion` is known and newer than the current version. */
-  outdated?: boolean;
-  /** Error message when the `--outdated` lookup failed for this dep. */
-  lookupError?: string;
   /**
    * Transitive children sourced from the lockfile. Populated recursively
    * for `--tree` rendering and for JSON output consumers. Leaf deps omit
@@ -132,51 +125,17 @@ export async function doList(options: ListOptions): Promise<ListResult> {
         ? (options.workspace ?? ctx.current?.name ?? ctx.root.name)
         : ctx.root.name;
 
-  if (options.outdated) {
-    await enrichWithLatestVersions(
-      deps,
-      registries.map((r) => r.url),
-    );
-    deps = deps.filter((d) => d.outdated === true || d.lookupError !== undefined);
-  }
-
   const result: ListResult = { scope, deps, registries, target };
 
   emit({ status: "success", ...result }, () => {
     if (options.tree) {
-      printTreeList(result, options.outdated === true);
+      printTreeList(result);
     } else {
-      printHumanList(result, options.outdated === true);
+      printHumanList(result);
     }
   });
 
   return result;
-}
-
-/**
- * Query upstream (via `latestUpstreamVersion`, the same lookup `pluggy
- * outdated` uses) for the newest stable version of every Modrinth- and
- * Maven-sourced dep and annotate each entry with `latestVersion` +
- * `outdated`. File and workspace entries have no upstream and get
- * `latestVersion: null`. A failed lookup sets `lookupError` so the failure
- * is surfaced instead of rendering as up to date.
- */
-async function enrichWithLatestVersions(deps: DepEntry[], registries: string[]): Promise<void> {
-  for (const dep of deps) {
-    try {
-      const latest = await latestUpstreamVersion(dep.source, registries, false);
-      if (latest === undefined) {
-        dep.latestVersion = null;
-        continue;
-      }
-      dep.latestVersion = latest;
-      const current = dep.resolvedVersion ?? dep.declaredVersion;
-      dep.outdated = current !== "*" && compareVersions(current, latest) < 0;
-    } catch (err) {
-      dep.latestVersion = null;
-      dep.lookupError = (err as Error).message;
-    }
-  }
 }
 
 function determineScope(
@@ -200,22 +159,40 @@ function selectTargets(
   options: ListOptions,
   scope: "root" | "workspace" | "standalone",
 ): DepTarget[] {
+  // `--exclude` subtracts from an all-workspaces view, so on any single-target
+  // scope it cannot apply. Ignoring it made `--workspace shop --exclude core`
+  // look honoured while the sweep commands rejected the same combination.
+  const rejectUnusableExclude = (reason: string): void => {
+    if ((options.exclude?.length ?? 0) === 0) return;
+    throw new InvalidArgumentError(`list: --exclude ${reason}`);
+  };
+
   if (scope === "standalone") {
+    rejectUnusableExclude("given but this project declares no workspaces.");
     return [{ declaringName: ctx.root.name, project: ctx.root }];
   }
   if (scope === "workspace") {
     if (options.workspace !== undefined) {
+      rejectUnusableExclude(
+        "cannot be combined with --workspace; it subtracts from an all-workspaces run.",
+      );
       const node = findWorkspace(ctx, options.workspace);
       return [{ declaringName: node.name, project: node.project }];
     }
     if (ctx.current) {
+      rejectUnusableExclude(
+        `is only valid with --workspaces or at the repo root; you're inside workspace "${ctx.current.name}".`,
+      );
       return [{ declaringName: ctx.current.name, project: ctx.current.project }];
     }
   }
-  return ctx.workspaces.map((w: WorkspaceNode) => ({
-    declaringName: w.name,
-    project: w.project,
-  }));
+  const excluded = new Set((options.exclude ?? []).map((name) => findWorkspace(ctx, name).name));
+  return ctx.workspaces
+    .filter((w: WorkspaceNode) => !excluded.has(w.name))
+    .map((w: WorkspaceNode) => ({
+      declaringName: w.name,
+      project: w.project,
+    }));
 }
 
 /**
@@ -286,28 +263,22 @@ function collectRegistries(ctx: WorkspaceContext): RegistryEntry[] {
   return out;
 }
 
-function printHumanList(result: ListResult, outdatedMode: boolean): void {
+function printHumanList(result: ListResult): void {
   log.info(bold(`${result.scope}: ${result.target}`));
-  const shown = outdatedMode ? result.deps.filter((d) => d.lookupError === undefined) : result.deps;
-  const failed = outdatedMode ? result.deps.filter((d) => d.lookupError !== undefined) : [];
+  const shown = result.deps;
   if (shown.length === 0) {
-    log.info(dim(emptyDepsLine(outdatedMode, failed.length)));
+    log.info(dim("  (no dependencies declared)"));
   } else {
     log.info("");
-    log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
+    log.info(bold("dependencies:"));
     for (const dep of shown) {
       const resolved = dep.resolvedVersion ?? dim("(unresolved; run install)");
       const decl = result.scope === "root" ? ` ${dim(`[${dep.declaredBy.join(", ")}]`)}` : "";
-      const update =
-        dep.outdated === true && dep.latestVersion !== null && dep.latestVersion !== undefined
-          ? `  ${yellow(`→ ${dep.latestVersion}`)}`
-          : "";
       log.info(
-        `  ${dep.name}  ${dim(`declared: ${dep.declaredVersion}`)}  ${dim(`resolved:`)} ${resolved}${update}  ${dim(describeSource(dep.source))}${decl}`,
+        `  ${dep.name}  ${dim(`declared: ${dep.declaredVersion}`)}  ${dim(`resolved:`)} ${resolved}  ${dim(describeSource(dep.source))}${decl}`,
       );
     }
   }
-  printLookupFailures(failed);
   log.info("");
   log.info(bold("registries:"));
   if (result.registries.length === 0) {
@@ -334,20 +305,18 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
  * declared deps that need updates", and transitives come along for the
  * ride when their parent is listed).
  */
-function printTreeList(result: ListResult, outdatedMode: boolean): void {
+function printTreeList(result: ListResult): void {
   log.info(bold(`${result.scope}: ${result.target}`));
-  const shown = outdatedMode ? result.deps.filter((d) => d.lookupError === undefined) : result.deps;
-  const failed = outdatedMode ? result.deps.filter((d) => d.lookupError !== undefined) : [];
+  const shown = result.deps;
   if (shown.length === 0) {
-    log.info(dim(emptyDepsLine(outdatedMode, failed.length)));
+    log.info(dim("  (no dependencies declared)"));
   } else {
     log.info("");
-    log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
+    log.info(bold("dependencies:"));
     for (let i = 0; i < shown.length; i++) {
-      renderDepNode(shown[i], "  ", i === shown.length - 1, /* topLevel */ true);
+      renderDepNode(shown[i], "  ", i === shown.length - 1);
     }
   }
-  printLookupFailures(failed);
   log.info("");
   log.info(bold("registries:"));
   if (result.registries.length === 0) {
@@ -363,47 +332,23 @@ function printTreeList(result: ListResult, outdatedMode: boolean): void {
   }
 }
 
-function emptyDepsLine(outdatedMode: boolean, failedCount: number): string {
-  if (!outdatedMode) return "  (no dependencies declared)";
-  if (failedCount > 0) return "  (no known-outdated dependencies; some could not be checked)";
-  return "  (everything is up to date)";
-}
-
-function printLookupFailures(failed: DepEntry[]): void {
-  if (failed.length === 0) return;
-  log.info("");
-  for (const dep of failed) {
-    log.warn(`${dep.name}: ${dep.lookupError ?? "lookup failed"}`);
-  }
-  log.info(
-    `${failed.length} ${failed.length === 1 ? "dependency" : "dependencies"} could not be checked (network error).`,
-  );
-}
-
 /**
  * Render one node of the dep tree and recurse into its children. `prefix`
  * carries the cumulative indentation from ancestors (a mix of `│   ` for
  * open ancestors and `    ` for closed ones). `last` toggles the leaf
  * glyph.
  */
-function renderDepNode(dep: DepEntry, prefix: string, last: boolean, topLevel: boolean): void {
+function renderDepNode(dep: DepEntry, prefix: string, last: boolean): void {
   const branch = last ? "└──" : "├──";
   const resolved = dep.resolvedVersion ?? dim("(unresolved)");
-  const update =
-    topLevel &&
-    dep.outdated === true &&
-    dep.latestVersion !== null &&
-    dep.latestVersion !== undefined
-      ? `  ${yellow(`→ ${dep.latestVersion}`)}`
-      : "";
   log.info(
-    `${prefix}${dim(branch)} ${dep.name}  ${dim(`@${dep.declaredVersion} → ${resolved}`)}${update}  ${dim(describeSource(dep.source))}`,
+    `${prefix}${dim(branch)} ${dep.name}  ${dim(`@${dep.declaredVersion} → ${resolved}`)}  ${dim(describeSource(dep.source))}`,
   );
   const children = dep.children ?? [];
   if (children.length === 0) return;
   const childPrefix = `${prefix}${last ? "    " : "│   "}`;
   for (let i = 0; i < children.length; i++) {
-    renderDepNode(children[i], childPrefix, i === children.length - 1, /* topLevel */ false);
+    renderDepNode(children[i], childPrefix, i === children.length - 1);
   }
 }
 
@@ -426,16 +371,24 @@ export function listCommand(): Command {
     .alias("ls")
     .description("List all installed plugins, dependencies and registries.")
     .option("--tree", "Render as dependency tree (with transitive deps).")
-    .option("--outdated", "Only list deps with newer versions available.")
-    .option("--workspace <name>", "Show a specific workspace.")
+    .option("--workspace <names>", "Show a specific workspace.", workspaceListOption)
     .option("--workspaces", "Aggregated view across all workspaces.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces list (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
       await doList({
         tree: options.tree,
-        outdated: options.outdated,
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "list",
+          "Use --workspaces for the aggregated view.",
+        ),
         workspaces: options.workspaces,
+        exclude: options.exclude as string[] | undefined,
         project: globalOpts.project,
       });
     });

@@ -23,13 +23,24 @@ import { Command, InvalidArgumentError } from "commander";
 import { confirm } from "@inquirer/prompts";
 
 import { UserError } from "../errors.ts";
+
+import { parseMainClass, parseSemver, platformListOption } from "./parsers.ts";
+
+import { graphCommand } from "./graph.ts";
+import { runWorkspacesCommand, workspacesCommand } from "./workspaces.ts";
 import { bold, dim, emit, isJsonMode, log } from "../logging.ts";
 import { toPosixPath, writeFileLF } from "../portable.ts";
-import { type Dependency, type Project, resolveProjectFile, writeProjectFile } from "../project.ts";
+import {
+  type Dependency,
+  type Project,
+  type ResolvedProject,
+  resolveProjectFile,
+  writeProjectFile,
+} from "../project.ts";
 
 export interface WorkspaceAddOptions {
   name: string;
-  /** FQCN of the new workspace's `main` class. Omit for an internal workspace. */
+  /** FQCN of the new workspace's `main` class. Derived from the root when omitted. */
   main?: string;
   /**
    * Platforms for the new workspace's `compatibility.platforms`. Empty means
@@ -111,9 +122,14 @@ export async function runWorkspaceAdd(opts: WorkspaceAddOptions): Promise<Worksp
           }
         : (undefined as unknown as Project["compatibility"]),
   };
-  if (opts.main !== undefined && opts.main.length > 0) {
-    newProject.main = opts.main;
-  }
+  // Every buildable workspace is a plugin (see `src/build/index.ts`: Java
+  // isolates each plugin's classloader, so shared code has to be its own
+  // plugin that siblings `depend` on). Scaffolding without a `main` produced a
+  // workspace that `pluggy build` then refused, which broke the documented
+  // monorepo flow on the very next command. Derive one from the root's package
+  // when the user doesn't supply it.
+  newProject.main =
+    opts.main !== undefined && opts.main.length > 0 ? opts.main : deriveMain(root, opts.name);
   if (opts.depends !== undefined && opts.depends.length > 0) {
     const deps: Record<string, Dependency> = {};
     for (const depName of opts.depends) {
@@ -234,6 +250,22 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * A `main` for a new workspace, derived from the root project's package so
+ * siblings land under one namespace: root `com.example.suite.Main` plus
+ * workspace `core` gives `com.example.suite.core.Core`.
+ */
+function deriveMain(root: ResolvedProject, workspaceName: string): string {
+  const segment = workspaceName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "plugin";
+  const className = segment.charAt(0).toUpperCase() + segment.slice(1);
+  const rootMain = root.main;
+  const rootPackage =
+    typeof rootMain === "string" && rootMain.includes(".")
+      ? rootMain.slice(0, rootMain.lastIndexOf("."))
+      : "com.example";
+  return `${rootPackage}.${segment}.${className}`;
 }
 
 async function scaffoldMain(workspaceDir: string, mainClass: string): Promise<void> {
@@ -597,14 +629,28 @@ export async function runWorkspaceRename(
   return result;
 }
 
-/** Top-level `pluggy workspace` command. Subcommands attached below. */
+/**
+ * Top-level `pluggy workspace` command.
+ *
+ * `list` and `graph` live here rather than as the top-level `workspaces` and
+ * `graph`: `workspace` and `workspaces` differed by one character, did
+ * completely different things (mutate vs list), rendered on adjacent help
+ * lines with no cue that one was a namespace, and commander's "did you mean"
+ * doesn't fire between them. The old spellings remain as aliases.
+ */
 export function workspaceCommand(): Command {
-  const cmd = new Command("workspace").description(
-    "Mutate the workspace graph (add, remove, rename, …).",
-  );
+  const cmd = new Command("workspace").description("Inspect and change the workspace graph.");
+  cmd.addCommand(workspacesCommand("list"));
   cmd.addCommand(workspaceAddSubcommand());
   cmd.addCommand(workspaceRemoveSubcommand());
   cmd.addCommand(workspaceRenameSubcommand());
+  cmd.addCommand(graphCommand("graph"));
+
+  // Bare `pluggy workspace` lists rather than printing help, matching
+  // `pluggy cache` and `pluggy sdk`.
+  cmd.action(async function action(this: Command) {
+    await runWorkspacesCommand({ project: this.optsWithGlobals().project });
+  });
   return cmd;
 }
 
@@ -643,15 +689,15 @@ function workspaceAddSubcommand(): Command {
   return new Command("add")
     .description("Scaffold a new workspace and wire it into the root project.json.")
     .argument("<name>", "Workspace name (becomes the workspace's project.name).")
-    .option("--main <fqcn>", "Fully-qualified main class; omit to scaffold an internal workspace.")
     .option(
-      "--platforms <list>",
-      "Comma-separated platforms (e.g. paper,sponge). Omit to inherit from root.",
-      (raw: string) =>
-        raw
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
+      "--main <fqcn>",
+      "Entry-point class. Derived from the root's package when omitted.",
+      parseMainClass,
+    )
+    .option(
+      "--platform <ids>",
+      "Platforms for this workspace (repeatable; comma-separated). Omit to inherit from root.",
+      platformListOption,
     )
     .option(
       "--depends <list>",
@@ -663,15 +709,19 @@ function workspaceAddSubcommand(): Command {
           .filter((s) => s.length > 0),
     )
     .option("--dir <path>", "Override the on-disk directory (default: ./<name>).")
-    .option("--version <semver>", "Initial workspace version (default: 0.1.0).")
+    .option(
+      "--project-version <semver>",
+      "Initial workspace version (default: 0.1.0).",
+      parseSemver,
+    )
     .action(async function action(this: Command, name: string, options) {
       await runWorkspaceAdd({
         name,
         main: options.main,
-        platforms: options.platforms,
+        platforms: options.platform,
         depends: options.depends,
         dir: options.dir,
-        version: options.version,
+        version: options.projectVersion,
       });
     });
 }

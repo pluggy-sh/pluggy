@@ -1,11 +1,14 @@
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
 import { generateDocs, type DocsResult } from "../docs/index.ts";
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces } from "../runner.ts";
+
+import { concurrencyOption } from "./parsers.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
@@ -23,6 +26,8 @@ export interface DocsCommandOptions {
   workspaces?: boolean;
   /** Cap on workspaces documenting simultaneously. */
   concurrency?: number;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -52,7 +57,7 @@ export interface DocsCommandResult {
  */
 export async function runDocsCommand(opts: DocsCommandOptions): Promise<DocsCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new Error("No pluggy project found. Run this from inside a project directory.");
   }
@@ -182,41 +187,36 @@ function formatBytes(n: number): string {
 
 /** Factory for the `pluggy docs` commander command. */
 export function docsCommand(): Command {
-  return new Command("docs")
+  // `docs` was a noun that meant a verb, and the token collided three ways:
+  // with `pluggy help`, with the repo's own docs/ directory, and with this
+  // command's own default output directory. `javadoc` is what it runs.
+  return new Command("javadoc")
     .description("Generate Javadoc HTML for the project.")
     .option(
       "--output <path>",
       "Output directory for the generated site (default: docs/<name>-<version>/ in each workspace).",
     )
     .option("--clean", "Wipe the output directory before generating.")
-    .option("--private", "Include private members (passes -private to javadoc).")
+    .option("--private", "Document private members too.")
     .option(
       "--link <url>",
       "Cross-link to an external javadoc site. Repeatable.",
-      (value: string, prev: string[]) => prev.concat(value),
-      [] as string[],
+      (value: string, prev: string[] | undefined) => (prev ?? []).concat(value),
     )
     .option(
       "--workspace <names>",
       "Document one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from the default sweep (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
-    .option("--workspaces", "Explicit all-workspaces docs run.")
-    .option("--concurrency <n>", "Cap on workspaces documenting simultaneously.", (raw: string) => {
-      const n = Number.parseInt(raw, 10);
-      if (!Number.isFinite(n) || n < 1) {
-        throw new InvalidArgumentError("--concurrency must be a positive integer");
-      }
-      return n;
-    })
+    .option("--workspaces", "Every workspace, even from inside one.")
+    .addOption(concurrencyOption())
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runDocsCommand({
         output: options.output,
         clean: options.clean === true,
@@ -226,6 +226,7 @@ export function docsCommand(): Command {
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
         concurrency: options.concurrency,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

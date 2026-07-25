@@ -10,7 +10,11 @@ import { type LockfileEntry, readLock } from "../lockfile.ts";
 import { bold, dim, emit, emitErr, log, red } from "../logging.ts";
 import { projectStartDir, resolveWorkspaceContext } from "../workspace.ts";
 
+import { doInstall } from "./install.ts";
+
 export interface AuditOptions {
+  /** Re-download entries that are missing or tampered, then re-verify. */
+  fix?: boolean;
   /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
   cwd?: string;
@@ -53,9 +57,19 @@ export async function doAudit(opts: AuditOptions = {}): Promise<AuditResult> {
   }
 
   const names = Object.keys(lock.entries).sort();
-  const rows: AuditRow[] = [];
-  for (const name of names) {
-    rows.push(await checkOne(name, lock.entries[name]));
+  const audit = async (): Promise<AuditRow[]> => {
+    const out: AuditRow[] = [];
+    for (const name of names) out.push(await checkOne(name, lock.entries[name]));
+    return out;
+  };
+
+  let rows = await audit();
+  if (opts.fix === true && rows.some((r) => r.status !== "ok" && r.status !== "skipped")) {
+    // `install` re-downloads anything absent and replaces bytes that don't
+    // match the lockfile, so it is the repair path for both states.
+    log.step("Re-downloading unverified dependencies…");
+    await doInstall({ project: opts.project, cwd, quiet: true });
+    rows = await audit();
   }
 
   const summary = {
@@ -64,7 +78,9 @@ export async function doAudit(opts: AuditOptions = {}): Promise<AuditResult> {
     missing: rows.filter((r) => r.status === "missing").length,
     skipped: rows.filter((r) => r.status === "skipped").length,
   };
-  const ok = summary.tampered === 0;
+  // "Could not verify" is not "verified": a cold cache (every CI runner)
+  // would otherwise pass this gate having hashed nothing.
+  const ok = summary.tampered === 0 && summary.missing === 0;
   const exitCode: 0 | 1 = ok ? 0 : 1;
 
   const result: AuditResult = { ok, exitCode, rows, summary };
@@ -122,24 +138,31 @@ function emitAuditResult(result: AuditResult): void {
     }
 
     if (missing.length > 0) {
-      log.heading("Not cached");
+      log.heading("Unverified");
       for (const row of missing) {
-        log.step(`${row.name} ${dim("(run pluggy install to populate)")}`);
+        log.step(`${row.name} ${dim("(not cached)")}`);
       }
+      log.info(dim("Run `pluggy audit --fix` to download and verify them."));
     }
 
-    const trailingCounts =
-      `${result.summary.missing > 0 ? `, ${result.summary.missing} not cached` : ""}` +
-      `${result.summary.skipped > 0 ? `, ${result.summary.skipped} skipped (workspace)` : ""}`;
+    const skipped =
+      result.summary.skipped > 0 ? `, ${result.summary.skipped} skipped (workspace)` : "";
     log.info("");
-    if (!result.ok) {
+    if (result.summary.tampered > 0) {
+      const unverified = result.summary.missing > 0 ? `, ${result.summary.missing} unverified` : "";
       log.info(
-        red(`${result.summary.tampered} tampered`) + `, ${result.summary.ok} ok${trailingCounts}`,
+        red(`${result.summary.tampered} tampered`) +
+          `, ${result.summary.ok} verified${unverified}${skipped}`,
       );
-    } else if (result.summary.ok === 0 && result.summary.missing > 0) {
-      log.info(`0 verified; nothing cached yet. Run \`pluggy install\` first.`);
+    } else if (result.summary.missing > 0) {
+      log.info(
+        red(`${result.summary.missing} unverified (not cached)`) +
+          `, ${result.summary.ok} verified${skipped}`,
+      );
+    } else if (result.rows.length === 0) {
+      log.success("no dependencies to verify");
     } else {
-      log.success(`${result.summary.ok} verified${trailingCounts}`);
+      log.success(`${result.summary.ok} verified${skipped}`);
     }
   };
 
@@ -150,8 +173,16 @@ function emitAuditResult(result: AuditResult): void {
 export function auditCommand(): Command {
   return new Command("audit")
     .description("Verify cached dependency jars against pluggy.lock integrity hashes.")
-    .action(async function action(this: Command) {
-      const result = await doAudit({ project: this.optsWithGlobals().project });
+    .option("--fix", "Re-download unverified or tampered jars, then verify again.")
+    .addHelpText(
+      "after",
+      "\nAudit exits 0 only when every locked dependency was hashed and matched. A dependency that isn't cached counts as unverified, not as passing.",
+    )
+    .action(async function action(this: Command, options) {
+      const result = await doAudit({
+        fix: options.fix === true,
+        project: this.optsWithGlobals().project,
+      });
       if (result.exitCode !== 0) process.exit(result.exitCode);
     });
 }

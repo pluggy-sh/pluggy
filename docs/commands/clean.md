@@ -1,20 +1,22 @@
 # `pluggy clean`
 
-Remove build outputs from the selected workspaces. Scope respects the same flags as `build`, `test`, and `docs`.
+Delete generated output from the selected workspaces. The positional target says what to delete; it defaults to `outputs`.
 
-`clean` only touches conventional build artifacts. It never deletes source code, `project.json`, the lockfile, IDE files (`.classpath`, `.project`, `.idea/`), or anything under the user cache. For the user cache, see [`pluggy cache clean`](./cache.md#clean).
+```text
+pluggy clean [target] [options]
+```
 
-## What gets removed
+| Target    | Deletes                                                          |
+| --------- | ---------------------------------------------------------------- |
+| `outputs` | `<workspace>/bin/` build jars. The default.                      |
+| `docs`    | Generated `<workspace>/docs/<name>-<version>/` trees.            |
+| `dev`     | `<workspace>/dev/`, the staged dev server.                       |
+| `all`     | Everything above. Not the cache.                                 |
+| `cache`   | Refuses, and points at [`pluggy cache clean`](./cache.md#clean). |
 
-| Directory                            | Removed?           |
-| ------------------------------------ | ------------------ |
-| `<workspace>/bin/`                   | always             |
-| `<workspace>/docs/<name>-<version>/` | only with `--docs` |
-| `<workspace>/.classpath`             | never              |
-| `<workspace>/.project`               | never              |
-| `<workspace>/.idea/`                 | never              |
-| Outputs written via `--output X`     | never (off-path)   |
-| User cache, lockfile, sources        | never              |
+`clean` never touches source code, `project.json`, the lockfile, or IDE files (`.classpath`, `.project`, `.idea/`). Jars written elsewhere via `pluggy build --output` are off-path and survive too.
+
+The `--clean` flags on `build`, `test`, `javadoc`, and `dev` mean "start this run fresh". They don't delete and stop.
 
 ## Usage
 
@@ -27,19 +29,23 @@ clean removed 3 paths
   › plugin: /repo/plugin/bin
 ```
 
-At the repo root, `clean` sweeps every workspace by default. Inside a workspace, it scopes to that one.
+At the repo root, `clean` sweeps every workspace by default. Inside a workspace, it scopes to that one. With nothing to delete it says so and exits 0:
+
+```text
+$ pluggy clean
+removed: nothing (no outputs present)
+```
 
 ## Flags
 
-| Flag                  | Effect                                                                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `--workspace <names>` | Limit the sweep to one or more workspaces. Repeatable; comma-separated.                                                |
-| `--exclude <names>`   | Subtract one or more workspaces from the default sweep.                                                                |
-| `--workspaces`        | Explicit "every workspace" at the root.                                                                                |
-| `--docs`              | Also remove generated `docs/<name>-<version>/` directories. Anything else under `docs/` is left in place and reported. |
-| `--dry-run`           | Print what would be removed without touching disk.                                                                     |
+| Flag                  | Effect                                                                  |
+| --------------------- | ----------------------------------------------------------------------- |
+| `--workspace <names>` | Limit the sweep to one or more workspaces. Repeatable; comma-separated. |
+| `--exclude <names>`   | Subtract one or more workspaces from the default sweep.                 |
+| `--workspaces`        | Explicit "every workspace" at the root.                                 |
+| `--dry-run`           | Print what would be removed without touching disk.                      |
 
-`--workspace` and `--exclude` share the syntax used by `build`, `test`, and `docs`. See [Workspaces: selection flags](../workspaces.md#selection-flags).
+`--workspace` and `--exclude` share the grammar used by `build`, `test`, `javadoc`, and `run`. See [Workspaces: selection flags](../workspaces.md#selection-flags).
 
 ## Examples
 
@@ -57,21 +63,26 @@ Clean everything except `core`:
 $ pluggy clean --exclude core
 ```
 
-See what would be removed, then run it:
+See what a full sweep would take out, then run it:
 
 ```text
-$ pluggy clean --dry-run
+$ pluggy clean all --dry-run
 clean would remove 3 paths
-  › api: /repo/api/bin
-  › core: /repo/core/bin
-  › plugin: /repo/plugin/bin
-$ pluggy clean
+  › my_plugin: /repo/bin
+  › my_plugin: /repo/docs/my_plugin-1.0.0
+  › my_plugin: /repo/dev
+docs: left 1 entry in place (not generated by `pluggy docs`): /repo/docs/notes
+$ pluggy clean all
 ```
 
-Wipe both build outputs and generated javadocs:
+Only `docs/<name>-<version>/` directories count as generated. Hand-written pages under `docs/` stay put and are reported on the `docs: left …` line, so a project that keeps prose next to its Javadoc doesn't lose it.
+
+Wiping the machine-wide download cache is a different operation and lives on a different command:
 
 ```text
-$ pluggy clean --docs
+$ pluggy clean cache
+error [E_CLEAN_CACHE]: Cleaning the global cache is a separate, machine-wide operation.
+  hint: Run `pluggy cache clean` (it confirms first), or `pluggy cache prune` to evict only stale entries.
 ```
 
 ## JSON envelope
@@ -87,10 +98,11 @@ $ pluggy clean --docs
 }
 ```
 
-In dry-run mode the field is `wouldRemove` instead of `removed`, and `status` is `"dry-run"`.
+In dry-run mode the field is `wouldRemove` instead of `removed`, and `status` is `"dry-run"`. Kept `docs/` entries appear under `skippedDocs` when there are any.
 
 ## See also
 
 - [`pluggy build`](./build.md): the source of `bin/` outputs.
-- [`pluggy docs`](./docs.md): the source of `docs/` outputs.
-- [`pluggy cache`](./cache.md): for the user cache (JDKs, server jars, deps), not `bin/` outputs.
+- [`pluggy javadoc`](./javadoc.md): the source of `docs/` outputs.
+- [`pluggy dev`](./dev.md): the source of the `dev/` directory.
+- [`pluggy cache`](./cache.md): the machine-wide download cache (JDKs, server jars, deps).

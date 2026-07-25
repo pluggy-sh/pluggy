@@ -3,7 +3,7 @@
  * their role, platforms, dep graph position, and built-jar output path.
  *
  * Role is derived: a workspace with `main` is `shipping` (gets loaded by a
- * platform); the rest are `internal` (typically shaded into a sibling or
+ * platform); the rest are `internal` (declared but not buildable as a plugin, so
  * consumed via `workspace:` deps).
  *
  * JSON output ships with `schemaVersion: 1` from day one — CI scripts will
@@ -91,7 +91,8 @@ export async function runWorkspacesCommand(
 
 function renderHuman(listings: WorkspaceListing[]): void {
   if (listings.length === 0) {
-    log.info(dim("No workspaces declared. (Add a `workspaces` array to project.json.)"));
+    log.info("No workspaces declared.");
+    log.info(dim("Create one: pluggy workspace add <name>"));
     return;
   }
 
@@ -137,8 +138,8 @@ function padEnd(s: string, n: number): string {
 }
 
 /** Factory for the `pluggy workspaces` commander command. */
-export function workspacesCommand(): Command {
-  return new Command("workspaces")
+export function workspacesCommand(name = "workspaces"): Command {
+  return new Command(name)
     .description("List the workspaces declared in this project.")
     .action(async function action(this: Command) {
       await runWorkspacesCommand({ project: this.optsWithGlobals().project });

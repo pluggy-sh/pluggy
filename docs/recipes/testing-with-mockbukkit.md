@@ -211,5 +211,5 @@ You don't need `--clean` for normal edit-and-rerun cycles. `javac` overwrites ch
 ## See also
 
 - [`pluggy test`](../commands/test.md): full command reference, including the [mocking-framework hand-off](../commands/test.md#mocking-framework-hand-off) contract.
-- [`project.json` reference](../project-json.md#testdependencies): declaring `testDependencies`.
+- [`project.json` reference](../project-json.md#testdependencies-optional): declaring `testDependencies`.
 - [MockBukkit documentation](https://mockbukkit.org/): upstream docs and API reference.

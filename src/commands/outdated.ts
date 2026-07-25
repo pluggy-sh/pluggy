@@ -28,6 +28,12 @@ export interface OutdatedRow {
   error?: string;
   /** True for entries the user declared directly. */
   topLevel: boolean;
+  /**
+   * Identifier that `pluggy install` accepts for this entry. For maven this is
+   * the full `maven:<group>:<artifact>` coordinate, not the bare lockfile key —
+   * the key alone parses as a Modrinth slug and 404s.
+   */
+  identifier: string;
 }
 
 export interface OutdatedResult {
@@ -82,22 +88,40 @@ async function checkOne(
   const topLevel = entry.declaredBy.length > 0;
   const current = entry.resolvedVersion;
   const sourceKind = entry.source.kind;
+  const identifier = installIdentifier(entry.source, name);
 
   if (sourceKind === "file" || sourceKind === "workspace") {
-    return { name, source: sourceKind, current, diff: "unknown", topLevel };
+    return { name, source: sourceKind, current, diff: "unknown", topLevel, identifier };
   }
 
   try {
     const latest = await latestUpstreamVersion(entry.source, registries, includePrerelease);
     if (latest === undefined) {
-      return { name, source: sourceKind, current, diff: "unknown", topLevel };
+      return { name, source: sourceKind, current, diff: "unknown", topLevel, identifier };
     }
     const diff = classifyDiff(current, latest);
-    return { name, source: sourceKind, current, latest, diff, topLevel };
+    return { name, source: sourceKind, current, latest, diff, topLevel, identifier };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { name, source: sourceKind, current, diff: "error", error: message, topLevel };
+    return {
+      name,
+      source: sourceKind,
+      current,
+      diff: "error",
+      error: message,
+      topLevel,
+      identifier,
+    };
   }
+}
+
+/**
+ * The identifier `pluggy install` accepts for a locked entry. Modrinth entries
+ * are keyed by slug so the lockfile key works; maven entries are keyed by bare
+ * artifactId, which would be re-parsed as a Modrinth slug.
+ */
+function installIdentifier(source: ResolvedSource, name: string): string {
+  return source.kind === "maven" ? `maven:${source.groupId}:${source.artifactId}` : name;
 }
 
 /**
@@ -208,10 +232,32 @@ function emitOutdatedResult(result: OutdatedResult): void {
       }
       log.info("");
       const unchecked = errs.length > 0 ? `, ${errs.length} could not be checked` : "";
+      const entries = stale.length === 1 ? "entry" : "entries";
       log.info(
-        `${result.outdatedCount} top-level outdated, ${stale.length} entries total stale${unchecked}.`,
+        `${result.outdatedCount} top-level outdated, ${stale.length} ${entries} total stale${unchecked}.`,
       );
-      log.info(dim("Update with: pluggy install <name>@<version>"));
+
+      // The old template (`pluggy install <name>@<version>`) produced a command
+      // that 404s for maven rows, whose lockfile key re-parses as a Modrinth
+      // slug. `update` takes the declared name and resolves the source itself.
+      const updatable = stale.filter((r) => r.topLevel && r.latest !== undefined);
+      if (updatable.length > 0) {
+        log.info("");
+        log.info(
+          updatable.length === 1
+            ? `Update with: pluggy update ${updatable[0]?.name}`
+            : `Update all with: pluggy update ${dim("(or name one: pluggy update " + updatable[0]?.name + ")")}`,
+        );
+      }
+      const transitives = stale.filter((r) => !r.topLevel);
+      if (transitives.length > 0) {
+        log.info("");
+        log.info(
+          dim(
+            `${transitives.length} stale ${transitives.length === 1 ? "entry is" : "entries are"} transitive; update the dependency that pulls ${transitives.length === 1 ? "it" : "them"} in.`,
+          ),
+        );
+      }
     },
   );
 }

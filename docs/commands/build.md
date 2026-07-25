@@ -15,10 +15,9 @@ pluggy b     [options]
 | --------------------- | -------------------------------------- | --------------------------------------------------------------------------- |
 | `--output <path>`     | `<workspace>/bin/<name>-<version>.jar` | Output jar destination.                                                     |
 | `--clean`             | off                                    | Wipe the staging directory before building.                                 |
-| `--skip-classpath`    | off                                    | Don't regenerate `.classpath` and `.project` for this build.                |
 | `--workspace <names>` | none                                   | Build one or more workspaces. Repeatable; comma-separated.                  |
 | `--exclude <names>`   | none                                   | Subtract one or more workspaces from the default sweep.                     |
-| `--workspaces`        | off                                    | Explicit all-workspaces build from the root.                                |
+| `--workspaces`        | off                                    | Every workspace, even when run from inside one.                             |
 | `--concurrency <n>`   | `min(cpus, 4)`                         | Cap on workspaces building simultaneously. Use `1` for serial, live output. |
 | `--watch`             | off                                    | After the initial build, rebuild changed workspaces and dependents on save. |
 
@@ -32,7 +31,7 @@ See [Workspaces: selection flags](../workspaces.md#selection-flags) for the shar
 | Inside workspace `X`           | none                    | `X`.                                    |
 | Repo root, workspaces declared | none                    | Every workspace, topologically ordered. |
 | Repo root, workspaces declared | `--workspace A`         | Just `A`.                               |
-| Inside workspace `X`           | `--workspaces`          | **Error**. Only valid at the root.      |
+| Inside workspace `X`           | `--workspaces`          | Builds every workspace.                 |
 | Inside workspace `X`           | `--workspace Y` (Y ≠ X) | **Error**. Run from the root.           |
 
 [Topological order](../glossary.md#topological-order) is driven by `workspace:` dependencies. A sibling's built jar must exist before a workspace that shades it builds. Running from the root handles this for you.
@@ -70,7 +69,7 @@ For each target workspace, pluggy runs the steps below in order. Every step live
 1. **Pick the descriptor.** Check that every declared platform shares the same [descriptor family](../glossary.md#descriptor-family). Errors with "Split them into separate workspaces, one per family." if they don't.
 2. **Stage directory.** Under `<workspace>/.pluggy-build/<hash>/`, where `<hash>` is the first 12 hex chars of `sha256(name \0 version \0 rootDir)`. `--clean` wipes this first.
 3. **Resolve dependencies.** Every declared dep, plus the primary platform's `api()` Maven coordinate. Registries are the platform's own repos first, followed by `project.registries`, with order-preserving dedup.
-4. **Write IDE files.** Writes `.classpath` and `.project` at the project root unless `--skip-classpath` was passed. Failures are logged at debug but don't abort the build.
+4. **Write IDE files.** Writes `.classpath` and `.project` at the project root. Failures are logged at debug but don't abort the build.
 5. **Stage resources.** Copy `project.resources` into the staging dir, and run `.yml`, `.yaml`, `.json`, `.properties`, `.txt`, and `.md` files through the `${project.x}` template substitution.
 6. **Generate the descriptor.** Unless a resource entry already claims the descriptor path (`plugin.yml` and friends), pluggy writes the generated one to the staging dir.
 7. **Compile.** `javac -encoding UTF-8 -d <staging> -cp <classpath> <sources>`. The classpath separator is `:` on POSIX and `;` on Windows, handled by Node's `path.delimiter`.

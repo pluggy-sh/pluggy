@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { initLogging } from "../logging.ts";
-import { doSearch } from "./search.ts";
+import { doSearch, parseSearchLoader } from "./search.ts";
 
 function okJson(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -180,4 +180,30 @@ describe("doSearch", () => {
     expect(parsed.hits[0].slug).toBe("a");
     expect(parsed.total).toBe(1);
   });
+});
+
+describe("parseSearchLoader", () => {
+  test("accepts a Modrinth loader pluggy cannot build for", () => {
+    expect(parseSearchLoader("purpur")).toBe("purpur");
+  });
+
+  test("names the valid loaders for anything else", () => {
+    expect(() => parseSearchLoader("nonsuch")).toThrow(/Available: bukkit, bungeecord/);
+  });
+
+  // Hardcoding the loader list keeps `search` from making an extra request per
+  // invocation; this is the check that it hasn't drifted from upstream.
+  test("the hardcoded loader list matches Modrinth's tag API", async () => {
+    const res = await fetch("https://api.modrinth.com/v2/tag/loader");
+    const tags = (await res.json()) as Array<{
+      name: string;
+      supported_project_types?: string[];
+    }>;
+    const upstream = tags
+      .filter((t) => t.supported_project_types?.includes("plugin") === true)
+      .map((t) => t.name)
+      .sort();
+
+    for (const loader of upstream) expect(parseSearchLoader(loader)).toBe(loader);
+  }, 20_000);
 });

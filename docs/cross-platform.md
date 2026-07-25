@@ -150,6 +150,7 @@ pluggy reads a small set of environment variables. They're all optional.
 | `JAVA_HOME`                | If set and the major matches what the project needs, pluggy uses this JDK instead of its own. |
 | `PLUGGY_HOME`              | Override the install root on POSIX (default `~/.pluggy`).                                     |
 | `PLUGGY_NO_AUTO_INSTALL=1` | Refuse to download a missing JDK. Useful for CI when the cache should be pre-warmed.          |
+| `PLUGGY_CONCURRENCY`       | Default for `--concurrency` on `build`, `test`, `javadoc`, and `run`. A positive integer.     |
 | `PLUGGY_NO_UPDATE_CHECK=1` | Suppress the daily "newer pluggy available" notice on stderr.                                 |
 | `PLUGGY_DEV_NO_EULA=1`     | Don't write `dev/eula.txt`. You accept Mojang's EULA yourself on first launch.                |
 | `PLUGGY_TEMPLATE_REPO`     | `<owner>/<repo>[#<ref>]`. Override the GitHub repo `pluggy init` fetches templates from.      |

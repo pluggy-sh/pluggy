@@ -13,11 +13,13 @@ pluggy rm     [options] <plugin>
 
 ## Flags
 
-| Flag                 | Default | Notes                                         |
-| -------------------- | ------- | --------------------------------------------- |
-| `--keep-file`        | off     | Don't delete the cached jar.                  |
-| `--workspace <name>` | none    | Target a specific workspace.                  |
-| `--workspaces`       | off     | Remove from every workspace that declares it. |
+| Flag                  | Default | Notes                                         |
+| --------------------- | ------- | --------------------------------------------- |
+| `--keep-file`         | off     | Don't delete the cached jar.                  |
+| `--workspace <names>` | none    | Target a specific workspace.                  |
+| `--workspaces`        | off     | Remove from every workspace that declares it. |
+
+A plugin is removed from one workspace, so `--workspace` takes exactly one name even though it parses the [shared repeatable grammar](../workspaces.md#selection-flags). Naming two fails with `E_WORKSPACE_NOT_SINGLE`.
 
 At a multi-workspace root you **must** pass one of `--workspace` or `--workspaces`. `remove` refuses to guess. Running a bare `pluggy remove foo` at the root errors:
 

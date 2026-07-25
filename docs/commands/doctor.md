@@ -107,16 +107,32 @@ Checks
 
 The summary line is always `<n> passed, <n> warned, <n> failed`. The exit code reflects only the failed count.
 
+## Remedies
+
+Every failing check names its fix on the following line. Checks that can be fixed automatically print a command; the rest say what to change and that there is no automatic fix.
+
+```text
+Checks
+  ✖ Java toolchain: no java on PATH
+    → pluggy sdk install temurin@25
+  ! Version compatibility: paper does not publish 26.9
+    → edit compatibility.versions in project.json (no automatic fix)
+```
+
+Under `--json` each check carries the same information as a `remedy` object, so a script can act on it without parsing the rendered line.
+
 ## `--fix` output
 
 `--fix` applies the safe remediations the checks would otherwise just report. It never deletes source code, downloads anything new, or touches the user cache. Today's set:
 
-| Fix id            | What it does                                                                            |
-| ----------------- | --------------------------------------------------------------------------------------- |
-| `lockfile-prune`  | Removes orphan transitive entries from `pluggy.lock`.                                   |
-| `workspace-prune` | Drops `workspaces[]` entries in the root `project.json` that point at a missing folder. |
+| Check id            | What it does                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `lockfile`          | Removes orphan transitive entries from `pluggy.lock`.                                   |
+| `workspace-entries` | Drops `workspaces[]` entries in the root `project.json` that point at a missing folder. |
 
-`workspace-prune` runs before any other check so an unloadable workspace context (caused by a deleted folder) doesn't block the rest of doctor. The applied fixes are reported in a `Fixes applied` block at the bottom of the output.
+`--fix` is driven by the checks themselves: a check whose remedy is marked automatic gets applied, and anything else is left for you. The set above is therefore whatever currently carries an automatic remedy, not a separate hand-maintained list.
+
+`workspace-entries` runs before any other check so an unloadable workspace context (caused by a deleted folder) doesn't block the rest of doctor. The applied fixes are reported in a `Fixes applied` block at the bottom of the output.
 
 ```text
 $ pluggy doctor --fix

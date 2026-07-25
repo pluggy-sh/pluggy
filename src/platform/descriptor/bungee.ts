@@ -1,7 +1,7 @@
 import type { DescriptorSpec } from "../platform.ts";
 
 /**
- * BungeeCord-family descriptor (waterfall, travertine) → `bungee.yml`.
+ * BungeeCord-family descriptor (waterfall) → `bungee.yml`.
  * Uses a singular `author` field; multiple authors are joined with ", ".
  */
 export const bungeeDescriptor: DescriptorSpec = {

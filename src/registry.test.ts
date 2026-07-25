@@ -22,12 +22,21 @@ describe("expandRegistryAlias", () => {
     expect(expandRegistryAlias("http://example.com/maven")).toBe("http://example.com/maven");
   });
 
-  test("returns unknown schemes verbatim", () => {
-    expect(expandRegistryAlias("nexus:my-team/internal")).toBe("nexus:my-team/internal");
+  // Passing an unknown scheme through meant `nexus:my-team/internal` became a
+  // literal registry URL and every lookup against it 404'd, with the bad
+  // registry never named in the failure.
+  test("rejects an unknown scheme instead of passing it through", () => {
+    expect(() => expandRegistryAlias("nexus:my-team/internal")).toThrow(
+      /Unknown registry scheme "nexus:"/,
+    );
   });
 
   test("returns plain strings without a scheme verbatim", () => {
     expect(expandRegistryAlias("repo.example.com")).toBe("repo.example.com");
+  });
+
+  test("leaves host:port forms alone", () => {
+    expect(expandRegistryAlias("repo.example.com:8081/maven")).toBe("repo.example.com:8081/maven");
   });
 });
 

@@ -1,14 +1,17 @@
 import { relative } from "node:path";
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
 import { buildProject, checkPlatformCompile, type BuildResult } from "../build/index.ts";
 import { watchProject } from "../dev/watch.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, log, red } from "../logging.ts";
 import { runWorkspaces } from "../runner.ts";
+
+import { concurrencyOption } from "./parsers.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   topologicalOrder,
@@ -21,7 +24,6 @@ import {
 export interface BuildCommandOptions {
   output?: string;
   clean?: boolean;
-  skipClasspath?: boolean;
   workspace?: string[];
   exclude?: string[];
   workspaces?: boolean;
@@ -36,6 +38,8 @@ export interface BuildCommandOptions {
   /** Debounce interval (ms) for watch-mode file events. Default: 100. */
   watchDebounceMs?: number;
   json?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -82,7 +86,7 @@ interface BuildOneResult {
  */
 export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_BUILD_NO_PROJECT",
@@ -90,7 +94,31 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
     });
   }
 
-  const targets = selectBuildTargets(context, opts);
+  const selected = selectBuildTargets(context, opts);
+
+  // A workspace with no `main` isn't a plugin and can't produce a jar. When
+  // one was named explicitly, let `buildProject` explain why; on a sweep,
+  // skipping it beats failing the run and every workspace downstream of it.
+  const explicit = (opts.workspace?.length ?? 0) > 0;
+  const targets = explicit ? selected : selected.filter((node) => hasMain(node));
+  for (const node of selected) {
+    if (!targets.includes(node)) {
+      log.info(dim(`skipping ${node.name}: no \`main\`, so it produces no plugin jar`));
+    }
+  }
+
+  // Skipping every candidate is not a successful build. Reporting success with
+  // an empty result set told CI the jars were produced.
+  if (targets.length === 0 && selected.length > 0) {
+    throw new UserError(
+      "No workspace produced a jar: none of the selected workspaces has `main`.",
+      {
+        code: "E_BUILD_NOTHING_TO_BUILD",
+        hint: "Give a workspace a `main` class, or name a buildable one with --workspace.",
+        context: { skipped: selected.map((node) => node.name) },
+      },
+    );
+  }
 
   const initial = await buildTargets(targets, opts, cwd);
 
@@ -128,7 +156,6 @@ async function buildTargets(
       const build = await buildProject(target, {
         output: opts.output,
         clean: opts.clean,
-        skipClasspath: opts.skipClasspath,
       });
 
       const extraPlatforms = (target.compatibility?.platforms ?? []).slice(1);
@@ -212,6 +239,10 @@ async function buildTargets(
     results,
   };
   const printSummary = (): void => {
+    if (!anyFailed && targets.length === 1) {
+      log.info(dim("Run it: pluggy dev"));
+      return;
+    }
     if (targets.length <= 1) return;
     log.heading("Summary");
     for (const r of results) {
@@ -356,6 +387,10 @@ export function selectBuildTargets(
   return selectWorkspaceTargets(context, opts, "build");
 }
 
+function hasMain(node: WorkspaceNode): boolean {
+  return typeof node.project.main === "string" && node.project.main.length > 0;
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -367,47 +402,35 @@ export function buildCommand(): Command {
   return new Command("build")
     .alias("b")
     .description("Build the project and output a plugin jar.")
-    .option("--output <path>", "Output jar path.")
+    .option("--output <path>", "Write the jar here instead of bin/<name>-<version>.jar.")
     .option("--clean", "Wipe build cache before building.")
-    .option("--skip-classpath", "Don't regenerate the Eclipse .classpath file.")
     .option(
       "--workspace <names>",
       "Build one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from an all-workspaces build (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
-    .option("--workspaces", "Explicit all-workspaces build.")
-    .option(
-      "--concurrency <n>",
-      "Cap on workspaces building simultaneously. Use 1 for serial output.",
-      (raw: string) => {
-        const n = Number.parseInt(raw, 10);
-        if (!Number.isFinite(n) || n < 1) {
-          throw new InvalidArgumentError("--concurrency must be a positive integer");
-        }
-        return n;
-      },
-    )
+    .option("--workspaces", "Every workspace, even from inside one.")
+    .addOption(concurrencyOption())
     .option(
       "--watch",
       "After the initial build, watch source and rebuild affected workspaces on change.",
     )
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runBuildCommand({
         output: options.output,
         clean: options.clean === true,
-        skipClasspath: options.skipClasspath === true,
         workspace: options.workspace as string[],
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
         concurrency: options.concurrency,
         watch: options.watch === true,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

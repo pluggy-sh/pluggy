@@ -144,84 +144,6 @@ describe("doList: project resolution", () => {
   });
 });
 
-describe("doList: --outdated lookups", () => {
-  let rootDir: string;
-
-  beforeEach(async () => {
-    rootDir = await mkdtemp(join(tmpdir(), "pluggy-list-outdated-"));
-  });
-  afterEach(async () => {
-    await rm(rootDir, { recursive: true, force: true });
-  });
-
-  test("maven-sourced deps are checked against registry metadata (same lookup as `pluggy outdated`)", async () => {
-    await writeFile(
-      join(rootDir, "project.json"),
-      JSON.stringify({
-        name: "my_plugin",
-        version: "1.0.0",
-        main: "com.example.Plugin",
-        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
-        dependencies: { bar: { source: "maven:com.example:bar", version: "1.0.0" } },
-      }),
-    );
-    await writeFile(
-      join(rootDir, "pluggy.lock"),
-      JSON.stringify({
-        version: 2,
-        entries: {
-          bar: {
-            source: { kind: "maven", groupId: "com.example", artifactId: "bar", version: "1.0.0" },
-            resolvedVersion: "1.0.0",
-            integrity: "sha256-bar",
-            declaredBy: ["my_plugin"],
-          },
-        },
-      }),
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL): Promise<Response> => {
-        if (String(url).includes("com/example/bar/maven-metadata.xml")) {
-          return new Response(
-            "<metadata><versioning><release>2.0.0</release></versioning></metadata>",
-            { status: 200 },
-          );
-        }
-        return new Response(null, { status: 404, statusText: "Not Found" });
-      }),
-    );
-
-    const result = await doList({ cwd: rootDir, outdated: true });
-    expect(result.deps).toHaveLength(1);
-    expect(result.deps[0].name).toBe("bar");
-    expect(result.deps[0].latestVersion).toBe("2.0.0");
-    expect(result.deps[0].outdated).toBe(true);
-  });
-
-  test("a failed Modrinth lookup is surfaced via lookupError, not swallowed", async () => {
-    await writeFile(
-      join(rootDir, "project.json"),
-      JSON.stringify({
-        name: "my_plugin",
-        version: "1.0.0",
-        main: "com.example.Plugin",
-        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
-        dependencies: { worldedit: "7.3.15" },
-      }),
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 500, statusText: "Internal Server Error" })),
-    );
-
-    const result = await doList({ cwd: rootDir, outdated: true });
-    expect(result.deps).toHaveLength(1);
-    expect(result.deps[0].lookupError).toMatch(/500/);
-    expect(result.deps[0].outdated).toBeUndefined();
-  });
-});
-
 describe("doList: root with workspaces", () => {
   let rootDir: string;
 
@@ -304,11 +226,6 @@ describe("doList: flag placeholders", () => {
   });
   afterEach(async () => {
     await rm(rootDir, { recursive: true, force: true });
-  });
-
-  test("--outdated does not crash and returns the same deps", async () => {
-    const result = await doList({ cwd: rootDir, outdated: true });
-    expect(result.deps).toHaveLength(1);
   });
 
   test("--tree does not crash and returns the same deps", async () => {

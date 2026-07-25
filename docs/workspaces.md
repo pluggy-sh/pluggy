@@ -78,7 +78,7 @@ Everything else (`name`, `version`, `main`, `shading`, `resources`, `dev`) is wo
 
 Two boolean fields let a workspace opt out of the default sweep for specific commands:
 
-- `"docs": false` — `pluggy docs` at the root skips this workspace.
+- `"docs": false` — `pluggy javadoc` at the root skips this workspace.
 - `"test": false` — `pluggy test` at the root skips this workspace.
 
 Explicit `--workspace <name>` overrides the flag. Internal workspaces (api, core, shared libraries that have nothing meaningful to document or test) are the typical use case.
@@ -87,7 +87,7 @@ Explicit `--workspace <name>` overrides the flag. Internal workspaces (api, core
 
 ## Selection flags
 
-`build`, `test`, `docs`, `clean`, and `run` share the same workspace selection grammar:
+Every command that takes `--workspace` parses it the same way:
 
 | Flag                  | Effect                                                                 |
 | --------------------- | ---------------------------------------------------------------------- |
@@ -96,6 +96,14 @@ Explicit `--workspace <name>` overrides the flag. Internal workspaces (api, core
 | `--workspaces`        | Explicit "every workspace" at the root.                                |
 
 `--workspace api,core` and `--workspace api --workspace core` produce the same selection. The list is deduped while preserving first-occurrence order.
+
+The sweep commands (`build`, `test`, `javadoc`, `clean`, `run`) act on the whole selection. `install`, `remove`, `update`, `list`, and `dev` act on exactly one workspace and say so rather than guessing:
+
+```text
+$ pluggy list --workspace api,core
+error [E_WORKSPACE_NOT_SINGLE]: list works on one workspace, but 2 were selected (api, core).
+  hint: Use --workspaces for the aggregated view. Pick one: --workspace api
+```
 
 The conflict matrix is enforced up front:
 
@@ -204,9 +212,9 @@ Cycles throw from `topologicalOrder`. Break them by extracting a third workspace
 | ------------------------------------ | --------------------------------------------------------------------- |
 | Scaffold a multi-module repo         | `pluggy init --template multi-module --name my-plugin`                |
 | Scaffold a multi-platform repo       | `pluggy init --template multi-platform --name my-plugin`              |
-| List workspaces with role and output | `pluggy workspaces`                                                   |
-| Render the workspace dep graph       | `pluggy graph` (or `pluggy graph --mermaid` to paste into docs)       |
-| Inspect one workspace's inheritance  | `pluggy explain core`                                                 |
+| List workspaces with role and output | `pluggy workspace list` (or bare `pluggy workspace`)                  |
+| Render the workspace dep graph       | `pluggy workspace graph --format mermaid` to paste into docs          |
+| Inspect one workspace's inheritance  | `pluggy why core`                                                     |
 | Add a workspace                      | `pluggy workspace add core --depends api`                             |
 | Remove a workspace                   | `pluggy workspace remove core` (add `--delete` to wipe files)         |
 | Rename a workspace                   | `pluggy workspace rename api shared`                                  |
@@ -265,10 +273,8 @@ build: project "mixed" declares platforms from different descriptor families ("p
 
 ## See also
 
-- [`pluggy workspaces`](./commands/workspaces.md): list every workspace with role, platforms, and output path.
-- [`pluggy workspace`](./commands/workspace.md): add, remove, and rename workspaces.
-- [`pluggy graph`](./commands/graph.md): render the workspace dependency graph.
-- [`pluggy explain`](./commands/explain.md): show one workspace's post-inheritance view.
+- [`pluggy workspace`](./commands/workspace.md): list, add, remove, rename, and graph the workspaces.
+- [`pluggy why`](./commands/why.md): one workspace's post-inheritance view, field by field.
 - [`pluggy build`](./commands/build.md): scope rules, topological ordering, parallel execution, watch mode.
 - [`pluggy clean`](./commands/clean.md): sweep `bin/` outputs.
 - [`pluggy run`](./commands/run.md): named scripts across workspaces.

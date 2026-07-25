@@ -82,7 +82,7 @@ describe("doInstall: no plugin argument", () => {
     expect(lock?.entries.worldedit.declaredBy).toEqual(["demo"]);
   });
 
-  test("standalone, fresh lockfile, no --force → no-op skip", async () => {
+  test("fresh lockfile but uncached jar → resolver runs", async () => {
     await writeFile(
       join(dir, "project.json"),
       JSON.stringify({
@@ -112,10 +112,18 @@ describe("doInstall: no plugin argument", () => {
       )}\n`,
     );
 
+    mockedResolveDependency.mockImplementation(async (source) =>
+      makeResolved({ source, integrity: "sha256-abc" }),
+    );
+
     const result = await doInstall({ cwd: dir });
-    expect(result.installed).toEqual([]);
-    expect(result.skipped).toEqual(["worldedit"]);
-    expect(mockedResolveDependency).not.toHaveBeenCalled();
+
+    // The lockfile matches project.json, but the jar it points at isn't in the
+    // cache. That used to count as "fresh; nothing to install", so a fresh
+    // clone downloaded nothing and `pluggy audit --fix` could never heal the
+    // entries it had just flagged. An absent jar is drift.
+    expect(result.installed).toEqual(["worldedit"]);
+    expect(mockedResolveDependency).toHaveBeenCalled();
   });
 
   test("dirty lockfile → resolver runs for drifted names only", async () => {

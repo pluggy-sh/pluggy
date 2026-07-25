@@ -24,10 +24,13 @@ import { Command, InvalidArgumentError } from "commander";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces, type RunResult } from "../runner.ts";
+
+import { concurrencyOption } from "./parsers.ts";
 import { getCachedJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
 import { replace } from "../template.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
@@ -42,6 +45,8 @@ export interface RunCommandOptions {
   exclude?: string[];
   workspaces?: boolean;
   concurrency?: number;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
 }
 
@@ -68,7 +73,7 @@ interface RunOneResult {
 
 export async function runRunCommand(opts: RunCommandOptions): Promise<RunCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_RUN_NO_PROJECT",
@@ -204,8 +209,10 @@ function listScripts(context: ReturnType<typeof resolveWorkspaceContext>): RunCo
   };
   emit(result as unknown as Record<string, unknown>, () => {
     if (scripts.length === 0) {
-      log.info(dim("No scripts defined. Add a `scripts` block to project.json."));
-      log.info(dim("To start a dev server, use `pluggy dev`."));
+      log.info("No scripts defined.");
+      log.info(
+        dim('Add a `scripts` block to project.json, e.g. {"scripts": {"fmt": "java -version"}}'),
+      );
       return;
     }
     log.heading("Available scripts");
@@ -312,7 +319,7 @@ export function runCommand(): Command {
     .description("Invoke a script defined under project.scripts across the selected workspaces.")
     .addHelpText(
       "after",
-      '\nScripts run without a shell: pipes, `&&`, and redirection are not supported. Put multi-step work in a script file and reference it (e.g. "deploy": "node scripts/deploy.mjs").\nTo start a dev server, use `pluggy dev`.',
+      '\nScripts run without a shell: pipes, `&&`, and redirection are not supported. Put multi-step work in a script file and reference it (e.g. "deploy": "node scripts/deploy.mjs").',
     )
     .argument("[name]", "Script name. Omit to list available scripts.")
     .argument(
@@ -323,28 +330,21 @@ export function runCommand(): Command {
       "--workspace <names>",
       "Run in one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from an all-workspaces run (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
-    .option("--workspaces", "Explicit all-workspaces run.")
-    .option("--concurrency <n>", "Cap on workspaces running simultaneously.", (raw: string) => {
-      const n = Number.parseInt(raw, 10);
-      if (!Number.isFinite(n) || n < 1) {
-        throw new InvalidArgumentError("--concurrency must be a positive integer");
-      }
-      return n;
-    })
+    .option("--workspaces", "Every workspace, even from inside one.")
+    .addOption(concurrencyOption())
     .action(async function action(
       this: Command,
       name: string | undefined,
       extraArgs: string[],
       options,
     ) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runRunCommand({
         scriptName: name,
         extraArgs,
@@ -352,6 +352,7 @@ export function runCommand(): Command {
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
         concurrency: options.concurrency,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);

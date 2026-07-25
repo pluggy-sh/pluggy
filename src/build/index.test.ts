@@ -14,6 +14,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 import type { ResolvedDependency } from "../resolver/index.ts";
 import type { ResolvedProject } from "../project.ts";
 
+vi.mock("../project.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../project.ts")>();
+  // The platform classpath is memoised under the real user cache. Without
+  // redirecting it the pipeline test short-circuits on whatever the developer
+  // (or a warm CI cache) happens to have resolved for this MC version, and the
+  // `resolveMaven` mock below is never reached.
+  return { ...actual, getCachePath: () => join(tmpdir(), "pluggy-test-cache-build-index") };
+});
+
 vi.mock("../resolver/index.ts", () => ({
   resolveDependency: vi.fn(),
 }));

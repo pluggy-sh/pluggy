@@ -11,12 +11,15 @@ pluggy ls   [options]
 
 ## Flags
 
-| Flag                 | Default | Notes                                                          |
-| -------------------- | ------- | -------------------------------------------------------------- |
-| `--tree`             | off     | Draw a dependency tree with transitives (from the lockfile).   |
-| `--outdated`         | off     | Only show Modrinth deps with a newer stable version available. |
-| `--workspace <name>` | none    | Show one specific workspace.                                   |
-| `--workspaces`       | off     | Aggregate across every workspace.                              |
+| Flag                  | Default | Notes                                                        |
+| --------------------- | ------- | ------------------------------------------------------------ |
+| `--tree`              | off     | Draw a dependency tree with transitives (from the lockfile). |
+| `--workspace <names>` | none    | Show one specific workspace.                                 |
+| `--workspaces`        | off     | Aggregate across every workspace.                            |
+
+`list` reads one workspace at a time. `--workspace` accepts the [shared repeatable grammar](../workspaces.md#selection-flags), but naming more than one workspace fails with `E_WORKSPACE_NOT_SINGLE`; use `--workspaces` for the aggregated view.
+
+For "which of these have a newer version upstream?", run [`pluggy outdated`](./outdated.md).
 
 ### Scope rules
 
@@ -30,10 +33,6 @@ pluggy ls   [options]
 
 When aggregating across workspaces, dependency entries are deduplicated by
 name and the `declaredBy` field lists every workspace that declared them.
-
-### `--outdated`
-
-For each Modrinth-sourced dep, pluggy fetches the latest stable version and compares it against the locked `resolvedVersion`. Results are filtered down to only the outdated entries. Non-Modrinth deps (Maven, file, workspace) have `latestVersion: null` and never appear in the filtered list. Network failures degrade to "un-annotated" so the dep doesn't become a false positive.
 
 ## Human output
 
@@ -56,30 +55,17 @@ registries:
 standalone: my_plugin
 
 dependencies:
-  ├── worldedit  @7.3.15 → 7.3.15  modrinth:worldedit
   └── adventure-api  @4.17.0 → 4.17.0  maven:net.kyori:adventure-api
-      ├── adventure-key  @4.17.0 → 4.17.0  maven:net.kyori:adventure-key
-      └── examination-api  @1.3.0 → 1.3.0  maven:net.kyori:examination-api
+      └── net.kyori:adventure-key  @4.17.0 → 4.17.0  maven:net.kyori:adventure-key
+          ├── net.kyori:examination-api  @1.3.0 → 1.3.0  maven:net.kyori:examination-api
+          │   └── org.jetbrains:annotations  @22.0.0 → 22.0.0  maven:org.jetbrains:annotations
+          └── net.kyori:examination-string  @1.3.0 → 1.3.0  maven:net.kyori:examination-string
 
 registries:
-  └── https://repo.papermc.io/repository/maven-public/
+  └── https://repo1.maven.org/maven2/
 ```
 
 Transitives are sourced from the lockfile. They're only populated for Maven dependencies (other kinds have no transitive closure).
-
-### `--outdated`
-
-```text
-standalone: my_plugin
-
-outdated dependencies:
-  worldedit  declared: 7.3.15  resolved: 7.3.15  → 7.4.0  modrinth:worldedit
-
-registries:
-  https://repo.papermc.io/repository/maven-public/
-```
-
-When nothing is outdated, you get `(everything is up to date)`.
 
 ## JSON output
 
@@ -108,21 +94,17 @@ When nothing is outdated, you get `(everything is up to date)`.
 Registry `credentials` never appear in the output. Authentication presence
 is signalled by the `authenticated` boolean.
 
-Under `--outdated`, each `deps[]` entry additionally carries:
-
-- `latestVersion`: the newest stable version from the dep's registry (Modrinth or Maven), or `null` when the lookup failed.
-- `outdated`: `true` only for entries where `latestVersion` is known and is newer than the current version.
-- `lookupError`: present when the latest-version lookup failed. The human output prints these as warnings instead of counting the dep as up to date.
-
 ## Error cases
 
-| Trigger                     | Message                                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------------------- |
-| Not inside a pluggy project | `No pluggy project found. Run this from inside a project directory.` (`E_LIST_NO_PROJECT`, exit 2) |
-| Unknown `--workspace` name  | `workspace not found: "<n>". known workspaces: ...`                                                |
+| Trigger                          | Message                                                                                            |
+| -------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Not inside a pluggy project      | `No pluggy project found. Run this from inside a project directory.` (`E_LIST_NO_PROJECT`, exit 2) |
+| Unknown `--workspace` name       | `workspace not found: "<n>". known workspaces: ...`                                                |
+| More than one `--workspace` name | `list works on one workspace, but 2 were selected (api, core).` (`E_WORKSPACE_NOT_SINGLE`, exit 2) |
 
 ## See also
 
 - [Dependencies](../dependencies.md#lockfile): what the lockfile fields mean.
 - [`pluggy install`](./install.md): add or refresh entries.
+- [`pluggy outdated`](./outdated.md): which locked deps have a newer upstream version.
 - [`pluggy info`](./info.md): richer metadata for one slug.

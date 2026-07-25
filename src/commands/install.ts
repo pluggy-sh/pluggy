@@ -20,7 +20,13 @@ import {
 import { parseIdentifier, parseSource, stringifySource } from "../source.ts";
 import type { ResolvedSource } from "../source.ts";
 
-import { resolveScope, type ResolvedScope, type ScopeTarget } from "../workspace.ts";
+import {
+  resolveScope,
+  singleWorkspace,
+  workspaceListOption,
+  type ResolvedScope,
+  type ScopeTarget,
+} from "../workspace.ts";
 
 import { buildResolveContext, canonicalizeDeclared, collectDeclared } from "./context.ts";
 
@@ -31,8 +37,18 @@ export interface InstallOptions {
   beta?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   project?: string;
   cwd?: string;
+  /** Suppress the success line so a calling command can render its own. */
+  quiet?: boolean;
+  /**
+   * Write the dependency under this key instead of the one derived from the
+   * identifier. `update` needs it: a long-form entry may be keyed differently
+   * from its slug, and resolving by slug would otherwise add a second entry
+   * beside the one being updated.
+   */
+  depName?: string;
 }
 
 export interface InstallResult {
@@ -52,6 +68,7 @@ export async function doInstall(opts: InstallOptions): Promise<InstallResult> {
     cwd: opts.cwd,
     workspace: opts.workspace,
     workspaces: opts.workspaces,
+    exclude: opts.exclude,
     requireExplicitAtRoot: false,
     commandName: "install",
   });
@@ -196,7 +213,7 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
   const resolveCtx = buildResolveContext(scope.context, { beta: opts.beta, force: opts.force });
   const resolved = await resolveDependency(identifier, resolveCtx);
 
-  const depName = pickDepName(identifier);
+  const depName = opts.depName ?? pickDepName(identifier);
   await writeDependencyToProject(target, depName, {
     source: stringifySource(resolved.source),
     version: resolved.source.version,
@@ -237,9 +254,8 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
  * cache was poisoned, manually replaced, or partially written. Install
  * should re-resolve those rather than serve tampered bytes.
  *
- * Entries whose jar isn't in the cache yet are silently skipped (build/dev
- * will populate the cache via the resolver later); a present-but-corrupt
- * jar is the only signal worth treating as drift.
+ * A jar that is absent counts as drift too, not just one whose bytes differ:
+ * treating "not cached" as clean made a fresh clone install nothing.
  */
 async function verifyCachedIntegrity(
   byName: Map<string, { source: ReturnType<typeof parseSource>; declaredBy: string[] }>,
@@ -251,7 +267,14 @@ async function verifyCachedIntegrity(
     if (entry === undefined) continue;
     const jarPath = cachedJarPathForEntry(entry);
     if (jarPath === undefined) continue;
-    if (!(await fileExists(jarPath))) continue;
+    // A jar that isn't cached is drift too. Skipping it meant `pluggy install`
+    // reported "lockfile is fresh; nothing to install" against an empty cache
+    // — so a fresh clone downloaded nothing, and `pluggy audit --fix` could
+    // never heal the entries it had just reported as unverified.
+    if (!(await fileExists(jarPath))) {
+      drift.push(name);
+      continue;
+    }
 
     const bytes = await readFile(jarPath);
     const actual = `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
@@ -397,6 +420,7 @@ function emitInstallResult(
   result: InstallResult,
   human?: { message?: string },
 ): void {
+  if (_opts.quiet === true) return;
   emit({ status: "success", installed: result.installed, skipped: result.skipped }, () => {
     if (human?.message !== undefined) {
       log.info(human.message);
@@ -425,13 +449,18 @@ function emitInstallResult(
 /** Factory for the `pluggy install` commander command. */
 export function installCommand(): Command {
   return new Command("install")
-    .aliases(["i", "add"])
+    .alias("i")
     .description("Install project dependencies or a specific plugin.")
     .argument("[plugin]", "Plugin identifier. Modrinth slug, local .jar, or maven: coordinate.")
     .option("--force", "Force dependency install (override compatibility checks).")
-    .option("--beta", "Include pre-release versions during Modrinth resolution.")
-    .option("--workspace <name>", "Target a specific workspace.")
+    .option("--beta", "Include pre-release versions.")
+    .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Run across all workspaces explicitly.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces install (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .addHelpText(
       "after",
       `\nExamples:\n  $ pluggy install\n  $ pluggy install essentialsx@2.21.1\n  $ pluggy install ./libs/essentialsx-2.21.1.jar\n  $ pluggy install maven:com.example:my-plugin@1.0.0`,
@@ -442,8 +471,13 @@ export function installCommand(): Command {
         plugin,
         force: options.force,
         beta: options.beta,
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "install",
+          "A plugin is installed into one workspace.",
+        ),
         workspaces: options.workspaces,
+        exclude: options.exclude as string[] | undefined,
         project: globalOpts.project,
       });
     });

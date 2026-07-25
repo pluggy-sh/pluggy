@@ -270,7 +270,55 @@ describe("doOutdated", () => {
 
       await doOutdated({ cwd: rootDir });
 
-      expect(stdoutLines.join("\n")).toContain("Update with: pluggy install <name>@<version>");
+      expect(stdoutLines.join("\n")).toContain("pluggy update stale");
+    });
+
+    // The old hint was a template, which produced a command that 404s for
+    // maven rows: the lockfile key is the bare artifactId, and `install`
+    // re-parses that as a Modrinth slug.
+    test("maven rows are hinted through update, not a 404-ing install command", async () => {
+      await writeProject();
+      await writeLockfile({
+        "adventure-api": {
+          source: {
+            kind: "maven",
+            groupId: "net.kyori",
+            artifactId: "adventure-api",
+            version: "4.17.0",
+          },
+          resolvedVersion: "4.17.0",
+          integrity: "sha256-x",
+          declaredBy: ["my-plugin"],
+        },
+      });
+      vi.mocked(getLatestMavenVersion).mockResolvedValue("4.22.0");
+
+      await doOutdated({ cwd: rootDir });
+
+      const out = stdoutLines.join("\n");
+      // `update` takes the declared name and resolves the source itself, so
+      // the maven-key trap that made `install adventure-api@…` 404 is gone.
+      expect(out).toContain("pluggy update adventure-api");
+      expect(out).not.toContain("pluggy install");
+    });
+
+    test("transitive rows are not hinted as directly installable", async () => {
+      await writeProject();
+      await writeLockfile({
+        buried: {
+          source: { kind: "modrinth", slug: "buried", version: "1.0.0" },
+          resolvedVersion: "1.0.0",
+          integrity: "sha256-x",
+          declaredBy: [],
+        },
+      });
+      vi.mocked(getLatestModrinthVersion).mockResolvedValue("2.0.0");
+
+      await doOutdated({ cwd: rootDir });
+
+      const out = stdoutLines.join("\n");
+      expect(out).not.toContain("pluggy update buried");
+      expect(out).toContain("transitive; update the dependency that pulls it in.");
     });
   });
 });

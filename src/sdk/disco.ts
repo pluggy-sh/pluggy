@@ -61,6 +61,76 @@ export interface ResolveJdkOptions {
   arch?: DiscoArch;
 }
 
+/** One installable major for a distribution on a given host. */
+export interface AvailableRelease {
+  major: number;
+  /** Latest GA build Disco publishes for that major, e.g. "21.0.11+10". */
+  fullVersion: string;
+}
+
+/**
+ * Every GA major a distribution publishes for the host, newest first.
+ *
+ * Without this there was no way to answer "which versions can I install?" —
+ * the only affordance was guessing a major and reading the failure.
+ */
+export async function listAvailableReleases(
+  distribution: string,
+  opts: { os?: DiscoOs; arch?: DiscoArch } = {},
+): Promise<AvailableRelease[]> {
+  const target =
+    opts.os !== undefined && opts.arch !== undefined
+      ? { os: opts.os, arch: opts.arch }
+      : targetForHost();
+  const archiveType: DiscoArchiveType = target.os === "windows" ? "zip" : "tar.gz";
+
+  const url = new URL(`${DISCO_BASE}/packages`);
+  url.searchParams.set("distribution", distribution);
+  url.searchParams.set("package_type", "jdk");
+  url.searchParams.set("operating_system", target.os);
+  url.searchParams.set("architecture", target.arch);
+  url.searchParams.set("archive_type", archiveType);
+  // `available` yields one row per major (the newest GA build of each), which
+  // is exactly the "what can I install" listing. `per_version` 400s when no
+  // concrete version is supplied.
+  url.searchParams.set("latest", "available");
+  url.searchParams.set("javafx_bundled", "false");
+  url.searchParams.set("directly_downloadable", "true");
+  url.searchParams.set("release_status", "ga");
+
+  const data = await fetchJson(url);
+  const items = (data as DiscoListResponse).result ?? [];
+
+  const byMajor = new Map<number, string>();
+  for (const item of items) {
+    const major = item.major_version;
+    if (typeof major !== "number") continue;
+    const version = item.java_version ?? String(major);
+    const existing = byMajor.get(major);
+    if (existing === undefined || version > existing) byMajor.set(major, version);
+  }
+
+  return [...byMajor.entries()]
+    .map(([major, fullVersion]) => ({ major, fullVersion }))
+    .sort((a, b) => b.major - a.major);
+}
+
+/** Name the majors that do exist, so the error carries its own fix. */
+async function availabilityHint(
+  distribution: string,
+  target: { os: DiscoOs; arch: DiscoArch },
+): Promise<string> {
+  try {
+    const releases = await listAvailableReleases(distribution, target);
+    if (releases.length === 0) {
+      return `${distribution} publishes nothing for this host. Run \`pluggy sdk info\` for one that does.`;
+    }
+    return `Available: ${releases.map((r) => r.major).join(", ")}. See \`pluggy sdk info ${distribution}\`.`;
+  } catch {
+    return `Run \`pluggy sdk info ${distribution}\` to see what's available.`;
+  }
+}
+
 /**
  * Resolve a single Disco package matching the requested major/distribution
  * for the given (or detected) host. Picks the latest GA build available.
@@ -88,14 +158,24 @@ export async function resolveJdk(opts: ResolveJdkOptions): Promise<JdkSpec> {
   url.searchParams.set("directly_downloadable", "true");
   url.searchParams.set("release_status", "ga");
 
-  const data = await fetchJson(url);
-  const items = (data as DiscoListResponse).result ?? [];
+  // Disco answers an unpublished major with either an empty result or a 400
+  // depending on how far off it is. Both mean the same thing to a user, so
+  // both end up at the same message — which names the majors that do exist,
+  // paid for with one extra request on the failure path only.
+  let items: DiscoPackage[];
+  try {
+    const data = await fetchJson(url);
+    items = (data as DiscoListResponse).result ?? [];
+  } catch (err) {
+    if ((err as { code?: string }).code !== "E_DISCO_BAD_QUERY") throw err;
+    items = [];
+  }
   if (items.length === 0) {
     throw new RuntimeError(
-      `No ${distribution} JDK ${opts.major} (${target.os}/${target.arch}, ${archiveType}) available`,
+      `${distribution} has no Java ${opts.major} for ${target.os}/${target.arch}`,
       {
         code: "E_DISCO_NO_MATCH",
-        hint: "Try a different distribution or check https://api.foojay.io/disco/v3.0/distributions.",
+        hint: await availabilityHint(distribution, target),
         context: {
           distribution,
           major: opts.major,
@@ -249,11 +329,22 @@ async function fetchJson(url: URL): Promise<unknown> {
       headers: { accept: "application/json" },
     });
     if (!res.ok) {
-      throw new RuntimeError(`Disco API ${res.status} ${res.statusText}: ${url.toString()}`, {
-        code: "E_DISCO_HTTP",
-        hint: "Check connectivity to https://api.foojay.io and retry.",
-        context: { status: res.status, statusText: res.statusText, url: url.toString() },
-      });
+      // A 4xx means the query was wrong — almost always a major or
+      // distribution the user asked for that doesn't exist. Blaming the
+      // network for it sent people to check their connection over a typo.
+      const clientError = res.status >= 400 && res.status < 500;
+      throw new RuntimeError(
+        clientError
+          ? `Disco rejected the query for this JDK (${res.status} ${res.statusText})`
+          : `Disco API ${res.status} ${res.statusText}`,
+        {
+          code: clientError ? "E_DISCO_BAD_QUERY" : "E_DISCO_HTTP",
+          hint: clientError
+            ? "Check the major and distribution against `pluggy sdk info`."
+            : "Check connectivity to https://api.foojay.io and retry.",
+          context: { status: res.status, statusText: res.statusText, url: url.toString() },
+        },
+      );
     }
     return await res.json();
   } finally {

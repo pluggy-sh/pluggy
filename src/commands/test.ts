@@ -5,11 +5,14 @@ import { Command, InvalidArgumentError } from "commander";
 import { runTests, type TestRunOutcome } from "../test/index.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, green, log, red, yellow } from "../logging.ts";
+
+import { concurrencyOption, mcVersionListOption, platformListOption } from "./parsers.ts";
 import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import { runWorkspaces } from "../runner.ts";
 import type { TestCase } from "../test/runner.ts";
 import {
+  projectStartDir,
   resolveWorkspaceContext,
   selectWorkspaceTargets,
   workspaceListOption,
@@ -24,6 +27,8 @@ export interface TestCommandOptions {
   workspace?: string[];
   exclude?: string[];
   workspaces?: boolean;
+  /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
+  project?: string;
   cwd?: string;
   /** Narrow the matrix to one or more MC versions. Empty = no filter. */
   mcVersions?: string[];
@@ -98,7 +103,7 @@ interface WorkspaceTestOutcome {
  */
 export async function runTestCommand(opts: TestCommandOptions): Promise<TestCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
-  const context = resolveWorkspaceContext(cwd);
+  const context = resolveWorkspaceContext(projectStartDir(opts.project, cwd));
   if (context === undefined) {
     throw new UserError("No pluggy project found. Run this from inside a project directory.", {
       code: "E_TEST_NO_PROJECT",
@@ -556,15 +561,6 @@ function renderHumanResult(
   log.info(`    ${parts.join(", ")}`);
 }
 
-function parseList(value: string, previous: string[] | undefined): string[] {
-  const acc = previous ?? [];
-  for (const part of value.split(",")) {
-    const trimmed = part.trim();
-    if (trimmed.length > 0) acc.push(trimmed);
-  }
-  return acc;
-}
-
 /** Factory for the `pluggy test` commander command. */
 export function testCommand(): Command {
   return new Command("test")
@@ -572,7 +568,7 @@ export function testCommand(): Command {
     .description("Compile and run JUnit tests under test/.")
     .addHelpText(
       "after",
-      "\nTest stdout (System.out.println) is not shown: results are re-rendered from the JUnit XML reports. Put diagnostics in assertion messages instead.",
+      "\nTest stdout is not shown. Put diagnostics in assertion messages instead.",
     )
     .option(
       "--filter <pattern>",
@@ -584,37 +580,26 @@ export function testCommand(): Command {
       "--workspace <names>",
       "Test one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from an all-workspaces test run (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
-    .option("--workspaces", "Explicit all-workspaces test.")
+    .option("--workspaces", "Every workspace, even from inside one.")
     .option(
-      "--mc-version <version>",
-      "Narrow the matrix to one MC version (repeatable, comma-separated).",
-      parseList,
-    )
-    .option(
-      "--platform <id>",
-      "Narrow the matrix to one platform id (repeatable, comma-separated).",
-      parseList,
+      "--mc-version <versions>",
+      "Narrow the matrix to these MC versions (repeatable; comma-separated).",
+      mcVersionListOption,
     )
     .option(
-      "--concurrency <n>",
-      "Cap on workspaces running simultaneously. Ignored under --fail-fast.",
-      (raw: string) => {
-        const n = Number.parseInt(raw, 10);
-        if (!Number.isFinite(n) || n < 1) {
-          throw new InvalidArgumentError("--concurrency must be a positive integer");
-        }
-        return n;
-      },
+      "--platform <ids>",
+      "Narrow the matrix to these platforms (repeatable; comma-separated).",
+      platformListOption,
     )
+    .addOption(concurrencyOption())
     .action(async function action(this: Command, options) {
+      const globalOpts = this.optsWithGlobals();
       const result = await runTestCommand({
         filter: options.filter,
         failFast: options.failFast === true,
@@ -625,6 +610,7 @@ export function testCommand(): Command {
         mcVersions: options.mcVersion,
         platforms: options.platform,
         concurrency: options.concurrency,
+        project: globalOpts.project,
       });
       if (result.exitCode !== 0) {
         process.exit(result.exitCode);
