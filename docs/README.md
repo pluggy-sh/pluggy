@@ -21,6 +21,7 @@ Every subcommand, with its flags, JSON envelope, and sample output.
 | ------------------------------------------ | -------------------------------------------------------- |
 | [`init`](./commands/init.md)               | Scaffold a new project in an empty directory.            |
 | [`install`](./commands/install.md)         | Add a dependency or refresh the lockfile.                |
+| [`update`](./commands/update.md)           | Move dependencies to their latest version.               |
 | [`remove`](./commands/remove.md)           | Drop a dependency and (optionally) its cached jar.       |
 | [`info`](./commands/info.md)               | Inspect a Modrinth, Maven, file, or workspace source.    |
 | [`search`](./commands/search.md)           | Search Modrinth by keyword.                              |
@@ -51,7 +52,7 @@ These pages explain how pluggy works once you've outgrown the tutorial. They ass
 - [Build pipeline](./build-pipeline.md): what happens between `pluggy build` and the output jar. Maven dependency resolution, SNAPSHOT handling, classpath construction, descriptor generation.
 - [Dev server](./dev-server.md): the `dev/` staging directory, runtime vs compile-time plugin detection, EULA handling, `--reload` vs restart, shutdown semantics.
 - [Workspaces](./workspaces.md): monorepo layout, inheritance rules, the `workspace:` source kind, topological build order.
-- [IDE integration](./ide.md): what `ide: "vscode" | "eclipse" | "intellij"` writes and where.
+- [IDE integration](./ide.md): which project files pluggy writes, when, and how to opt out.
 - [Cross-platform notes](./cross-platform.md): install paths, cache paths, line endings, signal handling.
 - [Troubleshooting](./troubleshooting.md): common failures, the error messages the code actually prints, and what to do about them.
 - [Uninstalling](./uninstall.md): exact paths to remove for each install method, plus the cache and state directories.

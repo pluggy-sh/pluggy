@@ -25,6 +25,7 @@ import { runCommand } from "./commands/run.ts";
 import { searchCommand } from "./commands/search.ts";
 import { sdkCommand } from "./commands/sdk.ts";
 import { testCommand } from "./commands/test.ts";
+import { updateCommand } from "./commands/update.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { whyCommand } from "./commands/why.ts";
 import { workspaceCommand } from "./commands/workspace.ts";
@@ -56,6 +57,7 @@ export function createProgram(): Command {
 
   program.commandsGroup("Dependencies:");
   program.addCommand(installCommand());
+  program.addCommand(updateCommand());
   program.addCommand(removeCommand());
   program.addCommand(infoCommand());
   program.addCommand(searchCommand());

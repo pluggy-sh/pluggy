@@ -237,16 +237,17 @@ function emitOutdatedResult(result: OutdatedResult): void {
         `${result.outdatedCount} top-level outdated, ${stale.length} ${entries} total stale${unchecked}.`,
       );
 
-      // A template (`pluggy install <name>@<version>`) is wrong for maven rows,
-      // whose lockfile key re-parses as a Modrinth slug, and unreachable for
-      // transitives, which `install` cannot write. Emit what actually works.
+      // The old template (`pluggy install <name>@<version>`) produced a command
+      // that 404s for maven rows, whose lockfile key re-parses as a Modrinth
+      // slug. `update` takes the declared name and resolves the source itself.
       const updatable = stale.filter((r) => r.topLevel && r.latest !== undefined);
       if (updatable.length > 0) {
         log.info("");
-        log.info("Update with:");
-        for (const row of updatable) {
-          log.info(dim(`  pluggy install ${row.identifier}@${row.latest}`));
-        }
+        log.info(
+          updatable.length === 1
+            ? `Update with: pluggy update ${updatable[0]?.name}`
+            : `Update all with: pluggy update ${dim("(or name one: pluggy update " + updatable[0]?.name + ")")}`,
+        );
       }
       const transitives = stale.filter((r) => !r.topLevel);
       if (transitives.length > 0) {

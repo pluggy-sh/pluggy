@@ -270,13 +270,13 @@ describe("doOutdated", () => {
 
       await doOutdated({ cwd: rootDir });
 
-      expect(stdoutLines.join("\n")).toContain("pluggy install stale@2.0.0");
+      expect(stdoutLines.join("\n")).toContain("pluggy update stale");
     });
 
     // The old hint was a template, which produced a command that 404s for
     // maven rows: the lockfile key is the bare artifactId, and `install`
     // re-parses that as a Modrinth slug.
-    test("maven rows are hinted with their full coordinate, not the lockfile key", async () => {
+    test("maven rows are hinted through update, not a 404-ing install command", async () => {
       await writeProject();
       await writeLockfile({
         "adventure-api": {
@@ -296,8 +296,10 @@ describe("doOutdated", () => {
       await doOutdated({ cwd: rootDir });
 
       const out = stdoutLines.join("\n");
-      expect(out).toContain("pluggy install maven:net.kyori:adventure-api@4.22.0");
-      expect(out).not.toContain("pluggy install adventure-api@");
+      // `update` takes the declared name and resolves the source itself, so
+      // the maven-key trap that made `install adventure-api@…` 404 is gone.
+      expect(out).toContain("pluggy update adventure-api");
+      expect(out).not.toContain("pluggy install");
     });
 
     test("transitive rows are not hinted as directly installable", async () => {
@@ -315,7 +317,7 @@ describe("doOutdated", () => {
       await doOutdated({ cwd: rootDir });
 
       const out = stdoutLines.join("\n");
-      expect(out).not.toContain("pluggy install buried");
+      expect(out).not.toContain("pluggy update buried");
       expect(out).toContain("transitive; update the dependency that pulls it in.");
     });
   });

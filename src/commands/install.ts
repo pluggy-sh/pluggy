@@ -33,6 +33,8 @@ export interface InstallOptions {
   workspaces?: boolean;
   project?: string;
   cwd?: string;
+  /** Suppress the success line so a calling command can render its own. */
+  quiet?: boolean;
 }
 
 export interface InstallResult {
@@ -397,6 +399,7 @@ function emitInstallResult(
   result: InstallResult,
   human?: { message?: string },
 ): void {
+  if (_opts.quiet === true) return;
   emit({ status: "success", installed: result.installed, skipped: result.skipped }, () => {
     if (human?.message !== undefined) {
       log.info(human.message);
