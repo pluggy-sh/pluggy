@@ -18,7 +18,13 @@ import { bold, dim, emit, log } from "../logging.ts";
 import { DEFAULT_MAVEN_REGISTRIES, registryUrl } from "../registry.ts";
 import type { ResolvedSource } from "../source.ts";
 import { parseSource } from "../source.ts";
-import { projectStartDir, resolveScope, type WorkspaceContext } from "../workspace.ts";
+import {
+  projectStartDir,
+  resolveScope,
+  singleWorkspace,
+  workspaceListOption,
+  type WorkspaceContext,
+} from "../workspace.ts";
 
 import { canonicalizeDeclared, collectDeclared } from "./context.ts";
 import { doInstall } from "./install.ts";
@@ -223,7 +229,7 @@ export function updateCommand(): Command {
     .argument("[names...]", "Dependencies to update. Omit to update every declared dependency.")
     .option("--beta", "Include pre-release versions.")
     .option("--dry-run", "Show what would change without writing anything.")
-    .option("--workspace <name>", "Target a specific workspace.")
+    .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Run across every workspace.")
     .addHelpText(
       "after",
@@ -234,7 +240,11 @@ export function updateCommand(): Command {
         names,
         beta: options.beta === true,
         dryRun: options.dryRun === true,
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "update",
+          "Use --workspaces to update every workspace.",
+        ),
         workspaces: options.workspaces === true,
         project: this.optsWithGlobals().project,
       });

@@ -180,6 +180,35 @@ export function workspaceListOption(value: string, prev: string[] | undefined): 
   return parseWorkspaceList([...(prev ?? []), value]);
 }
 
+/**
+ * Collapse a `--workspace` list to the single target a command can act on.
+ *
+ * `--workspace` parsed two different ways depending on which command it was
+ * attached to: a repeatable comma-separated list on the sweep commands, and a
+ * bare string on the rest. On the latter, `--workspace a,b` looked up a
+ * workspace literally named "a,b" and `--workspace a --workspace b` silently
+ * took the last one. Every command now accepts the same grammar; the ones that
+ * genuinely operate on one workspace say so instead of guessing.
+ */
+export function singleWorkspace(
+  value: string[] | undefined,
+  commandName: string,
+  reason: string,
+): string | undefined {
+  if (value === undefined || value.length === 0) return undefined;
+  if (value.length > 1) {
+    throw new UserError(
+      `${commandName} works on one workspace, but ${value.length} were selected (${value.join(", ")}).`,
+      {
+        code: "E_WORKSPACE_NOT_SINGLE",
+        hint: `${reason} Pick one: --workspace ${value[0]}`,
+        context: { commandName, selected: value },
+      },
+    );
+  }
+  return value[0];
+}
+
 export interface WorkspaceFilterOptions {
   /** Limit the sweep to these workspaces (by name). Repeated/comma-separated. */
   workspace?: string[];

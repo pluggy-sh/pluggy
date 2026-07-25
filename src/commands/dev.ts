@@ -11,6 +11,8 @@ import {
   findWorkspace,
   projectStartDir,
   resolveWorkspaceContext,
+  singleWorkspace,
+  workspaceListOption,
   topologicalOrder,
   workspaceDependencyNames,
   type WorkspaceContext,
@@ -29,7 +31,6 @@ export interface DevCommandOptions {
   freshWorld?: boolean;
   /** `--no-watch` → `false`; flag absence → `undefined` (treated as on). */
   watch?: boolean;
-  reload?: boolean;
   /** What to do on a hotswap miss: manual (default), restart, or reload. */
   fallback?: "manual" | "reload" | "restart";
   /** `--no-hotswap` → `false`; flag absence → `undefined` (config decides). */
@@ -38,8 +39,6 @@ export interface DevCommandOptions {
   debug?: boolean | number;
   /** `--debug-suspend` → wait for a debugger before starting. */
   debugSuspend?: boolean;
-  /** `--debug-expose` → bind JDWP to all interfaces (unauthenticated). */
-  debugExpose?: boolean;
   offline?: boolean;
   /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
@@ -96,12 +95,10 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
     clean: opts.clean,
     freshWorld: opts.freshWorld,
     watch: opts.watch,
-    reload: opts.reload,
     fallback: opts.fallback,
     hotswap: opts.hotswap,
     debug: opts.debug,
     debugSuspend: opts.debugSuspend,
-    debugExpose: opts.debugExpose,
     offline: opts.offline,
     args: server.dev?.jvmArgs,
   });
@@ -233,8 +230,9 @@ export function devCommand(): Command {
   return new Command("dev")
     .description("Start a development server for the project.")
     .option(
-      "--workspace <name>",
+      "--workspace <names>",
       "Target one workspace (only needed when shipping workspaces span platforms).",
+      workspaceListOption,
     )
     .option("--platform <name>", "Override the primary platform.", parsePlatform)
     .option("--mc-version <version>", "Override the primary MC version.", parseMcVersion)
@@ -245,10 +243,9 @@ export function devCommand(): Command {
     .option("--no-watch", "Run once, don't watch or rebuild.")
     .option(
       "--fallback <mode>",
-      "What to do when a change can't be hotswapped: manual (default; notify and wait), restart, or reload.",
+      "What to do when a change can't be hotswapped: manual (default; notify and wait), restart, or reload (uses Bukkit's deprecated /reload).",
       parseFallback,
     )
-    .option("--reload", "Legacy alias for --fallback reload (uses the deprecated /reload command).")
     .option("--no-hotswap", "Rebuild and restart the server on change instead of hotswapping.")
     .option(
       "--debug [port]",
@@ -256,15 +253,15 @@ export function devCommand(): Command {
       parseDebug,
     )
     .option("--debug-suspend", "With --debug, wait for a debugger to attach before starting.")
-    .option(
-      "--debug-expose",
-      "Let a debugger on another machine attach. The debug port is unauthenticated: anything that can reach it can run code.",
-    )
     .option("--offline", "Let accounts connect without Mojang authentication.")
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
       await runDevCommand({
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "dev",
+          "One server hosts one platform.",
+        ),
         platform: options.platform,
         mcVersion: options.mcVersion,
         port: options.port,
@@ -273,7 +270,6 @@ export function devCommand(): Command {
         freshWorld: options.freshWorld === true,
         // commander's `--no-watch` yields watch:false; absence yields true.
         watch: options.watch,
-        reload: options.reload === true,
         fallback: options.fallback,
         // `--no-hotswap` → false; absence → undefined (let config decide).
         hotswap: options.hotswap === false ? false : undefined,
@@ -281,7 +277,6 @@ export function devCommand(): Command {
         debug: options.debug ?? (options.debugSuspend === true ? true : undefined),
         // Forward raw (undefined when absent) so project dev.debug.suspend can apply.
         debugSuspend: options.debugSuspend,
-        debugExpose: options.debugExpose,
         offline: options.offline === true,
         project: globalOpts.project,
       });

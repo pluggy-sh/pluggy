@@ -12,6 +12,7 @@
  * source of truth, regenerated on every build.
  */
 
+import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 import { writeFileLF } from "../portable.ts";
@@ -28,8 +29,22 @@ export async function writeIdeFiles(
   stagingOutputDir: string,
 ): Promise<void> {
   const out = relative(project.rootDir, stagingOutputDir) || ".pluggy-build";
-  await writeFileLF(join(project.rootDir, ".classpath"), renderEclipseClasspath(classpath, out));
-  await writeFileLF(join(project.rootDir, ".project"), renderEclipseProject(project.name));
+  await writeIfChanged(join(project.rootDir, ".classpath"), renderEclipseClasspath(classpath, out));
+  await writeIfChanged(join(project.rootDir, ".project"), renderEclipseProject(project.name));
+}
+
+/**
+ * Skip the write when the content already matches. Rewriting these on every
+ * build churned file mtimes for no reason, which is what `--skip-classpath`
+ * existed to avoid; making it automatic retired the flag.
+ */
+async function writeIfChanged(path: string, content: string): Promise<void> {
+  try {
+    if ((await readFile(path, "utf8")) === content) return;
+  } catch {
+    // Missing or unreadable: fall through and write it.
+  }
+  await writeFileLF(path, content);
 }
 
 function renderEclipseClasspath(classpath: string[], outputPath: string): string {

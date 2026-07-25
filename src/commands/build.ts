@@ -22,7 +22,6 @@ import {
 export interface BuildCommandOptions {
   output?: string;
   clean?: boolean;
-  skipClasspath?: boolean;
   workspace?: string[];
   exclude?: string[];
   workspaces?: boolean;
@@ -131,7 +130,6 @@ async function buildTargets(
       const build = await buildProject(target, {
         output: opts.output,
         clean: opts.clean,
-        skipClasspath: opts.skipClasspath,
       });
 
       const extraPlatforms = (target.compatibility?.platforms ?? []).slice(1);
@@ -372,7 +370,6 @@ export function buildCommand(): Command {
     .description("Build the project and output a plugin jar.")
     .option("--output <path>", "Write the jar here instead of bin/<name>-<version>.jar.")
     .option("--clean", "Wipe build cache before building.")
-    .option("--skip-classpath", "Don't regenerate the Eclipse .classpath file.")
     .option(
       "--workspace <names>",
       "Build one or more workspaces (repeatable; comma-separated).",
@@ -404,7 +401,6 @@ export function buildCommand(): Command {
       const result = await runBuildCommand({
         output: options.output,
         clean: options.clean === true,
-        skipClasspath: options.skipClasspath === true,
         workspace: options.workspace as string[],
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,

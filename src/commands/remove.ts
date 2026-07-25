@@ -9,7 +9,12 @@ import { writeFileLF } from "../portable.ts";
 import { type Project } from "../project.ts";
 import { type Lockfile, pruneOrphans, readLock, writeLock } from "../lockfile.ts";
 
-import { resolveScope, type ScopeTarget } from "../workspace.ts";
+import {
+  resolveScope,
+  singleWorkspace,
+  workspaceListOption,
+  type ScopeTarget,
+} from "../workspace.ts";
 
 export interface RemoveOptions {
   plugin: string;
@@ -213,14 +218,18 @@ export function removeCommand(): Command {
     .description("Remove a plugin from the project config and optionally delete its jar.")
     .argument("<plugin>", "Plugin name as shown by `pluggy list`.")
     .option("--keep-file", "Keep the cached jar on disk instead of deleting it.")
-    .option("--workspace <name>", "Target a specific workspace.")
+    .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Remove from every workspace that declares it.")
     .action(async function action(this: Command, plugin: string, options) {
       const globalOpts = this.optsWithGlobals();
       await doRemove({
         plugin,
         keepFile: options.keepFile,
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "remove",
+          "A plugin is removed from one workspace.",
+        ),
         workspaces: options.workspaces,
         project: globalOpts.project,
       });

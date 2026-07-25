@@ -20,7 +20,13 @@ import {
 import { parseIdentifier, parseSource, stringifySource } from "../source.ts";
 import type { ResolvedSource } from "../source.ts";
 
-import { resolveScope, type ResolvedScope, type ScopeTarget } from "../workspace.ts";
+import {
+  resolveScope,
+  singleWorkspace,
+  workspaceListOption,
+  type ResolvedScope,
+  type ScopeTarget,
+} from "../workspace.ts";
 
 import { buildResolveContext, canonicalizeDeclared, collectDeclared } from "./context.ts";
 
@@ -433,7 +439,7 @@ export function installCommand(): Command {
     .argument("[plugin]", "Plugin identifier. Modrinth slug, local .jar, or maven: coordinate.")
     .option("--force", "Force dependency install (override compatibility checks).")
     .option("--beta", "Include pre-release versions.")
-    .option("--workspace <name>", "Target a specific workspace.")
+    .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Run across all workspaces explicitly.")
     .addHelpText(
       "after",
@@ -445,7 +451,11 @@ export function installCommand(): Command {
         plugin,
         force: options.force,
         beta: options.beta,
-        workspace: options.workspace,
+        workspace: singleWorkspace(
+          options.workspace as string[] | undefined,
+          "install",
+          "A plugin is installed into one workspace.",
+        ),
         workspaces: options.workspaces,
         project: globalOpts.project,
       });
