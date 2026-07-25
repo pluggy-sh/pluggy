@@ -24,6 +24,8 @@ import { confirm } from "@inquirer/prompts";
 
 import { UserError } from "../errors.ts";
 
+import { parseMainClass, parseSemver, platformListOption } from "./parsers.ts";
+
 import { graphCommand } from "./graph.ts";
 import { runWorkspacesCommand, workspacesCommand } from "./workspaces.ts";
 import { bold, dim, emit, isJsonMode, log } from "../logging.ts";
@@ -687,15 +689,15 @@ function workspaceAddSubcommand(): Command {
   return new Command("add")
     .description("Scaffold a new workspace and wire it into the root project.json.")
     .argument("<name>", "Workspace name (becomes the workspace's project.name).")
-    .option("--main <fqcn>", "Entry-point class. Derived from the root's package when omitted.")
     .option(
-      "--platforms <list>",
-      "Comma-separated platforms (e.g. paper,sponge). Omit to inherit from root.",
-      (raw: string) =>
-        raw
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
+      "--main <fqcn>",
+      "Entry-point class. Derived from the root's package when omitted.",
+      parseMainClass,
+    )
+    .option(
+      "--platform <ids>",
+      "Platforms for this workspace (repeatable; comma-separated). Omit to inherit from root.",
+      platformListOption,
     )
     .option(
       "--depends <list>",
@@ -707,12 +709,16 @@ function workspaceAddSubcommand(): Command {
           .filter((s) => s.length > 0),
     )
     .option("--dir <path>", "Override the on-disk directory (default: ./<name>).")
-    .option("--project-version <semver>", "Initial workspace version (default: 0.1.0).")
+    .option(
+      "--project-version <semver>",
+      "Initial workspace version (default: 0.1.0).",
+      parseSemver,
+    )
     .action(async function action(this: Command, name: string, options) {
       await runWorkspaceAdd({
         name,
         main: options.main,
-        platforms: options.platforms,
+        platforms: options.platform,
         depends: options.depends,
         dir: options.dir,
         version: options.projectVersion,

@@ -5,6 +5,8 @@ import { Command, InvalidArgumentError } from "commander";
 import { runTests, type TestRunOutcome } from "../test/index.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, green, log, red, yellow } from "../logging.ts";
+
+import { mcVersionListOption, platformListOption } from "./parsers.ts";
 import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import { runWorkspaces } from "../runner.ts";
@@ -559,15 +561,6 @@ function renderHumanResult(
   log.info(`    ${parts.join(", ")}`);
 }
 
-function parseList(value: string, previous: string[] | undefined): string[] {
-  const acc = previous ?? [];
-  for (const part of value.split(",")) {
-    const trimmed = part.trim();
-    if (trimmed.length > 0) acc.push(trimmed);
-  }
-  return acc;
-}
-
 /** Factory for the `pluggy test` commander command. */
 export function testCommand(): Command {
   return new Command("test")
@@ -593,16 +586,16 @@ export function testCommand(): Command {
       "Exclude workspaces from an all-workspaces test run (repeatable; comma-separated).",
       workspaceListOption,
     )
-    .option("--workspaces", "Explicit all-workspaces test.")
+    .option("--workspaces", "Every workspace, even from inside one.")
     .option(
-      "--mc-version <version>",
-      "Narrow the matrix to one MC version (repeatable, comma-separated).",
-      parseList,
+      "--mc-version <versions>",
+      "Narrow the matrix to these MC versions (repeatable; comma-separated).",
+      mcVersionListOption,
     )
     .option(
-      "--platform <id>",
-      "Narrow the matrix to one platform id (repeatable, comma-separated).",
-      parseList,
+      "--platform <ids>",
+      "Narrow the matrix to these platforms (repeatable; comma-separated).",
+      platformListOption,
     )
     .option(
       "--concurrency <n>",

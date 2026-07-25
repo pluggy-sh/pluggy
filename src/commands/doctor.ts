@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, stat, unlink, writeFile } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
 import { arch, platform, release } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -33,17 +32,38 @@ import {
 import { registryUrl } from "../registry.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { getCachedJdk } from "../sdk/index.ts";
-import { selectJdkForProject, selectJdkForVersion } from "../sdk/resolve.ts";
+import { DEFAULT_DISTRIBUTION, selectJdkForProject, selectJdkForVersion } from "../sdk/resolve.ts";
 import { compareVersions, getCachedLatestVersion } from "../update-check.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";
 
-export type CheckStatus = "pass" | "warn" | "fail";
+/**
+ * The single next step that clears a check. `run` names a command the user
+ * can paste; `auto` marks the subset `pluggy doctor --fix` applies itself.
+ * `manual` is for the cases no command can resolve (editing `project.json`,
+ * fixing filesystem permissions) and states what the user has to change.
+ */
+export type Remedy =
+  | { kind: "run"; command: string; auto?: boolean }
+  | { kind: "manual"; instruction: string };
 
-export interface CheckResult {
-  id: string;
-  label: string;
-  status: CheckStatus;
-  detail?: string;
+/**
+ * One check's verdict. A `fail` must carry a `remedy`: a failure the user
+ * can't act on is a bug report, not a diagnostic. Warnings carry one when
+ * they're actionable and omit it when they're purely informational (a
+ * transient network hiccup, a cache directory that doesn't exist yet).
+ */
+export type CheckResult =
+  | { id: string; label: string; status: "pass"; detail: string }
+  | { id: string; label: string; status: "warn"; detail: string; remedy?: Remedy }
+  | { id: string; label: string; status: "fail"; detail: string; remedy: Remedy };
+
+/** The remedy attached to a check, if any. `pass` results never have one. */
+export function remedyOf(check: CheckResult): Remedy | undefined {
+  return check.status === "pass" ? undefined : check.remedy;
+}
+
+function sdkInstallCommand(distribution: string, major: number): string {
+  return `pluggy sdk install ${distribution}@${major}`;
 }
 
 export interface EnvironmentInfo {
@@ -81,10 +101,9 @@ export interface EnvironmentInfo {
 export interface DoctorCommandOptions {
   cwd?: string;
   /**
-   * Apply safe remediations after running checks. Currently:
-   *   • prune orphan transitive entries from `pluggy.lock`.
-   *   • drop `workspaces[]` entries that point at a missing folder.
-   * Never deletes user code; only edits metadata files.
+   * Apply every remedy marked `auto` on the checks that ran. Those
+   * remedies only ever edit metadata files (`pluggy.lock`, `project.json`);
+   * user code is never touched.
    */
   fix?: boolean;
   /** Current pluggy CLI version (without leading `v`). Used by the `pluggy-version` check. */
@@ -158,11 +177,22 @@ export async function runDoctorCommand(
     log.info(dim("Running checks… (network checks may take ~10 seconds)"));
   }
 
-  // When `--fix` is set, run the structural-repair pass FIRST so the rest of
-  // doctor can resolve the workspace context. `resolveWorkspaceContext`
-  // hard-fails on a declared-but-missing workspace folder; pruning those
-  // entries up front lets the rest of doctor proceed.
-  const preFixes = opts.fix === true ? prefixMissingWorkspaces(cwd) : [];
+  // `resolveWorkspaceContext` hard-fails on a declared-but-missing workspace
+  // folder, so this check runs — and, under `--fix`, is remedied — before
+  // anything that needs the workspace context.
+  const missing = findMissingWorkspaces(cwd);
+  const preFixes: AppliedFix[] = [];
+  if (missing !== undefined) {
+    const entriesCheck = missingWorkspacesCheck(missing);
+    if (opts.fix !== true) {
+      return finalizeAndEmit({
+        opts,
+        environment: collectEnvironmentInfo(opts.pluggyVersion),
+        checks: [entriesCheck],
+      });
+    }
+    preFixes.push(...(await applyAutoRemedies([entriesCheck], missing)));
+  }
 
   const context = resolveWorkspaceContext(cwd);
 
@@ -172,7 +202,8 @@ export async function runDoctorCommand(
       id: "project-found",
       label: "Project found",
       status: "fail",
-      detail: "no pluggy project found from this directory; run `pluggy init` to create one",
+      detail: "no pluggy project found from this directory",
+      remedy: { kind: "run", command: "pluggy init" },
     };
     return finalizeAndEmit({
       opts,
@@ -254,111 +285,140 @@ export async function runDoctorCommand(
 
   const environment = await collectEnvironmentInfoForContext(context, opts.pluggyVersion);
 
-  const inlineFixes = opts.fix === true ? await applyFixes(context) : undefined;
-  const fixes = combineFixes(preFixes, inlineFixes);
+  const inlineFixes =
+    opts.fix === true
+      ? await applyAutoRemedies(all, {
+          rootDir: context.root.rootDir,
+          projectFile: context.root.projectFile,
+        })
+      : [];
+  const fixes = [...preFixes, ...inlineFixes];
 
-  return finalizeAndEmit({ opts, environment, checks: all, fixes });
+  return finalizeAndEmit({
+    opts,
+    environment,
+    checks: all,
+    fixes: fixes.length > 0 ? fixes : undefined,
+  });
 }
 
-function combineFixes(
-  pre: Array<{ id: string; detail: string }>,
-  post: DoctorCommandResult["fixes"],
-): DoctorCommandResult["fixes"] {
-  const combined: Array<{ id: string; detail: string }> = [...pre, ...(post ?? [])];
-  return combined.length > 0 ? combined : undefined;
+type AppliedFix = { id: string; detail: string };
+
+/** Root project a fix operates on. */
+interface FixTarget {
+  rootDir: string;
+  projectFile: string;
 }
 
 /**
- * Synchronously prune missing-folder workspace entries from the root
- * `project.json`. Runs before `resolveWorkspaceContext` so the rest of
- * doctor can proceed even when the user has deleted a workspace folder
- * by hand.
+ * The fix behind each `auto` remedy, keyed by check id. A remedy without an
+ * entry here must not set `auto`; `--fix` would silently do nothing.
  */
-function prefixMissingWorkspaces(cwd: string): Array<{ id: string; detail: string }> {
-  const fixes: Array<{ id: string; detail: string }> = [];
-  // Walk upward to the nearest project.json (matches resolveWorkspaceContext).
+const AUTO_FIXES: Record<string, (target: FixTarget) => Promise<AppliedFix | undefined>> = {
+  "workspace-entries": pruneMissingWorkspaces,
+  lockfile: pruneLockfileOrphans,
+};
+
+/**
+ * Apply the remedies the given checks marked `auto`, in check order. Each
+ * fix is non-destructive: it edits `pluggy.lock` or `project.json` only,
+ * never source files. Returns one entry per fix that changed something.
+ */
+async function applyAutoRemedies(checks: CheckResult[], target: FixTarget): Promise<AppliedFix[]> {
+  const applied: AppliedFix[] = [];
+  for (const check of checks) {
+    const remedy = remedyOf(check);
+    if (remedy?.kind !== "run" || remedy.auto !== true) continue;
+    const fix = AUTO_FIXES[check.id];
+    if (fix === undefined) continue;
+    const result = await fix(target);
+    if (result !== undefined) applied.push(result);
+  }
+  return applied;
+}
+
+interface MissingWorkspaces extends FixTarget {
+  /** The `workspaces[]` values whose folder has no `project.json`. */
+  entries: string[];
+}
+
+/**
+ * Find `workspaces[]` entries in the nearest `project.json` whose folder is
+ * gone. The walk upward matches `resolveWorkspaceContext`, which throws on
+ * these entries — so detection has to work without a workspace context.
+ */
+function findMissingWorkspaces(cwd: string): MissingWorkspaces | undefined {
   let dir = cwd;
   while (true) {
-    const candidate = join(dir, "project.json");
-    if (existsSync(candidate)) {
-      const raw = resolveProjectFile(candidate);
-      if (raw === undefined || !Array.isArray(raw.workspaces)) return fixes;
-      const kept: string[] = [];
-      const dropped: string[] = [];
-      for (const rel of raw.workspaces) {
-        const wsPath = rel.startsWith("./") ? rel.slice(2) : rel;
-        const abs = join(dir, wsPath);
-        if (existsSync(join(abs, "project.json"))) kept.push(rel);
-        else dropped.push(rel);
-      }
-      if (dropped.length > 0) {
-        const { rootDir: _r, projectFile: _p, ...rest } = raw;
-        const next: Project = { ...rest, workspaces: kept };
-        writeFileSync(candidate, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-        fixes.push({
-          id: "workspace-prune",
-          detail: `removed ${dropped.length} missing workspace${dropped.length === 1 ? "" : "s"} from root project.json (${dropped.join(", ")})`,
-        });
-      }
-      return fixes;
+    const projectFile = join(dir, "project.json");
+    if (existsSync(projectFile)) {
+      const raw = resolveProjectFile(projectFile);
+      if (raw === undefined || !Array.isArray(raw.workspaces)) return undefined;
+      const entries = raw.workspaces.filter((rel) => !existsSync(workspaceProjectFile(dir, rel)));
+      return entries.length > 0 ? { rootDir: dir, projectFile, entries } : undefined;
     }
     const parent = dirname(dir);
-    if (parent === dir) return fixes;
+    if (parent === dir) return undefined;
     dir = parent;
   }
 }
 
+function workspaceProjectFile(rootDir: string, entry: string): string {
+  return join(rootDir, entry.startsWith("./") ? entry.slice(2) : entry, "project.json");
+}
+
+function missingWorkspacesCheck(missing: MissingWorkspaces): CheckResult {
+  const count = missing.entries.length;
+  return {
+    id: "workspace-entries",
+    label: "Workspace entries",
+    status: "fail",
+    detail: `${count} workspace entr${count === 1 ? "y" : "ies"} without a project.json: ${missing.entries.join(", ")}`,
+    remedy: { kind: "run", command: "pluggy doctor --fix", auto: true },
+  };
+}
+
 /**
- * Apply safe, mechanical remediations to the project's metadata. Each fix
- * is non-destructive: edits `pluggy.lock` or `project.json` only, never
- * removes source files.
+ * Drop `workspaces[]` entries that point at a missing folder. The folder
+ * might have been deleted by hand; pluggy adapts rather than refusing to do
+ * anything until the user edits the root.
  */
-async function applyFixes(context: WorkspaceContext): Promise<DoctorCommandResult["fixes"]> {
-  const fixes: NonNullable<DoctorCommandResult["fixes"]> = [];
+async function pruneMissingWorkspaces(target: FixTarget): Promise<AppliedFix | undefined> {
+  const raw = resolveProjectFile(target.projectFile);
+  if (raw === undefined || !Array.isArray(raw.workspaces)) return undefined;
 
-  // Fix 1: prune orphan transitive entries from the lockfile.
-  const lock = readLock(context.root.rootDir);
-  if (lock !== null) {
-    const before = Object.keys(lock.entries).length;
-    pruneOrphans(lock.entries);
-    const after = Object.keys(lock.entries).length;
-    if (before !== after) {
-      await writeLock(context.root.rootDir, lock);
-      fixes.push({
-        id: "lockfile-prune",
-        detail: `pruned ${before - after} orphan entr${before - after === 1 ? "y" : "ies"} from pluggy.lock`,
-      });
-    }
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const rel of raw.workspaces) {
+    if (existsSync(workspaceProjectFile(target.rootDir, rel))) kept.push(rel);
+    else dropped.push(rel);
   }
+  if (dropped.length === 0) return undefined;
 
-  // Fix 2: drop `workspaces[]` entries that point at a missing folder.
-  // The folder might have been deleted by hand; pluggy should adapt rather
-  // than refusing to do anything until the user edits the root.
-  const rootRaw = resolveProjectFile(context.root.projectFile);
-  if (rootRaw !== undefined && Array.isArray(rootRaw.workspaces)) {
-    const kept: string[] = [];
-    const dropped: string[] = [];
-    for (const rel of rootRaw.workspaces) {
-      const wsPath = rel.startsWith("./") ? rel.slice(2) : rel;
-      const abs = join(context.root.rootDir, wsPath);
-      if (existsSync(join(abs, "project.json"))) {
-        kept.push(rel);
-      } else {
-        dropped.push(rel);
-      }
-    }
-    if (dropped.length > 0) {
-      const { rootDir: _r, projectFile: _p, ...rest } = rootRaw;
-      const next: Project = { ...rest, workspaces: kept };
-      await writeProjectFile(context.root.projectFile, next);
-      fixes.push({
-        id: "workspace-prune",
-        detail: `removed ${dropped.length} missing workspace${dropped.length === 1 ? "" : "s"} from root project.json (${dropped.join(", ")})`,
-      });
-    }
-  }
+  const { rootDir: _r, projectFile: _p, ...rest } = raw;
+  const next: Project = { ...rest, workspaces: kept };
+  await writeProjectFile(target.projectFile, next);
+  return {
+    id: "workspace-prune",
+    detail: `removed ${dropped.length} missing workspace${dropped.length === 1 ? "" : "s"} from root project.json (${dropped.join(", ")})`,
+  };
+}
 
-  return fixes.length > 0 ? fixes : undefined;
+/** Remove transitive lockfile entries no top-level dependency reaches. */
+async function pruneLockfileOrphans(target: FixTarget): Promise<AppliedFix | undefined> {
+  const lock = readLock(target.rootDir);
+  if (lock === null) return undefined;
+
+  const before = Object.keys(lock.entries).length;
+  pruneOrphans(lock.entries);
+  const after = Object.keys(lock.entries).length;
+  if (before === after) return undefined;
+
+  await writeLock(target.rootDir, lock);
+  return {
+    id: "lockfile-prune",
+    detail: `pruned ${before - after} orphan entr${before - after === 1 ? "y" : "ies"} from pluggy.lock`,
+  };
 }
 
 interface FinalizeArgs {
@@ -584,7 +644,16 @@ export function checkLockfile(context: WorkspaceContext): CheckResult {
     lock = readLock(context.root.rootDir);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { id, label, status: "fail", detail: message };
+    return {
+      id,
+      label,
+      status: "fail",
+      detail: message,
+      remedy: {
+        kind: "manual",
+        instruction: `repair or delete ${join(context.root.rootDir, "pluggy.lock")}, then run pluggy install`,
+      },
+    };
   }
   if (lock === null) {
     return { id, label, status: "pass", detail: "no lockfile (run pluggy install)" };
@@ -607,7 +676,8 @@ export function checkLockfile(context: WorkspaceContext): CheckResult {
       id,
       label,
       status: "warn",
-      detail: `${orphans} orphan transitive${orphans === 1 ? "" : "s"}; run pluggy install to clean up`,
+      detail: `${orphans} orphan transitive${orphans === 1 ? "" : "s"}`,
+      remedy: { kind: "run", command: "pluggy install", auto: true },
     };
   }
 
@@ -640,7 +710,8 @@ export function checkLockfile(context: WorkspaceContext): CheckResult {
       id,
       label,
       status: "warn",
-      detail: `${missing.length} declared dep${missing.length === 1 ? "" : "s"} missing from lockfile (${sample}${ellipsis}); run pluggy install`,
+      detail: `${missing.length} declared dep${missing.length === 1 ? "" : "s"} missing from lockfile (${sample}${ellipsis})`,
+      remedy: { kind: "run", command: "pluggy install" },
     };
   }
 
@@ -666,6 +737,10 @@ export function checkDocsFlag(project: ResolvedProject): CheckResult | undefined
     label: `Docs flag (${project.name})`,
     status: "warn",
     detail: `shipping workspace declares "docs": false; pluggy docs at the root will skip it`,
+    remedy: {
+      kind: "manual",
+      instruction: `remove "docs": false from ${project.projectFile} to generate Javadoc for this workspace`,
+    },
   };
 }
 
@@ -692,7 +767,11 @@ export async function checkJdkPin(project: ResolvedProject): Promise<CheckResult
       id: "jdk-pin",
       label,
       status: "warn",
-      detail: `pinned major ${pinned} differs from MC ${mcVersion} default (${implied.major}); confirm the pin is intentional`,
+      detail: `pinned major ${pinned} differs from MC ${mcVersion} default (${implied.major})`,
+      remedy: {
+        kind: "manual",
+        instruction: `keep the pin if it is intentional, or drop "jdk" from ${project.projectFile} to follow the MC default`,
+      },
     };
   }
   return {
@@ -735,12 +814,15 @@ export async function checkJava(
   userJava?: number,
   javaError?: string,
 ): Promise<CheckResult> {
+  const target = context.current?.project ?? context.root;
+
   if (javaError !== undefined) {
     return {
       id: "java",
       label: "Java toolchain",
       status: "fail",
       detail: `java not found or failed to run: ${javaError}`,
+      remedy: await jdkInstallRemedy(target),
     };
   }
   if (userJava === undefined) {
@@ -749,11 +831,11 @@ export async function checkJava(
       label: "Java toolchain",
       status: "fail",
       detail: "java not found or could not parse version",
+      remedy: await jdkInstallRemedy(target),
     };
   }
 
   const detail = `Java ${userJava}`;
-  const target = context.current?.project ?? context.root;
   const platformName = target.compatibility?.platforms?.[0];
 
   if (platformName === "spigot" || platformName === "bukkit") {
@@ -766,11 +848,36 @@ export async function checkJava(
         label: "Java toolchain",
         status: "warn",
         detail: `${detail}; BuildTools requires Java ${minJava}+`,
+        remedy: {
+          kind: "run",
+          command: sdkInstallCommand(jdkDistribution(target), minJava),
+        },
       };
     }
   }
 
   return { id: "java", label: "Java toolchain", status: "pass", detail };
+}
+
+function jdkDistribution(project: ResolvedProject): string {
+  return project.jdk?.distribution ?? DEFAULT_DISTRIBUTION;
+}
+
+/**
+ * Point a broken `java` at the JDK this project would select, so the command
+ * doctor prints matches the one a build would install. Falls back to a manual
+ * instruction when the project's own `jdk` settings are what's invalid.
+ */
+async function jdkInstallRemedy(project: ResolvedProject): Promise<Remedy> {
+  try {
+    const selection = await selectJdkForProject(project);
+    return { kind: "run", command: sdkInstallCommand(selection.distribution, selection.major) };
+  } catch {
+    return {
+      kind: "manual",
+      instruction: "install a JDK and put java on PATH, or point JAVA_HOME at an existing one",
+    };
+  }
 }
 
 async function runJavaVersion(): Promise<{ stdout: string; stderr: string }> {
@@ -806,7 +913,10 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
   const selection = await selectJdkForProject(project);
   const cached = getCachedJdk(selection.major, selection.distribution);
   const noAutoInstall = process.env.PLUGGY_NO_AUTO_INSTALL === "1";
-  const remedy = `pluggy sdk install ${selection.distribution}@${selection.major}`;
+  const remedy: Remedy = {
+    kind: "run",
+    command: sdkInstallCommand(selection.distribution, selection.major),
+  };
 
   if (cached !== undefined) {
     return {
@@ -822,7 +932,8 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
       id: "sdk",
       label: "Project JDK",
       status: "fail",
-      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1. Run: ${remedy}`,
+      detail: `${selection.distribution} ${selection.major} not installed and PLUGGY_NO_AUTO_INSTALL=1`,
+      remedy,
     };
   }
 
@@ -830,7 +941,8 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
     id: "sdk",
     label: "Project JDK",
     status: "warn",
-    detail: `${selection.distribution} ${selection.major} not yet installed; pluggy will fetch on first build. Pre-install: ${remedy}`,
+    detail: `${selection.distribution} ${selection.major} not yet installed; pluggy will fetch on first build`,
+    remedy,
   };
 }
 
@@ -856,6 +968,10 @@ export async function checkCache(): Promise<CheckResult> {
         label: "Cache reachability",
         status: "fail",
         detail: `cache path exists but is not a directory: ${path}`,
+        remedy: {
+          kind: "manual",
+          instruction: `move or delete ${path} so pluggy can create its cache directory there`,
+        },
       };
     }
     const probe = join(path, `.pluggy-doctor-probe-${process.pid}`);
@@ -869,6 +985,10 @@ export async function checkCache(): Promise<CheckResult> {
         label: "Cache reachability",
         status: "fail",
         detail: `cache is not writable: ${path} (${message})`,
+        remedy: {
+          kind: "manual",
+          instruction: `grant your user write access to ${path}`,
+        },
       };
     }
     const sizeBytes = await dirSize(path);
@@ -885,6 +1005,10 @@ export async function checkCache(): Promise<CheckResult> {
       label: "Cache reachability",
       status: "fail",
       detail: `could not stat cache at ${path}: ${message}`,
+      remedy: {
+        kind: "manual",
+        instruction: `make ${path} readable by your user`,
+      },
     };
   }
 }
@@ -905,6 +1029,11 @@ export function checkHotswap(): CheckResult {
       label: "Hotswap (JBR + agent)",
       status: "warn",
       detail: err instanceof Error ? err.message : String(err),
+      remedy: {
+        kind: "manual",
+        instruction:
+          "hotswap is unavailable here; `pluggy dev --no-hotswap` restarts the server on change instead",
+      },
     };
   }
   const jbrPath = jbrJavaPath(join(cacheRoot, "jbr", jbrCacheKey(target)), target);
@@ -1006,12 +1135,17 @@ const VERSION_RE = /^\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?$/;
  */
 export function checkProjectValid(project: ResolvedProject): CheckResult {
   const label = `project.json (${project.name ?? "unknown"})`;
+  const file = project.projectFile;
   if (typeof project.name !== "string" || !NAME_RE.test(project.name)) {
     return {
       id: "project",
       label,
       status: "fail",
       detail: `invalid or missing "name": ${String(project.name)}`,
+      remedy: {
+        kind: "manual",
+        instruction: `set "name" in ${file} to letters, digits, "-" or "_"`,
+      },
     };
   }
   if (typeof project.version !== "string" || !VERSION_RE.test(project.version)) {
@@ -1020,6 +1154,10 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
       label,
       status: "fail",
       detail: `invalid or missing "version": ${String(project.version)}`,
+      remedy: {
+        kind: "manual",
+        instruction: `set "version" in ${file} to a semver value such as 1.0.0`,
+      },
     };
   }
   const compat = project.compatibility;
@@ -1036,6 +1174,10 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
       label,
       status: "fail",
       detail: `"compatibility" must declare non-empty "versions" and "platforms"`,
+      remedy: {
+        kind: "manual",
+        instruction: `add "compatibility": { "versions": [...], "platforms": [...] } to ${file}`,
+      },
     };
   }
   for (const p of compat.platforms) {
@@ -1045,6 +1187,10 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
         label,
         status: "fail",
         detail: `unknown platform "${p}" (known: ${platforms.list().join(", ")})`,
+        remedy: {
+          kind: "manual",
+          instruction: `replace "${p}" in compatibility.platforms in ${file} with one of: ${platforms.list().join(", ")}`,
+        },
       };
     }
   }
@@ -1087,6 +1233,10 @@ export async function checkVersionCompatibility(project: ResolvedProject): Promi
         label: `Version compatibility (${platformName})`,
         status: "fail",
         detail: `${platformName} does not publish version${missing.length > 1 ? "s" : ""} ${missing.join(", ")}`,
+        remedy: {
+          kind: "manual",
+          instruction: `edit compatibility.versions in ${project.projectFile} to a version ${platformName} publishes`,
+        },
       });
     } else {
       out.push({
@@ -1116,7 +1266,13 @@ export function checkWorkspaceGraph(context: WorkspaceContext): CheckResult {
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { id: "workspace", label, status: "fail", detail: message };
+    return {
+      id: "workspace",
+      label,
+      status: "fail",
+      detail: message,
+      remedy: { kind: "run", command: "pluggy workspace graph" },
+    };
   }
 }
 
@@ -1144,7 +1300,16 @@ export function checkDescriptors(context: WorkspaceContext): CheckResult[] {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      out.push({ id: "descriptor", label, status: "fail", detail: message });
+      out.push({
+        id: "descriptor",
+        label,
+        status: "fail",
+        detail: message,
+        remedy: {
+          kind: "manual",
+          instruction: `edit compatibility.platforms in ${project.projectFile}`,
+        },
+      });
     }
   }
   if (out.length === 0) {
@@ -1217,6 +1382,7 @@ export async function checkOutdated(context: WorkspaceContext): Promise<CheckRes
     label: "Outdated dependencies",
     status: "warn",
     detail: outdated.join("; "),
+    remedy: { kind: "run", command: "pluggy update" },
   };
 }
 
@@ -1280,6 +1446,7 @@ export async function checkDependencyJars(
 
   const tooNew: string[] = [];
   let checked = 0;
+  let highestRequired = 0;
 
   await Promise.all(
     flat.map(async (e) => {
@@ -1289,7 +1456,10 @@ export async function checkDependencyJars(
       if (classMajor === undefined) return;
       checked++;
       const required = classMajorToJava(classMajor);
-      if (required > userJava!) tooNew.push(`${e.name} requires Java ${required}`);
+      if (required > userJava!) {
+        tooNew.push(`${e.name} requires Java ${required}`);
+        highestRequired = Math.max(highestRequired, required);
+      }
     }),
   );
 
@@ -1308,6 +1478,13 @@ export async function checkDependencyJars(
       label: "Dependency compatibility",
       status: "warn",
       detail: tooNew.join("; "),
+      remedy: {
+        kind: "run",
+        command: sdkInstallCommand(
+          jdkDistribution(context.current?.project ?? context.root),
+          highestRequired,
+        ),
+      },
     };
   }
 
@@ -1381,7 +1558,8 @@ export async function checkPluggyVersion(
       id: "pluggy-version",
       label: "Pluggy version",
       status: "warn",
-      detail: `running ${currentVersion}; ${latest} is available. Run 'pluggy upgrade'`,
+      detail: `running ${currentVersion}; ${latest} is available`,
+      remedy: { kind: "run", command: "pluggy upgrade" },
     };
   }
 
@@ -1410,8 +1588,14 @@ function formatBytes(n: number): string {
 
 function printCheck(c: CheckResult): void {
   const marker = c.status === "pass" ? green("✔") : c.status === "warn" ? yellow("!") : red("✖");
-  const detail = c.detail === undefined || c.detail.length === 0 ? "" : `: ${c.detail}`;
+  const detail = c.detail.length === 0 ? "" : `: ${c.detail}`;
   log.info(`  ${marker} ${c.label}${detail}`);
+
+  const remedy = remedyOf(c);
+  if (remedy === undefined) return;
+  const text =
+    remedy.kind === "run" ? remedy.command : `${remedy.instruction} ${dim("(no automatic fix)")}`;
+  log.info(`    ${dim("→")} ${text}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1545,7 +1729,7 @@ function renderReport(result: DoctorCommandResult): string {
   lines.push("| --- | --- | --- |");
   for (const c of result.checks) {
     const tag = c.status === "pass" ? "[ok]" : c.status === "warn" ? "[warn]" : "[fail]";
-    lines.push(`| ${tag} | ${escapeCell(c.label)} | ${escapeCell(c.detail ?? "")} |`);
+    lines.push(`| ${tag} | ${escapeCell(c.label)} | ${escapeCell(c.detail)} |`);
   }
   lines.push("");
 

@@ -257,9 +257,17 @@ export function selectWorkspaceTargets(
   }
 
   if (context.current !== undefined) {
+    // `--workspaces` means "every workspace, wherever you are". It already
+    // meant that on install/remove/list; on the sweep commands it was a
+    // no-op at the root and a hard error here, so the same flag did opposite
+    // things depending on which command it was attached to.
+    if (opts.workspaces === true && includes.length === 0) {
+      const remaining = applyExcludes(context.workspaces, excludes, context);
+      return ensureNonEmpty(topologicalOrder(remaining), includes, excludes);
+    }
     if (excludes.length > 0) {
       throw new InvalidArgumentError(
-        `--exclude is only valid at the repo root; you're inside workspace "${context.current.name}".`,
+        `--exclude is only valid with --workspaces or at the repo root; you're inside workspace "${context.current.name}".`,
       );
     }
     if (includes.length > 0) {
@@ -364,6 +372,8 @@ export interface ScopeOptions {
   cwd?: string;
   workspace?: string;
   workspaces?: boolean;
+  /** Names to subtract from an all-workspaces run. */
+  exclude?: string[];
   /**
    * Refuse to implicitly span all workspaces at a root. `remove` sets this:
    * running at the root without an explicit flag is ambiguous. `install`
@@ -395,6 +405,14 @@ export interface ResolvedScope {
   targets: ScopeTarget[];
   /** True when acting across every workspace (implicit at-root or `--workspaces`). */
   spansAllWorkspaces: boolean;
+}
+
+/** Every workspace minus `opts.exclude`, validating each excluded name. */
+function applyExclude(context: WorkspaceContext, opts: ScopeOptions): ScopeTarget[] {
+  const excluded = new Set((opts.exclude ?? []).map((name) => findWorkspace(context, name).name));
+  return context.workspaces
+    .filter((w) => !excluded.has(w.name))
+    .map((w) => ({ name: w.name, project: w.project }));
 }
 
 /**
@@ -435,7 +453,7 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     }
     return {
       context,
-      targets: context.workspaces.map((w) => ({ name: w.name, project: w.project })),
+      targets: applyExclude(context, opts),
       spansAllWorkspaces: true,
     };
   }
@@ -456,7 +474,7 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     }
     return {
       context,
-      targets: context.workspaces.map((w) => ({ name: w.name, project: w.project })),
+      targets: applyExclude(context, opts),
       spansAllWorkspaces: true,
     };
   }

@@ -21,6 +21,7 @@ export interface RemoveOptions {
   keepFile?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   project?: string;
   cwd?: string;
 }
@@ -53,6 +54,7 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
     cwd: opts.cwd,
     workspace: opts.workspace,
     workspaces: opts.workspaces,
+    exclude: opts.exclude,
     requireExplicitAtRoot: true,
     commandName: "remove",
   });
@@ -220,6 +222,11 @@ export function removeCommand(): Command {
     .option("--keep-file", "Keep the cached jar on disk instead of deleting it.")
     .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Remove from every workspace that declares it.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces remove (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .action(async function action(this: Command, plugin: string, options) {
       const globalOpts = this.optsWithGlobals();
       await doRemove({
@@ -231,6 +238,7 @@ export function removeCommand(): Command {
           "A plugin is removed from one workspace.",
         ),
         workspaces: options.workspaces,
+        exclude: options.exclude as string[] | undefined,
         project: globalOpts.project,
       });
     });

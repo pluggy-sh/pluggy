@@ -37,6 +37,7 @@ export interface InstallOptions {
   beta?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   project?: string;
   cwd?: string;
   /** Suppress the success line so a calling command can render its own. */
@@ -60,6 +61,7 @@ export async function doInstall(opts: InstallOptions): Promise<InstallResult> {
     cwd: opts.cwd,
     workspace: opts.workspace,
     workspaces: opts.workspaces,
+    exclude: opts.exclude,
     requireExplicitAtRoot: false,
     commandName: "install",
   });
@@ -259,7 +261,14 @@ async function verifyCachedIntegrity(
     if (entry === undefined) continue;
     const jarPath = cachedJarPathForEntry(entry);
     if (jarPath === undefined) continue;
-    if (!(await fileExists(jarPath))) continue;
+    // A jar that isn't cached is drift too. Skipping it meant `pluggy install`
+    // reported "lockfile is fresh; nothing to install" against an empty cache
+    // — so a fresh clone downloaded nothing, and `pluggy audit --fix` could
+    // never heal the entries it had just reported as unverified.
+    if (!(await fileExists(jarPath))) {
+      drift.push(name);
+      continue;
+    }
 
     const bytes = await readFile(jarPath);
     const actual = `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
@@ -441,6 +450,11 @@ export function installCommand(): Command {
     .option("--beta", "Include pre-release versions.")
     .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Run across all workspaces explicitly.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces install (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .addHelpText(
       "after",
       `\nExamples:\n  $ pluggy install\n  $ pluggy install essentialsx@2.21.1\n  $ pluggy install ./libs/essentialsx-2.21.1.jar\n  $ pluggy install maven:com.example:my-plugin@1.0.0`,
@@ -457,6 +471,7 @@ export function installCommand(): Command {
           "A plugin is installed into one workspace.",
         ),
         workspaces: options.workspaces,
+        exclude: options.exclude as string[] | undefined,
         project: globalOpts.project,
       });
     });

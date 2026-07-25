@@ -91,7 +91,8 @@ export async function runWorkspacesCommand(
 
 function renderHuman(listings: WorkspaceListing[]): void {
   if (listings.length === 0) {
-    log.info(dim("No workspaces declared. (Add a `workspaces` array to project.json.)"));
+    log.info("No workspaces declared.");
+    log.info(dim("Create one: pluggy workspace add <name>"));
     return;
   }
 

@@ -3,7 +3,7 @@
  * HEAD requests, cache stat) are replaced via the `checks` hook.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,10 +19,12 @@ import {
   checkDependencyJars,
   checkDescriptors,
   checkJava,
+  checkLockfile,
   checkProjectValid,
   checkWorkspaceGraph,
   type CheckResult,
   type DoctorCommandOptions,
+  remedyOf,
   runDoctorCommand,
 } from "./doctor.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
@@ -44,6 +46,37 @@ function passingHooks(): DoctorCommandOptions["checks"] {
     descriptor: () => [pass("descriptor", "Descriptor family")],
     outdated: async () => pass("outdated", "Outdated dependencies"),
     dependencyJars: async () => pass("dep-jars", "Dependency compatibility"),
+  };
+}
+
+function failingJavaCheck(): CheckResult {
+  return {
+    id: "java",
+    label: "Java toolchain",
+    status: "fail",
+    detail: "not found",
+    remedy: { kind: "run", command: "pluggy sdk install temurin@21" },
+  };
+}
+
+/** Lockfile for a project named `withdep`: one declared entry, one orphan. */
+function lockWithOrphan(): Record<string, unknown> {
+  return {
+    version: 2,
+    entries: {
+      "kept-plugin": {
+        source: { kind: "modrinth", slug: "kept-plugin", version: "1.0.0" },
+        resolvedVersion: "1.0.0",
+        integrity: "sha256-aaa",
+        declaredBy: ["withdep"],
+      },
+      "orphan-plugin": {
+        source: { kind: "modrinth", slug: "orphan-plugin", version: "1.0.0" },
+        resolvedVersion: "1.0.0",
+        integrity: "sha256-bbb",
+        declaredBy: [],
+      },
+    },
   };
 }
 
@@ -88,12 +121,7 @@ describe("runDoctorCommand", () => {
 
   test("one fail → exitCode 1, result contains the failure", async () => {
     const hooks = passingHooks()!;
-    hooks.java = async () => ({
-      id: "java",
-      label: "Java toolchain",
-      status: "fail",
-      detail: "not found",
-    });
+    hooks.java = async () => failingJavaCheck();
 
     const res = await runDoctorCommand({ cwd: rootDir, checks: hooks });
     expect(res.ok).toBe(false);
@@ -101,6 +129,33 @@ describe("runDoctorCommand", () => {
     const fails = res.checks.filter((c) => c.status === "fail");
     expect(fails).toHaveLength(1);
     expect(fails[0].id).toBe("java");
+  });
+
+  test("a remedy renders on its own line under its check", async () => {
+    const hooks = passingHooks()!;
+    hooks.java = async () => failingJavaCheck();
+    hooks.cache = async () => ({
+      id: "cache",
+      label: "Cache reachability",
+      status: "fail",
+      detail: "cache is not writable: /tmp/pluggy",
+      remedy: { kind: "manual", instruction: "grant your user write access to /tmp/pluggy" },
+    });
+
+    await runDoctorCommand({ cwd: rootDir, checks: hooks });
+
+    const lines = stdoutSpy.mock.calls.flatMap((c: unknown[]) => String(c[0]).split("\n"));
+    const javaIndex = lines.findIndex((l: string) => l.includes("Java toolchain: not found"));
+    expect(javaIndex).toBeGreaterThanOrEqual(0);
+    expect(lines[javaIndex]).not.toContain("→");
+    expect(lines[javaIndex + 1]).toMatch(/^\s+→ pluggy sdk install temurin@21$/);
+
+    const manualLine = lines.find((l: string) => l.includes("grant your user write access"));
+    expect(manualLine).toMatch(/^\s+→ /);
+    expect(manualLine).toContain("(no automatic fix)");
+
+    const passLine = lines.find((l: string) => l.includes("Registries"));
+    expect(passLine).not.toContain("→");
   });
 
   test("warn does not fail the overall result", async () => {
@@ -132,12 +187,7 @@ describe("runDoctorCommand", () => {
 
   test("JSON mode, failure: JSON blob on stderr with failures[]", async () => {
     const hooks = passingHooks()!;
-    hooks.java = async () => ({
-      id: "java",
-      label: "Java toolchain",
-      status: "fail",
-      detail: "not found",
-    });
+    hooks.java = async () => failingJavaCheck();
     initLogging({ json: true });
     const res = await runDoctorCommand({ cwd: rootDir, checks: hooks });
     expect(res.ok).toBe(false);
@@ -146,6 +196,12 @@ describe("runDoctorCommand", () => {
     expect(parsed.ok).toBe(false);
     expect(parsed.failures).toHaveLength(1);
     expect(parsed.failures[0].id).toBe("java");
+    expect(parsed.failures[0].remedy).toEqual({
+      kind: "run",
+      command: "pluggy sdk install temurin@21",
+    });
+    const javaCheck = parsed.checks.find((c: { id: string }) => c.id === "java");
+    expect(javaCheck.remedy.command).toBe("pluggy sdk install temurin@21");
   });
 
   test("missing project produces a project-found failure but still emits environment", async () => {
@@ -243,27 +299,7 @@ describe("runDoctorCommand", () => {
         },
       }),
     );
-    await writeFile(
-      join(rootDir, "pluggy.lock"),
-      JSON.stringify({
-        version: 2,
-        entries: {
-          "kept-plugin": {
-            source: { kind: "modrinth", slug: "kept-plugin", version: "1.0.0" },
-            resolvedVersion: "1.0.0",
-            integrity: "sha256-aaa",
-            declaredBy: ["withdep"],
-          },
-          "orphan-plugin": {
-            source: { kind: "modrinth", slug: "orphan-plugin", version: "1.0.0" },
-            resolvedVersion: "1.0.0",
-            integrity: "sha256-bbb",
-            // No declaredBy, no parent → orphan once pruneOrphans runs.
-            declaredBy: [],
-          },
-        },
-      }),
-    );
+    await writeFile(join(rootDir, "pluggy.lock"), JSON.stringify(lockWithOrphan()));
 
     // Hooks short-circuit network/cache/jvm checks; we only care about checkLockfile.
     const hooks = passingHooks()!;
@@ -666,6 +702,145 @@ describe("checkDependencyJars", () => {
   });
 });
 
+describe("remedies", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-remedy-"));
+    initLogging({ json: false, verbose: false, noColor: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  test("every failing check carries an actionable remedy", async () => {
+    const project = (overrides: Partial<ResolvedProject>): ResolvedProject => ({
+      name: "solo",
+      version: "1.0.0",
+      main: "com.example.Main",
+      compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      rootDir,
+      projectFile: join(rootDir, "project.json"),
+      ...overrides,
+    });
+
+    // A project that fails several checks at once: mixed descriptor families
+    // and an unparseable lockfile.
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "mixed",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper", "velocity"] },
+      }),
+    );
+    await writeFile(join(rootDir, "pluggy.lock"), "{ not json");
+    const ctx = resolveWorkspaceContext(rootDir)!;
+
+    const cycleDir = join(rootDir, "cyclic");
+    await mkdir(join(cycleDir, "a"), { recursive: true });
+    await mkdir(join(cycleDir, "b"), { recursive: true });
+    await writeFile(
+      join(cycleDir, "project.json"),
+      JSON.stringify({
+        name: "r",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./a", "./b"],
+      }),
+    );
+    await writeFile(
+      join(cycleDir, "a", "project.json"),
+      JSON.stringify({
+        name: "a",
+        version: "0.1.0",
+        main: "a.M",
+        dependencies: { b: { source: "workspace:b", version: "*" } },
+      }),
+    );
+    await writeFile(
+      join(cycleDir, "b", "project.json"),
+      JSON.stringify({
+        name: "b",
+        version: "0.1.0",
+        main: "b.M",
+        dependencies: { a: { source: "workspace:a", version: "*" } },
+      }),
+    );
+
+    const noProjectDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-noproject-"));
+    const staleDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-stale-"));
+    await writeFile(
+      join(staleDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./gone"],
+      }),
+    );
+
+    try {
+      const results: CheckResult[] = [
+        checkProjectValid(project({ name: "not a name" })),
+        checkProjectValid(project({ version: "not-semver" })),
+        checkProjectValid(project({ compatibility: undefined })),
+        checkProjectValid(
+          project({ compatibility: { versions: ["1.21.8"], platforms: ["not-a-platform"] } }),
+        ),
+        await checkJava(ctx, undefined, "spawn java ENOENT"),
+        await checkJava(ctx, undefined),
+        checkLockfile(ctx),
+        ...checkDescriptors(ctx),
+        checkWorkspaceGraph(resolveWorkspaceContext(cycleDir)!),
+        ...(await runDoctorCommand({ cwd: noProjectDir })).checks,
+        ...(await runDoctorCommand({ cwd: staleDir })).checks,
+      ];
+
+      const failures = results.filter((r) => r.status === "fail");
+      expect(failures).toHaveLength(results.length);
+
+      for (const failure of failures) {
+        const remedy = remedyOf(failure);
+        expect(remedy, `${failure.id} (${failure.label}) has no remedy`).toBeDefined();
+        if (remedy?.kind === "run") {
+          expect(remedy.command.startsWith("pluggy ")).toBe(true);
+        } else {
+          expect(remedy?.instruction.length).toBeGreaterThan(0);
+        }
+      }
+    } finally {
+      await rm(noProjectDir, { recursive: true, force: true });
+      await rm(staleDir, { recursive: true, force: true });
+    }
+  });
+
+  test("remediation prose lives in the remedy, not in the detail", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "withdep",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { "kept-plugin": { source: "modrinth:kept-plugin", version: "*" } },
+      }),
+    );
+    await writeFile(join(rootDir, "pluggy.lock"), JSON.stringify(lockWithOrphan()));
+
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const result = checkLockfile(ctx);
+    expect(result.status).toBe("warn");
+    expect(result.detail).not.toMatch(/pluggy install/);
+    expect(remedyOf(result)).toEqual({ kind: "run", command: "pluggy install", auto: true });
+  });
+});
+
 describe("runDoctorCommand --fix", () => {
   let rootDir: string;
 
@@ -696,21 +871,6 @@ describe("runDoctorCommand --fix", () => {
       join(rootDir, "api", "project.json"),
       JSON.stringify({ name: "api", version: "0.1.0" }),
     );
-
-    // The missing workspace makes the workspace context refuse to load, so
-    // run --fix from a state that's tolerable to resolveWorkspaceContext.
-    // We invoke runDoctorCommand directly, and the inner enumerate-workspaces
-    // call would throw if "missing" was traversed — but enumerateWorkspaces
-    // does throw. So this case needs the root to be at least partially
-    // resolvable. For this test we simulate the case where the entry was
-    // declared *and* the folder existed when declared but was later deleted.
-    await mkdir(join(rootDir, "missing"), { recursive: true });
-    await writeFile(
-      join(rootDir, "missing", "project.json"),
-      JSON.stringify({ name: "missing", version: "0.1.0" }),
-    );
-    // Now actually delete the folder to mimic the "user removed it by hand" state.
-    await rm(join(rootDir, "missing"), { recursive: true, force: true });
 
     const res = await runDoctorCommand({
       cwd: rootDir,
@@ -752,5 +912,116 @@ describe("runDoctorCommand --fix", () => {
       checks: passingHooks(),
     });
     expect(res.fixes).toBeUndefined();
+  });
+
+  test("without --fix, missing workspace entries fail with an auto remedy", async () => {
+    await mkdir(join(rootDir, "api"), { recursive: true });
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "suite",
+        version: "1.0.0",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        workspaces: ["./api", "./missing"],
+      }),
+    );
+    await writeFile(
+      join(rootDir, "api", "project.json"),
+      JSON.stringify({ name: "api", version: "0.1.0" }),
+    );
+
+    const res = await runDoctorCommand({ cwd: rootDir, checks: passingHooks() });
+
+    expect(res.ok).toBe(false);
+    expect(res.checks).toHaveLength(1);
+    expect(res.checks[0].id).toBe("workspace-entries");
+    expect(res.checks[0].detail).toContain("./missing");
+    expect(remedyOf(res.checks[0])).toEqual({
+      kind: "run",
+      command: "pluggy doctor --fix",
+      auto: true,
+    });
+    expect(res.fixes).toBeUndefined();
+
+    const reread = JSON.parse(await readFile(join(rootDir, "project.json"), "utf8"));
+    expect(reread.workspaces).toEqual(["./api", "./missing"]);
+  });
+
+  test("applies the lockfile remedy, which is marked auto", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "withdep",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { "kept-plugin": { source: "modrinth:kept-plugin", version: "*" } },
+      }),
+    );
+    await writeFile(join(rootDir, "pluggy.lock"), JSON.stringify(lockWithOrphan()));
+
+    const res = await runDoctorCommand({ cwd: rootDir, fix: true, checks: passingHooks() });
+
+    expect(res.fixes?.map((f) => f.id)).toEqual(["lockfile-prune"]);
+    const lock = JSON.parse(await readFile(join(rootDir, "pluggy.lock"), "utf8"));
+    expect(Object.keys(lock.entries)).toEqual(["kept-plugin"]);
+  });
+
+  test("ignores a remedy that is not marked auto", async () => {
+    // No declared deps, so the real lockfile check never runs: the injected
+    // check is the only one carrying id "lockfile", and its remedy is manual.
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "withdep",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      }),
+    );
+    await writeFile(join(rootDir, "pluggy.lock"), JSON.stringify(lockWithOrphan()));
+
+    const hooks = passingHooks()!;
+    hooks.outdated = async () => ({
+      id: "lockfile",
+      label: "Lockfile",
+      status: "warn",
+      detail: "1 orphan transitive",
+      remedy: { kind: "run", command: "pluggy install" },
+    });
+
+    const res = await runDoctorCommand({ cwd: rootDir, fix: true, checks: hooks });
+
+    expect(res.fixes).toBeUndefined();
+    const lock = JSON.parse(await readFile(join(rootDir, "pluggy.lock"), "utf8"));
+    expect(Object.keys(lock.entries)).toEqual(["kept-plugin", "orphan-plugin"]);
+  });
+
+  test("applies the same remedy when the check marks it auto", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "withdep",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      }),
+    );
+    await writeFile(join(rootDir, "pluggy.lock"), JSON.stringify(lockWithOrphan()));
+
+    const hooks = passingHooks()!;
+    hooks.outdated = async () => ({
+      id: "lockfile",
+      label: "Lockfile",
+      status: "warn",
+      detail: "1 orphan transitive",
+      remedy: { kind: "run", command: "pluggy install", auto: true },
+    });
+
+    const res = await runDoctorCommand({ cwd: rootDir, fix: true, checks: hooks });
+
+    expect(res.fixes?.map((f) => f.id)).toEqual(["lockfile-prune"]);
+    const lock = JSON.parse(await readFile(join(rootDir, "pluggy.lock"), "utf8"));
+    expect(Object.keys(lock.entries)).toEqual(["kept-plugin"]);
   });
 });

@@ -22,6 +22,7 @@ export interface ListOptions {
   tree?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
   cwd?: string;
@@ -170,10 +171,13 @@ function selectTargets(
       return [{ declaringName: ctx.current.name, project: ctx.current.project }];
     }
   }
-  return ctx.workspaces.map((w: WorkspaceNode) => ({
-    declaringName: w.name,
-    project: w.project,
-  }));
+  const excluded = new Set((options.exclude ?? []).map((name) => findWorkspace(ctx, name).name));
+  return ctx.workspaces
+    .filter((w: WorkspaceNode) => !excluded.has(w.name))
+    .map((w: WorkspaceNode) => ({
+      declaringName: w.name,
+      project: w.project,
+    }));
 }
 
 /**
@@ -354,6 +358,11 @@ export function listCommand(): Command {
     .option("--tree", "Render as dependency tree (with transitive deps).")
     .option("--workspace <names>", "Show a specific workspace.", workspaceListOption)
     .option("--workspaces", "Aggregated view across all workspaces.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces list (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
       await doList({
@@ -364,6 +373,7 @@ export function listCommand(): Command {
           "Use --workspaces for the aggregated view.",
         ),
         workspaces: options.workspaces,
+        exclude: options.exclude as string[] | undefined,
         project: globalOpts.project,
       });
     });

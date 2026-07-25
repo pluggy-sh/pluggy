@@ -212,7 +212,7 @@ export function docsCommand(): Command {
       "Exclude workspaces from the default sweep (repeatable; comma-separated).",
       workspaceListOption,
     )
-    .option("--workspaces", "Explicit all-workspaces docs run.")
+    .option("--workspaces", "Every workspace, even from inside one.")
     .option("--concurrency <n>", "Cap on workspaces documenting simultaneously.", (raw: string) => {
       const n = Number.parseInt(raw, 10);
       if (!Number.isFinite(n) || n < 1) {

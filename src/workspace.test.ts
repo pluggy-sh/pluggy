@@ -588,12 +588,37 @@ describe("selectWorkspaceTargets", () => {
     );
   });
 
-  test("--exclude inside a workspace is rejected", async () => {
+  test("--exclude inside a workspace is rejected without --workspaces", async () => {
     await writeTrio();
     const ctx = resolveWorkspaceContext(join(rootDir, "api"))!;
     expect(() => selectWorkspaceTargets(ctx, { exclude: ["core"] }, "build")).toThrow(
-      /--exclude is only valid at the repo root/,
+      /--exclude is only valid with --workspaces or at the repo root/,
     );
+  });
+
+  // `--workspaces` widened scope on install/remove/list but hard-errored on
+  // the sweep commands, so one flag did opposite things depending on which
+  // command it was attached to. It now means "every workspace" everywhere.
+  test("--workspaces inside a workspace selects every workspace", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(join(rootDir, "api"))!;
+
+    const names = selectWorkspaceTargets(ctx, { workspaces: true }, "build").map((n) => n.name);
+
+    expect([...names].sort()).toEqual(["api", "core", "plugin"]);
+  });
+
+  test("--workspaces composes with --exclude inside a workspace", async () => {
+    await writeTrio();
+    const ctx = resolveWorkspaceContext(join(rootDir, "api"))!;
+
+    const names = selectWorkspaceTargets(
+      ctx,
+      { workspaces: true, exclude: ["plugin"] },
+      "build",
+    ).map((n) => n.name);
+
+    expect([...names].sort()).toEqual(["api", "core"]);
   });
 });
 

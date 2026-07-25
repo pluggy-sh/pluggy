@@ -224,6 +224,10 @@ async function buildTargets(
     results,
   };
   const printSummary = (): void => {
+    if (!anyFailed && targets.length <= 1) {
+      log.info(dim("Run it: pluggy dev"));
+      return;
+    }
     if (targets.length <= 1) return;
     log.heading("Summary");
     for (const r of results) {
@@ -395,7 +399,7 @@ export function buildCommand(): Command {
       "Exclude workspaces from an all-workspaces build (repeatable; comma-separated).",
       workspaceListOption,
     )
-    .option("--workspaces", "Explicit all-workspaces build.")
+    .option("--workspaces", "Every workspace, even from inside one.")
     .option(
       "--concurrency <n>",
       "Cap on workspaces building simultaneously. Use 1 for serial output.",

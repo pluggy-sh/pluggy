@@ -20,10 +20,12 @@ import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
 import { listCommand } from "./commands/list.ts";
 import { outdatedCommand } from "./commands/outdated.ts";
+import { platformsCommand } from "./commands/platforms.ts";
 import { removeCommand } from "./commands/remove.ts";
 import { runCommand } from "./commands/run.ts";
 import { searchCommand } from "./commands/search.ts";
 import { sdkCommand } from "./commands/sdk.ts";
+import { templatesCommand } from "./commands/templates.ts";
 import { testCommand } from "./commands/test.ts";
 import { updateCommand } from "./commands/update.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
@@ -54,6 +56,8 @@ export function createProgram(): Command {
 
   program.commandsGroup("Start:");
   program.addCommand(initCommand());
+  program.addCommand(platformsCommand());
+  program.addCommand(templatesCommand());
 
   program.commandsGroup("Dependencies:");
   program.addCommand(installCommand());

@@ -37,6 +37,7 @@ export interface UpdateOptions {
   dryRun?: boolean;
   workspace?: string;
   workspaces?: boolean;
+  exclude?: string[];
   /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
   project?: string;
   cwd?: string;
@@ -61,6 +62,7 @@ export async function doUpdate(opts: UpdateOptions = {}): Promise<UpdateResult> 
     cwd: projectStartDir(opts.project, cwd),
     workspace: opts.workspace,
     workspaces: opts.workspaces,
+    exclude: opts.exclude,
     requireExplicitAtRoot: false,
     commandName: "update",
   });
@@ -231,6 +233,11 @@ export function updateCommand(): Command {
     .option("--dry-run", "Show what would change without writing anything.")
     .option("--workspace <names>", "Target a specific workspace.", workspaceListOption)
     .option("--workspaces", "Run across every workspace.")
+    .option(
+      "--exclude <names>",
+      "Exclude workspaces from an all-workspaces update (repeatable; comma-separated).",
+      workspaceListOption,
+    )
     .addHelpText(
       "after",
       "\nExamples:\n  $ pluggy update\n  $ pluggy update worldedit\n  $ pluggy update --dry-run\n\nTo upgrade pluggy itself, use `pluggy upgrade`.",
@@ -246,6 +253,7 @@ export function updateCommand(): Command {
           "Use --workspaces to update every workspace.",
         ),
         workspaces: options.workspaces === true,
+        exclude: options.exclude as string[] | undefined,
         project: this.optsWithGlobals().project,
       });
     });

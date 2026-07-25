@@ -332,7 +332,7 @@ export function runCommand(): Command {
       "Exclude workspaces from an all-workspaces run (repeatable; comma-separated).",
       workspaceListOption,
     )
-    .option("--workspaces", "Explicit all-workspaces run.")
+    .option("--workspaces", "Every workspace, even from inside one.")
     .option("--concurrency <n>", "Cap on workspaces running simultaneously.", (raw: string) => {
       const n = Number.parseInt(raw, 10);
       if (!Number.isFinite(n) || n < 1) {

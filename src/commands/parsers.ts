@@ -40,10 +40,48 @@ export function parsePlatform(value: string): string {
 }
 
 export function parseMcVersion(value: string): string {
-  if (/^\d+\.\d+(\.\d+)?$/.test(value)) return value;
+  if (/^\d+\.\d+(\.\d+)?(-[a-zA-Z0-9.]+)?$/.test(value)) return value;
   throw new InvalidArgumentError(
     `Invalid Minecraft version: ${value}; expected format like 1.21.8 or 26.1.2`,
   );
+}
+
+/**
+ * Repeatable + comma-separated platform list, validated per element.
+ *
+ * `--platform` had four grammars across the CLI, two of which validated
+ * nothing — so an unknown platform reached `project.json` and only surfaced
+ * much later as a build failure.
+ */
+export function platformListOption(value: string, prev: string[] | undefined): string[] {
+  return dedupe(prev, splitList(value).map(parsePlatform));
+}
+
+/** Repeatable + comma-separated Minecraft versions, shape-checked per element. */
+export function mcVersionListOption(value: string, prev: string[] | undefined): string[] {
+  return dedupe(prev, splitList(value).map(parseMcVersion));
+}
+
+const FQCN_RE = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+$/;
+
+export function parseMainClass(value: string): string {
+  if (FQCN_RE.test(value)) return value;
+  throw new InvalidArgumentError(
+    `Invalid main class: "${value}". Use a fully qualified class name, e.g. com.example.Main.`,
+  );
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function dedupe(prev: string[] | undefined, next: string[]): string[] {
+  const out = [...(prev ?? [])];
+  for (const item of next) if (!out.includes(item)) out.push(item);
+  return out;
 }
 
 export function parseInteger(value: string): number {
