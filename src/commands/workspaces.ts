@@ -137,8 +137,8 @@ function padEnd(s: string, n: number): string {
 }
 
 /** Factory for the `pluggy workspaces` commander command. */
-export function workspacesCommand(): Command {
-  return new Command("workspaces")
+export function workspacesCommand(name = "workspaces"): Command {
+  return new Command(name)
     .description("List the workspaces declared in this project.")
     .action(async function action(this: Command) {
       await runWorkspacesCommand({ project: this.optsWithGlobals().project });

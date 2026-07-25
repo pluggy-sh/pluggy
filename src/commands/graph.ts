@@ -12,7 +12,7 @@
 
 import process from "node:process";
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
@@ -129,13 +129,18 @@ function mermaidId(name: string): string {
 }
 
 /** Factory for the `pluggy graph` commander command. */
-export function graphCommand(): Command {
-  return new Command("graph")
+export function graphCommand(name = "graph"): Command {
+  return new Command(name)
     .description("Render the workspace dependency graph (text by default).")
-    .option("--mermaid", "Emit Mermaid syntax for embedding in Markdown.")
+    .addOption(
+      new Option("--format <format>", "Output format.")
+        .choices(["text", "mermaid"])
+        .default("text"),
+    )
+    .option("--mermaid", "Deprecated alias for --format mermaid.")
     .action(async function action(this: Command, options) {
       await runGraphCommand({
-        mermaid: options.mermaid === true,
+        mermaid: options.mermaid === true || options.format === "mermaid",
         project: this.optsWithGlobals().project,
       });
     });

@@ -23,6 +23,9 @@ import { Command, InvalidArgumentError } from "commander";
 import { confirm } from "@inquirer/prompts";
 
 import { UserError } from "../errors.ts";
+
+import { graphCommand } from "./graph.ts";
+import { runWorkspacesCommand, workspacesCommand } from "./workspaces.ts";
 import { bold, dim, emit, isJsonMode, log } from "../logging.ts";
 import { toPosixPath, writeFileLF } from "../portable.ts";
 import {
@@ -35,7 +38,7 @@ import {
 
 export interface WorkspaceAddOptions {
   name: string;
-  /** FQCN of the new workspace's `main` class. Omit for an internal workspace. */
+  /** FQCN of the new workspace's `main` class. Derived from the root when omitted. */
   main?: string;
   /**
    * Platforms for the new workspace's `compatibility.platforms`. Empty means
@@ -624,14 +627,28 @@ export async function runWorkspaceRename(
   return result;
 }
 
-/** Top-level `pluggy workspace` command. Subcommands attached below. */
+/**
+ * Top-level `pluggy workspace` command.
+ *
+ * `list` and `graph` live here rather than as the top-level `workspaces` and
+ * `graph`: `workspace` and `workspaces` differed by one character, did
+ * completely different things (mutate vs list), rendered on adjacent help
+ * lines with no cue that one was a namespace, and commander's "did you mean"
+ * doesn't fire between them. The old spellings remain as aliases.
+ */
 export function workspaceCommand(): Command {
-  const cmd = new Command("workspace").description(
-    "Mutate the workspace graph (add, remove, rename, …).",
-  );
+  const cmd = new Command("workspace").description("Inspect and change the workspace graph.");
+  cmd.addCommand(workspacesCommand("list"));
   cmd.addCommand(workspaceAddSubcommand());
   cmd.addCommand(workspaceRemoveSubcommand());
   cmd.addCommand(workspaceRenameSubcommand());
+  cmd.addCommand(graphCommand("graph"));
+
+  // Bare `pluggy workspace` lists rather than printing help, matching
+  // `pluggy cache` and `pluggy sdk`.
+  cmd.action(async function action(this: Command) {
+    await runWorkspacesCommand({ project: this.optsWithGlobals().project });
+  });
   return cmd;
 }
 

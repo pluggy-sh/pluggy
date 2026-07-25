@@ -7,6 +7,8 @@ import { type LockfileEntry, pulledInBy, readLock } from "../lockfile.ts";
 import { bold, dim, emit, log } from "../logging.ts";
 import { projectStartDir, resolveWorkspaceContext } from "../workspace.ts";
 
+import { runExplainCommand } from "./explain.ts";
+
 export interface WhyOptions {
   /** Lockfile entry name to trace. */
   name: string;
@@ -138,11 +140,33 @@ function emitWhyResult(result: WhyResult): void {
   );
 }
 
+/**
+ * `why` answers "where did this come from?" for both kinds of name a project
+ * has. `explain` used to own the workspace half from a different command
+ * group, and its description had to end by pointing at `why` to say what it
+ * wasn't — the only description in the CLI that named a sibling. A workspace
+ * is already a dependency (`workspace:core`), so they were one question split
+ * by which file the implementation happened to read.
+ */
 export function whyCommand(): Command {
   return new Command("why")
-    .description("Trace which top-level dependency pulled in a locked dep.")
-    .argument("<name>", "Dependency name (as shown by `pluggy list`).")
+    .description("Show where something came from: a locked dependency, or a workspace's fields.")
+    .argument("<name>", "Dependency or workspace name.")
+    .addHelpText(
+      "after",
+      "\nExamples:\n  $ pluggy why worldedit    # which top-level dependency pulled it in\n  $ pluggy why core         # a workspace's declared vs inherited fields",
+    )
     .action(async function action(this: Command, name: string) {
-      await doWhy({ name, project: this.optsWithGlobals().project });
+      const project = this.optsWithGlobals().project;
+
+      // A workspace name resolves to the workspace view; anything else is a
+      // lockfile entry. Checking the workspace first keeps the answer stable
+      // when a workspace and a dependency share a name.
+      const context = resolveWorkspaceContext(projectStartDir(project, process.cwd()));
+      if (context?.workspaces.some((w) => w.name === name) === true) {
+        await runExplainCommand({ name, project });
+        return;
+      }
+      await doWhy({ name, project });
     });
 }

@@ -245,7 +245,7 @@ function formatMergedMap(
 export function explainCommand(): Command {
   return new Command("explain")
     .description(
-      "Show a workspace's post-inheritance project view (declared vs inherited fields; for where a dependency came from, see `pluggy why`).",
+      "Show a workspace's declared vs inherited fields. Alias of `pluggy why <workspace>`.",
     )
     .argument(
       "[name]",

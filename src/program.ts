@@ -73,25 +73,33 @@ export function createProgram(): Command {
   program.addCommand(docsCommand());
   program.addCommand(devCommand());
 
-  program.commandsGroup("Maintain:");
-  program.addCommand(doctorCommand({ pluggyVersion: CLI_VERSION, repository: REPOSITORY }));
+  program.commandsGroup("Workspaces:");
+  program.addCommand(workspaceCommand());
+
+  program.commandsGroup("Toolchain:");
   program.addCommand(sdkCommand());
   program.addCommand(cacheCommand());
   program.addCommand(cleanCommand());
+
+  // `Maintain:` mixed toolchain management with commands about the CLI itself;
+  // the old grouping comment already called these "the other meta commands".
+  program.commandsGroup("Meta:");
+  program.addCommand(doctorCommand({ pluggyVersion: CLI_VERSION, repository: REPOSITORY }));
   program.addCommand(upgradeCommand({ repository: REPOSITORY }));
   program.addCommand(completionsCommand(program));
 
-  program.commandsGroup("Workspaces:");
-  program.addCommand(workspaceCommand());
-  program.addCommand(workspacesCommand());
-  program.addCommand(explainCommand());
-  program.addCommand(graphCommand());
-
   // Commander's implicit `help` command skips group assignment when created
   // lazily and would render under a stray "Commands:" heading; declaring it
-  // explicitly files it under Maintain with the other meta commands.
-  program.commandsGroup("Maintain:");
+  // explicitly files it under Meta with the other CLI-about-itself commands.
+  program.commandsGroup("Meta:");
   program.helpCommand("help [command]", "Show help for a command.");
+
+  // `workspaces` and `graph` moved under the `workspace` namespace. Kept
+  // reachable but hidden so existing scripts and muscle memory keep working
+  // through the next minor.
+  program.addCommand(explainCommand(), { hidden: true });
+  program.addCommand(workspacesCommand(), { hidden: true });
+  program.addCommand(graphCommand(), { hidden: true });
   // Hidden helper used by shell completion scripts. Lives at the top level so
   // it's invokable as `pluggy __complete-workspaces`; not surfaced in --help.
   program.addCommand(completeWorkspacesCommand(), { hidden: true });
