@@ -76,7 +76,7 @@ For each target workspace, pluggy runs the steps below in order.
 7. **Run.** `java -Dpluggy.test.mainJar=<.../main.jar> -jar junit-platform-console-standalone.jar execute ...`. The runtime classpath is `main-runtime.jar` plus main deps, test deps, and JUnit. `--filter` translates to `--include-tag`, `--select-method`, or `--include-classname`. `--fail-fast` translates to `--fail-fast`.
 8. **Parse.** Read every `TEST-*.xml` from `reports/` and flatten into a single `{ total, passed, failed, skipped, cases[] }` shape. The launcher's own stdout and stderr are discarded; pluggy renders its own output from the XML.
 
-`testDependencies` follows the same grammar as `dependencies`. See [`project.json` reference](../project-json.md#testdependencies).
+`testDependencies` follows the same grammar as `dependencies`. See [`project.json` reference](../project-json.md#testdependencies-optional).
 
 ## Mocking-framework hand-off
 
@@ -292,7 +292,7 @@ A non-zero JUnit exit _with_ reports is treated as a normal failed run. The laun
 
 ## See also
 
-- [`project.json` reference](../project-json.md#testdependencies): declaring test-only deps.
+- [`project.json` reference](../project-json.md#testdependencies-optional): declaring test-only deps.
 - [`pluggy build`](./build.md): the same compile pipeline minus tests.
 - [Testing with MockBukkit](../recipes/testing-with-mockbukkit.md): a worked recipe.
 - [Troubleshooting](../troubleshooting.md): `javac` and `java` not found, and other common issues.

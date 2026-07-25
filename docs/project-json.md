@@ -59,10 +59,8 @@ Every field is documented below. If a term is unfamiliar, check the [glossary](.
       "spawn-protection": 0
     },
     "extraPlugins": ["./plugins/helper.jar"],
-    "hotswap": {
-      "jdk": "jbr",
-      "fallback": "reload"
-    }
+    "hotswap": true,
+    "fallback": "manual"
   },
   "workspaces": []
 }
@@ -278,34 +276,53 @@ Knobs for `pluggy dev`.
 }
 ```
 
-| Field              | Default | Notes                                                                                            |
-| ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
-| `port`             | `25565` | `--port` overrides. Written to `server.properties`.                                              |
-| `memory`           | `"2G"`  | JVM heap; produces `-Xmx<value>`. `--memory` overrides.                                          |
-| `onlineMode`       | `false` | `--offline` on the command line forces `false` and beats the config.                             |
-| `jvmArgs`          | `[]`    | Inserted between `-Xmx...` and `-jar server.jar`.                                                |
-| `serverProperties` | `{}`    | Merged with pluggy's defaults (`motd`, `online-mode`, `server-port`). User keys win on conflict. |
-| `extraPlugins`     | `[]`    | Jar paths relative to the workspace root, hardlinked into `dev/plugins/` at start.               |
-| `hotswap`          | `true`  | Hotswap configuration. See below. Set to `false` to disable.                                     |
+| Field              | Default    | Notes                                                                                            |
+| ------------------ | ---------- | ------------------------------------------------------------------------------------------------ |
+| `port`             | `25565`    | `--port` overrides. Written to `server.properties`.                                              |
+| `memory`           | `"2G"`     | JVM heap; produces `-Xmx<value>`. `--memory` overrides.                                          |
+| `onlineMode`       | `false`    | `--offline` on the command line forces `false` and beats the config.                             |
+| `jvmArgs`          | `[]`       | Inserted between `-Xmx...` and `-jar server.jar`.                                                |
+| `serverProperties` | `{}`       | Merged with pluggy's defaults (`motd`, `online-mode`, `server-port`). User keys win on conflict. |
+| `extraPlugins`     | `[]`       | Jar paths relative to the workspace root, hardlinked into `dev/plugins/` at start.               |
+| `hotswap`          | `true`     | `false` disables in-place class redefinition. `--no-hotswap` overrides.                          |
+| `fallback`         | `"manual"` | Action when a change can't be hotswapped. `--fallback` overrides. See below.                     |
+| `debug`            | off        | JDWP debug agent. `--debug` overrides. See below.                                                |
 
 `extraPlugins` is how you inject a runtime prerequisite that isn't in `dependencies` (for example a locally-patched EssentialsX).
 
-#### `dev.hotswap`
+#### `dev.fallback`
 
-Controls whether `pluggy dev` swaps changed classes in place via JetBrains Runtime + HotswapAgent. Default behaviour is on, which is equivalent to `"hotswap": true`.
+What `pluggy dev` does when a saved change is too deep to redefine in place.
 
-Three accepted shapes:
+| Value       | Behaviour                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `"manual"`  | Log `· restart to apply` and wait. You type `restart` (or `rs`) in the console. The default. |
+| `"restart"` | Stop the server, swap the jar, respawn the JVM. The default when `hotswap` is `false`.       |
+| `"reload"`  | Send Bukkit's deprecated `reload confirm`. Fast, and unreliable for stateful plugins.        |
 
-- `true` (default): hotswap on with default settings (JetBrains Runtime as the JDK, fall back to `/reload` when a change can't be hotswapped).
-- `false`: disable hotswap entirely. `pluggy dev` falls back to `/reload` (with `--reload`) or full restart.
-- An object with these keys:
+See [Dev server: manual, restart, and reload](./dev-server.md#manual-restart-and-reload) for what each one costs.
 
-| Field      | Default    | Notes                                                                                             |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| `jdk`      | `"jbr"`    | `"jbr"` downloads JetBrains Runtime to the cache. `"system"` uses `java` from `PATH` instead.     |
-| `fallback` | `"reload"` | Action when a class change can't be hotswapped. `"reload"` sends `/reload`. `"restart"` restarts. |
+#### `dev.debug`
 
-`--no-hotswap` on the CLI overrides this block to `false`. See [Dev server](./dev-server.md#hotswap) for what hotswap does at runtime.
+Attach a JDWP agent so an IDE can set breakpoints in the running server. Off unless set. Three accepted shapes:
+
+- `true`: on, port 5005.
+- A number: on, at that port.
+- An object:
+
+| Field     | Default | Notes                                                                                             |
+| --------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `port`    | `5005`  | JDWP listen port. `--debug <port>` overrides.                                                     |
+| `suspend` | `false` | Wait for a debugger before starting, so you can break in `onEnable`. `--debug-suspend` overrides. |
+| `exposed` | `false` | Bind all interfaces instead of loopback. Only for a debugger on another host (a container, WSL2). |
+
+JDWP is unauthenticated. `"exposed": true` hands remote code execution to anything that can reach the port, which is why the loopback bind is the default and why there is no CLI flag for it.
+
+```json
+"dev": {
+  "debug": { "port": 5005, "suspend": true }
+}
+```
 
 ### `workspaces` (optional)
 

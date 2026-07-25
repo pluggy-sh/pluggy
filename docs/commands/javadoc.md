@@ -1,12 +1,15 @@
-# `pluggy docs`
+# `pluggy javadoc`
 
 Generate Javadoc HTML for the project. Reuses the same [JDK](../glossary.md#jdk) and dependency [classpath](../glossary.md#classpath) that `pluggy build` does, so the docs see every type your code sees, including the platform API and shaded dependencies.
 
 ## Usage
 
 ```text
-pluggy docs [options]
+pluggy javadoc [options]
+pluggy docs    [options]
 ```
+
+`docs` remains as an alias for the command's former name.
 
 ## Flags
 
@@ -78,7 +81,7 @@ If you need to document against a non-primary platform, run from a workspace tha
 the generated HTML.
 
 ```text
-pluggy docs \
+pluggy javadoc \
   --link https://docs.oracle.com/en/java/javase/21/docs/api/ \
   --link https://jd.papermc.io/paper/1.21/
 ```

@@ -17,14 +17,16 @@ Two modes:
 
 ## Flags
 
-| Flag                 | Default | Notes                                                 |
-| -------------------- | ------- | ----------------------------------------------------- |
-| `--force`            | off     | Re-resolve every dep even when the lockfile is fresh. |
-| `--beta`             | off     | Include Modrinth pre-release versions.                |
-| `--workspace <name>` | none    | Target a specific workspace.                          |
-| `--workspaces`       | off     | Act across every workspace (only valid at the root).  |
+| Flag                  | Default | Notes                                                 |
+| --------------------- | ------- | ----------------------------------------------------- |
+| `--force`             | off     | Re-resolve every dep even when the lockfile is fresh. |
+| `--beta`              | off     | Include Modrinth pre-release versions.                |
+| `--workspace <names>` | none    | Target a specific workspace.                          |
+| `--workspaces`        | off     | Act across every workspace (only valid at the root).  |
 
 `--workspaces` and `<plugin>` are mutually exclusive. You can't add one dep to every workspace at once. Pick `--workspace <name>` instead.
+
+A plugin is installed into one workspace, so `--workspace` takes exactly one name even though it parses the [shared repeatable grammar](../workspaces.md#selection-flags). Naming two fails with `E_WORKSPACE_NOT_SINGLE`.
 
 ## Dependency identifier grammar
 

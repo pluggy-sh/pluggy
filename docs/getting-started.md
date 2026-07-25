@@ -109,7 +109,7 @@ $ cat project.json
 }
 ```
 
-The Minecraft version comes from Paper's published list. pluggy picks the highest version every selected platform supports. Pin a different one with `--mc-version 1.21.8` at `init` time. (`--version` sets the plugin's own `project.version`, which is a separate field.)
+The Minecraft version comes from Paper's published list. pluggy picks the highest version every selected platform supports. Pin a different one with `--mc-version 1.21.8` at `init` time. (`--project-version` sets the plugin's own `project.version`, which is a separate field.)
 
 The first `pluggy build` derives the right Java major from this Minecraft version (Java 21 for 1.20.5 and later, Java 17 for 1.18 to 1.20.4, and so on) and downloads a matching Temurin JDK if one isn't already on `JAVA_HOME` or in the cache. Override the choice with [`pluggy sdk use`](./commands/sdk.md#use), or by adding a [`jdk` block](./project-json.md#jdk-optional) to `project.json`.
 
@@ -153,7 +153,7 @@ $ pluggy dev
 
 `pluggy dev` runs a full build, downloads the matching Paper server jar, sets up a `dev/` directory next to your project, writes `eula.txt` accepting Mojang's [EULA](./glossary.md#eula) on your behalf (suppress with `PLUGGY_DEV_NO_EULA=1`), and runs `java -jar server.jar` with your plugin and any runtime plugin dependencies linked into `dev/plugins/`.
 
-When you save a `.java` file, pluggy waits 200 milliseconds (so saving multiple files at once still triggers one rebuild), rebuilds the jar, sends `stop` to the server, swaps in the new jar, and starts a fresh server. Pass `--reload` to use Bukkit's `/reload confirm` instead of a full restart. It's faster, but Bukkit's own docs warn that `/reload` is unreliable for plugins that hold state between reloads.
+When you save a `.java` file, pluggy waits 200 milliseconds (so saving multiple files at once still triggers one rebuild), rebuilds the jar, and swaps the changed classes into the running server. When a change is too deep to swap in place, pluggy says `· restart to apply` and waits; type `restart` in the console to pick it up. Pass `--fallback restart` to have it restart on its own instead.
 
 Press Ctrl+C once for a graceful shutdown (30 seconds of grace). A second Ctrl+C within 2 seconds force-kills the server.
 

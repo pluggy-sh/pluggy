@@ -164,11 +164,11 @@ Check the server logs in `dev/logs/latest.log`. Common causes:
 
 ### Hotswap reports "redefinition failed"
 
-Some changes can't be applied to a running JVM: adding a supertype, changing a class hierarchy, or rewriting a method that's already on the call stack. pluggy falls back automatically to either `/reload` or a full restart, depending on `dev.hotswap.fallback`. If you keep hitting this, bump `dev.hotswap.fallback` to `"restart"` so the server starts clean every time.
+Some changes can't be applied to a running JVM: adding a supertype, changing a class hierarchy, or rewriting a method that's already on the call stack. pluggy prints `· restart to apply` and waits for you to type `restart` in the console. If you keep hitting this, set `dev.fallback` to `"restart"` so the server starts clean on its own every time.
 
 ### `/reload` misbehaves but full restart is fine
 
-Don't use `--reload`. Bukkit's `/reload` has known reliability problems with stateful plugins. Full restart is slower but correct.
+Drop `--fallback reload`. Bukkit's `/reload` is deprecated and has known reliability problems with stateful plugins. Full restart is slower but correct.
 
 ## `pluggy doctor`
 

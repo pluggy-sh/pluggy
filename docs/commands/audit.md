@@ -2,30 +2,46 @@
 
 Verify every cached dependency jar against the [integrity hash](../glossary.md#integrity-hash) recorded in `pluggy.lock`. Catches tampering, accidental cache corruption, and mismatched lockfile entries before they reach a build.
 
-## Usage
-
 ```text
-pluggy audit
+pluggy audit [--fix]
 ```
 
-## Flags
+## Exit contract
 
-None beyond the global `--json`.
+`audit` exits 0 only when every locked dependency was hashed and matched. A dependency that isn't cached counts as unverified, not as passing, so a cold cache fails the gate instead of sailing through having hashed nothing.
+
+| Row status | Meaning                                                                                    | Exit |
+| ---------- | ------------------------------------------------------------------------------------------ | ---- |
+| `ok`       | The cached jar's bytes match the lockfile.                                                 | 0    |
+| `tampered` | The jar exists but hashes to something else.                                               | 1    |
+| `missing`  | The jar isn't in the cache, so nothing was verified.                                       | 1    |
+| `skipped`  | A `workspace:` dep. There's no cached jar; the sibling's own build is the source of truth. | 0    |
+
+Only `skipped` rows are exempt. Everything else has to be hashed and matched.
 
 ## What it does
 
 For every entry in `pluggy.lock`, pluggy:
 
-1. Locates the jar in the cache (Modrinth, Maven, and file deps each have their own cache layout; workspace deps don't have one).
+1. Locates the jar in the cache (Modrinth, Maven, and file deps each have their own cache layout; workspace deps have none).
 2. Reads the bytes and hashes them with SHA-256.
 3. Compares against the entry's `integrity` field.
 
-Each entry is reported as one of:
+## `--fix`
 
-- `ok`: the cached jar matches the lockfile.
-- `tampered`: the jar exists but its hash differs from the lockfile. Exit code goes to `1`.
-- `missing`: the jar isn't in the cache. Common after a `pluggy cache clean` or on a fresh checkout. Run `pluggy install` to repopulate.
-- `skipped`: workspace deps. There's no cached jar to verify; the sibling's own build is the source of truth.
+`--fix` runs [`pluggy install`](./install.md) when any row came back `tampered` or `missing`, then hashes everything again. Without it, `audit` refetches nothing; it only checks bytes already on disk.
+
+```text
+$ pluggy audit --fix
+  › Re-downloading unverified dependencies…
+! Cached "adventure-api" at /Users/you/Library/Caches/pluggy/dependencies/maven/net.kyori/adventure-api/4.17.0.jar has unexpected integrity sha256-11d510e0… (lockfile expects sha256-15c8c2eb…); will re-resolve
+  › Resolving net.kyori:adventure-api:4.17.0 from Maven…
+✓ Installed 1 dependency
+
+✓ 5 verified
+```
+
+The repair goes through the normal install path, so `--fix` re-resolves whatever install re-resolves. When install decides the lockfile is already fresh it prints `lockfile is fresh; nothing to install.` and the second audit reports the same rows as the first.
 
 ## Human output
 
@@ -37,33 +53,34 @@ $ pluggy audit
 ✓ 6 verified
 ```
 
-A clean run with one workspace dep and one missing entry:
+A dependency that isn't cached:
 
 ```text
 $ pluggy audit
 
-Not cached
-  · net.kyori:adventure-key (run pluggy install to populate)
+Unverified
+  › net.kyori:examination-api (not cached)
+Run `pluggy audit --fix` to download and verify them.
 
-✓ 5 verified, 1 skipped (workspace), 1 not cached
+1 unverified (not cached), 1 verified, 1 skipped (workspace)
 ```
 
-A failing run:
+A tampered jar:
 
 ```text
 $ pluggy audit
 
 Tampered
-  ✗ adventure-api
-    expected: sha256-15c8c2eb1a69d8b1bc914f554353da8ee7cf074c05c8074da9898aee5c70d0d8
-    actual:   sha256-deadbeef000...
-    jar:      /Users/you/Library/Caches/pluggy/dependencies/maven/net/kyori/adventure-api/4.17.0.jar
+✗ net.kyori:adventure-key
+  expected: sha256-aaaa
+  actual:   sha256-8e5cf570612d6ccedf943ac1716a449de2dd5a90207b7de6f73c0236935b766e
+  jar:      /Users/you/Library/Caches/pluggy/dependencies/maven/net.kyori/adventure-key/4.17.0.jar
 Run `pluggy install` to re-download; it detects tampering and heals the cache.
 
-1 tampered, 5 ok
+1 tampered, 1 verified
 ```
 
-The failure summary keeps the not-cached and skipped counts when present (`1 tampered, 4 ok, 1 not cached`). A run where nothing is cached yet prints `0 verified; nothing cached yet. Run `pluggy install` first.` instead of a green check.
+Both failure summaries keep the unverified and skipped counts when present. A lockfile with no entries prints `✓ no dependencies to verify`.
 
 ## JSON output
 
@@ -76,23 +93,21 @@ The failure summary keeps the not-cached and skipped counts when present (`1 tam
     {
       "name": "adventure-api",
       "status": "ok",
-      "expected": "sha256-15c8...",
-      "actual": "sha256-15c8...",
-      "jarPath": "/.../adventure-api/4.17.0.jar"
+      "expected": "sha256-15c8…",
+      "actual": "sha256-15c8…",
+      "jarPath": "/Users/you/Library/Caches/pluggy/dependencies/maven/net.kyori/adventure-api/4.17.0.jar"
     }
   ]
 }
 ```
 
-When any entry is `tampered`, `status` is `"error"`, `ok` is `false`, the envelope goes to stderr, and the exit code is `1`. Missing or skipped entries on their own do not fail the command.
+When any row is `tampered` or `missing`, `status` is `"error"`, `ok` is `false`, the envelope goes to stderr, and the exit code is `1`.
 
 ## When to run
 
-- **In CI** before `pluggy build`. A failed audit means the cache was tampered with on the runner; investigate before building.
-- **After `pluggy cache clean`** to confirm what survived (everything will report `missing` until you run `pluggy install` again).
+- **In CI** before `pluggy build`, after `pluggy install`. Running it on a cold cache fails by design; install first, then audit what install produced.
+- **After `pluggy cache clean`** to confirm what survived. Everything reports unverified until you run `pluggy install` again.
 - **When a build behaves strangely** and you want to rule out cache corruption.
-
-`pluggy audit` does not refetch anything. It only checks bytes that are already on disk against the lockfile. To repopulate, run `pluggy install`.
 
 ## Error cases
 
@@ -101,7 +116,7 @@ When any entry is `tampered`, `status` is `"error"`, `ok` is `false`, the envelo
 | Outside a project | `E_AUDIT_NO_PROJECT`  | `No pluggy project found. Run this from inside a project directory.` |
 | No lockfile       | `E_AUDIT_NO_LOCKFILE` | `No pluggy.lock found. Run pluggy install first.`                    |
 
-A `tampered` row exits `1` with `status: "error"`. There's no special error code for tampered jars; the row's `expected` and `actual` fields tell the story.
+Verification failures have no error code of their own. The row's `expected` and `actual` fields tell the story, and the exit code carries the verdict.
 
 ## See also
 

@@ -26,15 +26,10 @@ Opening the project folder in any of the three loads it as a Java
 project with no import wizard. After the first build, every IDE sees
 the same dependency set.
 
-## Opting out for a single build
-
-```bash
-pluggy build --skip-classpath
-```
-
-Skips the `.classpath` + `.project` write for one invocation. Useful in
-CI when the IDE files would only churn the diff. There is no permanent
-opt-out flag. The cost is a few microseconds and two small XML files.
+There is no opt-out. Every `pluggy build` writes the two files; the cost
+is a few microseconds and two small XML files, and a stale `.classpath`
+is worse than a regenerated one. Keep them out of git (see below) and
+the write never shows up in a diff.
 
 ## Version control
 
@@ -87,4 +82,4 @@ to pick up.
 ## See also
 
 - [Build pipeline](./build-pipeline.md): where IDE scaffolding sits in the build.
-- [`pluggy build --skip-classpath`](./commands/build.md): single-build opt-out.
+- [`pluggy build`](./commands/build.md): the command that regenerates `.classpath`.

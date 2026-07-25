@@ -107,10 +107,11 @@ Per-entry network failures do not fail the command. They appear in the output as
 
 ## Updating after `outdated`
 
-`outdated` is read-only. To actually update a top-level dep, run `pluggy install <name>@<latest>` for Modrinth, or `pluggy install maven:<g>:<a>@<latest>` for Maven. Transitives update through their parent: bump the parent and re-resolve.
+`outdated` is read-only. [`pluggy update`](./update.md) moves every declared dep to its latest version, or name the ones you want. To land on a specific version rather than the newest, run `pluggy install <name>@<version>` for Modrinth or `pluggy install maven:<g>:<a>@<version>` for Maven. Transitives update through their parent: bump the parent and re-resolve.
 
 ## See also
 
+- [`pluggy update`](./update.md): move declared deps to their latest version.
 - [`pluggy install`](./install.md): pin a new version of a dep.
 - [`pluggy why`](./why.md): trace which top-level dep is keeping a transitive locked.
 - [`pluggy doctor`](./doctor.md): the `Outdated dependencies` check uses the same machinery.

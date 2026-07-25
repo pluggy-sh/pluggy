@@ -121,4 +121,4 @@ kind-specific payload. The `source` field is always the tagged-union from
 ## See also
 
 - [`pluggy search`](./search.md): keyword search on Modrinth.
-- [`pluggy list --outdated`](./list.md#--outdated): compare the lockfile against Modrinth's latest.
+- [`pluggy outdated`](./outdated.md): compare the lockfile against each dep's latest upstream release.

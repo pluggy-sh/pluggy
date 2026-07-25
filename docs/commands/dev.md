@@ -12,7 +12,7 @@ pluggy dev [options]
 
 | Flag                     | Default                              | Notes                                                                                                                              |
 | ------------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `--workspace <name>`     | none                                 | Pick a workspace at the root. Only needed when shipping workspaces span platforms; same-platform workspaces co-host on one server. |
+| `--workspace <names>`    | none                                 | Pick a workspace at the root. Only needed when shipping workspaces span platforms; same-platform workspaces co-host on one server. |
 | `--platform <id>`        | `project.compatibility.platforms[0]` | Override the platform (for example `paper` to `spigot`).                                                                           |
 | `--mc-version <version>` | `project.compatibility.versions[0]`  | Override the Minecraft version (accepts `1.21` or `1.21.8`).                                                                       |
 | `--port <n>`             | `project.dev.port` or `25565`        | Written into `server.properties`.                                                                                                  |
@@ -20,9 +20,21 @@ pluggy dev [options]
 | `--clean`                | off                                  | Wipe `dev/` before staging.                                                                                                        |
 | `--fresh-world`          | off                                  | Keep `dev/` but delete every `dev/world*` subdirectory.                                                                            |
 | `--no-watch`             | watch on                             | Run once. Don't restart on change.                                                                                                 |
-| `--reload`               | off                                  | Prefer Bukkit's `/reload confirm` when hotswap can't apply a change.                                                               |
-| `--no-hotswap`           | hotswap on                           | Disable HotswapAgent and JBR. Use `/reload` or restart only.                                                                       |
+| `--fallback <mode>`      | `manual`                             | What to do when a change can't be hotswapped: `manual`, `restart`, or `reload`.                                                    |
+| `--no-hotswap`           | hotswap on                           | Rebuild and restart on change instead of hotswapping. Implies `--fallback restart`.                                                |
+| `--debug [port]`         | off                                  | Attach a JDWP debug agent for IDE breakpoints. Port defaults to `5005`.                                                            |
+| `--debug-suspend`        | off                                  | With `--debug`, wait for a debugger to attach before starting. Implies `--debug`.                                                  |
 | `--offline`              | off                                  | Force `online-mode=false` in `server.properties`.                                                                                  |
+
+`dev` runs one server, so `--workspace` takes exactly one name. Passing two fails with `E_WORKSPACE_NOT_SINGLE`:
+
+```text
+$ pluggy dev --workspace api,core
+error [E_WORKSPACE_NOT_SINGLE]: dev works on one workspace, but 2 were selected (api, core).
+  hint: One server hosts one platform. Pick one: --workspace api
+```
+
+JDWP binds to loopback. To let a debugger on another host attach (a container, WSL2), set [`dev.debug.exposed`](../project-json.md#devdebug) in `project.json`. JDWP is unauthenticated, so exposing it hands remote code execution to anything that can reach the port.
 
 ## What it does
 
@@ -35,8 +47,8 @@ pluggy dev [options]
    - `dev/eula.txt` is `eula=true` with an auto-accepted header. Set `PLUGGY_DEV_NO_EULA=1` to have pluggy leave the file alone so you can accept Mojang's EULA yourself.
    - `dev/server.properties` is generated from the project defaults, merged with `project.dev.serverProperties`.
 6. Populates `dev/plugins/` with the plugin jar, runtime plugin deps, and `project.dev.extraPlugins`. Each entry is hardlinked by basename.
-7. Provisions the [JetBrains Runtime](#hotswap) (JBR) and HotswapAgent on the first run, unless `--no-hotswap` or `dev.hotswap: false` is set.
-8. Spawns `<java> -Xmx<mem> <jvmArgs> -javaagent:<hotswap-agent.jar> -jar server.jar nogui` inside `dev/`. The trailing `nogui` suppresses Bukkit's AWT console window so dev sessions stay headless.
+7. Provisions the [JetBrains Runtime](#hotswap) (JBR) and the dev agent on the first run, unless `--no-hotswap` or `dev.hotswap: false` is set.
+8. Spawns `<java> -Xmx<mem> <jvmArgs> -javaagent:<pluggy-agent.jar> -jar server.jar nogui` inside `dev/`. The trailing `nogui` suppresses Bukkit's AWT console window so dev sessions stay headless.
 
 ## The `dev/` layout
 
@@ -60,31 +72,35 @@ Everything under `dev/` is safe to delete. `--clean` wipes it. `--fresh-world` k
 
 Hotswap is the default. With it enabled, most code changes apply to the running server without a restart. pluggy provisions two pieces on first use:
 
-- **JetBrains Runtime** (JBR): a JDK with enhanced class redefinition. Lets HotswapAgent change method bodies, add methods, add fields, and so on, while the server is running. Cached under `<cache>/jbr/`.
-- **HotswapAgent**: a Java agent that watches the build's class output and redefines classes in place. Cached under `<cache>/agents/hotswap-agent-<version>.jar`.
+- **JetBrains Runtime** (JBR): a JDK with enhanced class redefinition, so redefinition isn't limited to method bodies. Cached under `<cache>/jbr/`.
+- **The pluggy dev agent**: a Java agent embedded in the binary that connects back to pluggy over a loopback socket and redefines changed classes on request. Written to `<cache>/agents/pluggy-agent-<hash>.jar` on first use.
 
-When you save a file, pluggy debounces for 200 milliseconds, rebuilds, and lets HotswapAgent redefine the changed classes. If a change is too deep to redefine (a new supertype, for example), pluggy falls back to either `/reload` or a full restart based on `dev.hotswap.fallback`.
+When you save a file, pluggy debounces for 200 milliseconds, rebuilds, and asks the agent to redefine the changed classes. If a change is too deep to redefine (a new supertype, for example), the `--fallback` mode decides what happens next.
 
-Disable hotswap with `--no-hotswap` or by setting `dev.hotswap: false` in `project.json`. Use `dev.hotswap.jdk: "system"` to keep the system Java instead of downloading JBR.
+Disable hotswap with `--no-hotswap` or by setting `"hotswap": false` under `dev` in `project.json`:
 
 ```json
 "dev": {
-  "hotswap": {
-    "jdk": "jbr",
-    "fallback": "reload"
-  }
+  "hotswap": false,
+  "fallback": "restart"
 }
 ```
 
-See [project.json reference](../project-json.md#dev-optional) for the full schema.
+See the [`dev` block in the `project.json` reference](../project-json.md#dev-optional) for the full schema.
 
-## Restart vs reload vs hotswap
+## What happens when hotswap can't apply a change
 
-When pluggy detects a source change, it picks a strategy in this order:
+`--fallback` (or `dev.fallback`) picks between three modes. The default is `manual` with hotswap on, and `restart` with `--no-hotswap`, since then every change needs a restart anyway.
 
-1. **Hotswap** (default). The agent redefines classes in place. Subsecond.
-2. **`/reload`** (`--reload` or `dev.hotswap.fallback: "reload"`). pluggy swaps the jar under `dev/plugins/` and sends `reload confirm` to the server stdin. Fast, but Bukkit's `/reload` is unreliable for plugins that hold state across reloads (listener registration, static caches, ClassLoader-pinned objects).
-3. **Full restart** (`--no-hotswap` or `dev.hotswap.fallback: "restart"`). pluggy writes `stop` to the server, waits for it to exit, swaps the jar, and respawns the JVM. Safe but slow (tens of seconds).
+| Mode      | Behaviour                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `manual`  | Logs `· restart to apply` and leaves the server alone. Type `restart` (or `rs`) in the console when you're ready.          |
+| `restart` | Writes `stop` to the server, waits for exit, swaps the jar, respawns the JVM. Safe, and slow: tens of seconds.             |
+| `reload`  | Swaps the jar under `dev/plugins/` and sends `reload confirm` to the server. Fast, and uses Bukkit's deprecated `/reload`. |
+
+`reload` is unreliable for plugins that hold state across reloads: listener registration, static caches, ClassLoader-pinned objects. Pick it only when you know your plugin is reload-clean.
+
+pluggy's console intercepts `restart` and `rs`; every other line goes straight through to the server.
 
 Rebuild failures don't restart the server. pluggy keeps the previous jar running and logs the failure:
 

@@ -15,42 +15,66 @@ If you have never used pluggy before, read these in order. The first page is eno
 
 ## Commands
 
-Every subcommand, with its flags, JSON envelope, and sample output.
+Every subcommand, with its flags, JSON envelope, and sample output. The groups match the ones `pluggy --help` prints.
 
-| Command                                    | Summary                                                  |
-| ------------------------------------------ | -------------------------------------------------------- |
-| [`init`](./commands/init.md)               | Scaffold a new project in an empty directory.            |
-| [`install`](./commands/install.md)         | Add a dependency or refresh the lockfile.                |
-| [`update`](./commands/update.md)           | Move dependencies to their latest version.               |
-| [`remove`](./commands/remove.md)           | Drop a dependency and (optionally) its cached jar.       |
-| [`info`](./commands/info.md)               | Inspect a Modrinth, Maven, file, or workspace source.    |
-| [`search`](./commands/search.md)           | Search Modrinth by keyword.                              |
-| [`list`](./commands/list.md)               | Print declared deps, resolved versions, and registries.  |
-| [`why`](./commands/why.md)                 | Trace which top-level dep pulled in a transitive.        |
-| [`outdated`](./commands/outdated.md)       | List locked deps with a newer upstream version.          |
-| [`audit`](./commands/audit.md)             | Verify cached jars against the lockfile hashes.          |
-| [`build`](./commands/build.md)             | Compile, copy resources, write the descriptor, jar.      |
-| [`test`](./commands/test.md)               | Compile and run JUnit Platform tests under `test/`.      |
-| [`docs`](./commands/docs.md)               | Generate Javadoc HTML against the resolved classpath.    |
-| [`dev`](./commands/dev.md)                 | Boot a live server with the plugin and its runtime deps. |
-| [`run`](./commands/run.md)                 | Invoke a named script across the selected workspaces.    |
-| [`clean`](./commands/clean.md)             | Remove `bin/` build outputs across workspaces.           |
-| [`workspaces`](./commands/workspaces.md)   | List every workspace's role, platforms, and output path. |
-| [`workspace`](./commands/workspace.md)     | Add, remove, or rename a workspace.                      |
-| [`graph`](./commands/graph.md)             | Render the workspace dependency graph.                   |
-| [`explain`](./commands/explain.md)         | Show one workspace's post-inheritance view.              |
-| [`sdk`](./commands/sdk.md)                 | Manage the JDKs pluggy provisions for builds.            |
-| [`cache`](./commands/cache.md)             | Inspect and prune the download cache.                    |
-| [`doctor`](./commands/doctor.md)           | Check the environment and every workspace.               |
-| [`upgrade`](./commands/upgrade.md)         | Replace the running binary with the latest release.      |
-| [`completions`](./commands/completions.md) | Print a shell completion script.                         |
+### Start
+
+| Command                      | Summary                                       |
+| ---------------------------- | --------------------------------------------- |
+| [`init`](./commands/init.md) | Scaffold a new project in an empty directory. |
+
+### Dependencies
+
+| Command                              | Summary                                                 |
+| ------------------------------------ | ------------------------------------------------------- |
+| [`install`](./commands/install.md)   | Add a dependency or refresh the lockfile.               |
+| [`update`](./commands/update.md)     | Move dependencies to their latest version.              |
+| [`remove`](./commands/remove.md)     | Drop a dependency and (optionally) its cached jar.      |
+| [`info`](./commands/info.md)         | Inspect a Modrinth, Maven, file, or workspace source.   |
+| [`search`](./commands/search.md)     | Search Modrinth by keyword.                             |
+| [`list`](./commands/list.md)         | Print declared deps, resolved versions, and registries. |
+| [`why`](./commands/why.md)           | Trace a transitive's parents, or a workspace's fields.  |
+| [`outdated`](./commands/outdated.md) | List locked deps with a newer upstream version.         |
+| [`audit`](./commands/audit.md)       | Verify cached jars against the lockfile hashes.         |
+
+### Develop
+
+| Command                            | Summary                                                  |
+| ---------------------------------- | -------------------------------------------------------- |
+| [`run`](./commands/run.md)         | Invoke a named script across the selected workspaces.    |
+| [`build`](./commands/build.md)     | Compile, copy resources, write the descriptor, jar.      |
+| [`test`](./commands/test.md)       | Compile and run JUnit Platform tests under `test/`.      |
+| [`javadoc`](./commands/javadoc.md) | Generate Javadoc HTML against the resolved classpath.    |
+| [`dev`](./commands/dev.md)         | Boot a live server with the plugin and its runtime deps. |
+
+### Workspaces
+
+| Command                                | Summary                                              |
+| -------------------------------------- | ---------------------------------------------------- |
+| [`workspace`](./commands/workspace.md) | List, add, remove, rename, and graph the workspaces. |
+
+### Toolchain
+
+| Command                        | Summary                                        |
+| ------------------------------ | ---------------------------------------------- |
+| [`sdk`](./commands/sdk.md)     | Manage the JDKs pluggy provisions for builds.  |
+| [`cache`](./commands/cache.md) | Inspect and prune the download cache.          |
+| [`clean`](./commands/clean.md) | Delete build outputs, docs, or the dev server. |
+
+### Meta
+
+| Command                                    | Summary                                             |
+| ------------------------------------------ | --------------------------------------------------- |
+| [`doctor`](./commands/doctor.md)           | Check the environment and every workspace.          |
+| [`upgrade`](./commands/upgrade.md)         | Replace the running binary with the latest release. |
+| [`completions`](./commands/completions.md) | Print a shell completion script.                    |
 
 ## Deeper topics
 
 These pages explain how pluggy works once you've outgrown the tutorial. They assume you've shipped at least one plugin.
 
 - [Build pipeline](./build-pipeline.md): what happens between `pluggy build` and the output jar. Maven dependency resolution, SNAPSHOT handling, classpath construction, descriptor generation.
-- [Dev server](./dev-server.md): the `dev/` staging directory, runtime vs compile-time plugin detection, EULA handling, `--reload` vs restart, shutdown semantics.
+- [Dev server](./dev-server.md): the `dev/` staging directory, runtime vs compile-time plugin detection, EULA handling, hotswap and its fallbacks, shutdown semantics.
 - [Workspaces](./workspaces.md): monorepo layout, inheritance rules, the `workspace:` source kind, topological build order.
 - [IDE integration](./ide.md): which project files pluggy writes, when, and how to opt out.
 - [Cross-platform notes](./cross-platform.md): install paths, cache paths, line endings, signal handling.

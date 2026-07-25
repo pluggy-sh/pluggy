@@ -17,15 +17,17 @@ Updated
 ## Usage
 
 ```text
-pluggy update [names...] [--beta] [--dry-run] [--workspace <name>] [--workspaces]
+pluggy update [names...] [--beta] [--dry-run] [--workspace <names>] [--workspaces]
 ```
 
-| Flag                 | Effect                                     |
-| -------------------- | ------------------------------------------ |
-| `--beta`             | Consider pre-release versions.             |
-| `--dry-run`          | Print the plan and write nothing.          |
-| `--workspace <name>` | Update only this workspace's dependencies. |
-| `--workspaces`       | Update across every workspace.             |
+| Flag                  | Effect                                     |
+| --------------------- | ------------------------------------------ |
+| `--beta`              | Consider pre-release versions.             |
+| `--dry-run`           | Print the plan and write nothing.          |
+| `--workspace <names>` | Update only this workspace's dependencies. |
+| `--workspaces`        | Update across every workspace.             |
+
+`update` rewrites one workspace at a time. `--workspace` takes the [shared repeatable grammar](../workspaces.md#selection-flags), but naming more than one fails with `E_WORKSPACE_NOT_SINGLE`; use `--workspaces` to sweep them all.
 
 With no names, every declared dependency that has an upstream is updated. Name one or more to narrow it:
 
