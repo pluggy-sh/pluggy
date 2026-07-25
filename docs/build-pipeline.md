@@ -34,7 +34,7 @@ pluggy looks at `project.compatibility.platforms`. The first platform is _primar
 | Family     | Platforms                    | Path                           |
 | ---------- | ---------------------------- | ------------------------------ |
 | Bukkit     | paper, folia, spigot, bukkit | `plugin.yml`                   |
-| BungeeCord | waterfall, travertine        | `bungee.yml`                   |
+| BungeeCord | waterfall                    | `bungee.yml`                   |
 | Velocity   | velocity                     | `velocity-plugin.json`         |
 | Sponge     | sponge                       | `META-INF/sponge_plugins.json` |
 

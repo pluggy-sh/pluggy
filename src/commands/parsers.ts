@@ -115,3 +115,15 @@ export function concurrencyOption(): Option {
   const fromEnv = Number.parseInt(process.env.PLUGGY_CONCURRENCY ?? "", 10);
   return Number.isFinite(fromEnv) && fromEnv >= 1 ? option.default(fromEnv) : option;
 }
+
+/**
+ * JVM heap size, as `-Xmx` accepts it. Unvalidated, this went straight into
+ * the spawn arguments, so a typo surfaced as a JVM startup crash rather than
+ * a CLI error.
+ */
+export function parseMemory(value: string): string {
+  if (/^\d+[kmgKMG]?$/.test(value)) return value;
+  throw new InvalidArgumentError(
+    `Invalid heap size: "${value}". Use a number with an optional K, M, or G suffix, e.g. 2G or 512M.`,
+  );
+}

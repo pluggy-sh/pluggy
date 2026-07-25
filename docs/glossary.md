@@ -110,7 +110,7 @@ A Minecraft mod and plugin registry at [modrinth.com](https://modrinth.com). Plu
 
 ## platform
 
-The server flavour your plugin targets: `paper`, `spigot`, `bukkit`, `folia`, `velocity`, `waterfall`, `travertine`, or `sponge`. Set it in `project.json` under `compatibility.platforms`.
+The server flavour your plugin targets: `paper`, `spigot`, `bukkit`, `folia`, `velocity`, `waterfall`, or `sponge`. Set it in `project.json` under `compatibility.platforms`.
 
 ## plugin
 

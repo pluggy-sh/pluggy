@@ -187,13 +187,6 @@ describe("parseSearchLoader", () => {
     expect(parseSearchLoader("purpur")).toBe("purpur");
   });
 
-  // `--platform` used to be validated against pluggy's platform registry even
-  // though the value goes to Modrinth as a `categories:` facet. `travertine`
-  // passed validation and the search silently returned zero hits.
-  test("rejects a pluggy platform Modrinth does not index, naming the substitute", () => {
-    expect(() => parseSearchLoader("travertine")).toThrow(/Search "waterfall" instead/);
-  });
-
   test("names the valid loaders for anything else", () => {
     expect(() => parseSearchLoader("nonsuch")).toThrow(/Available: bukkit, bungeecord/);
   });

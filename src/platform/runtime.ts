@@ -23,7 +23,7 @@ export const VELOCITY_RUNTIME: RuntimeLayout = {
   vanillaServerFiles: false,
 };
 
-/** Standalone proxy, no MC server: waterfall, travertine. */
+/** Standalone proxy, no MC server: waterfall. */
 export const BUNGEE_RUNTIME: RuntimeLayout = {
   pluginsDir: "plugins",
   serverArgs: [],

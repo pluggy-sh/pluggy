@@ -67,7 +67,7 @@ Compile dependencies and plugin dependencies are the same list in `project.json:
 | Platform                     | Descriptor path                |
 | ---------------------------- | ------------------------------ |
 | paper, folia, spigot, bukkit | `plugin.yml`                   |
-| waterfall, travertine        | `bungee.yml`                   |
+| waterfall                    | `bungee.yml`                   |
 | velocity                     | `velocity-plugin.json`         |
 | sponge                       | `META-INF/sponge_plugins.json` |
 

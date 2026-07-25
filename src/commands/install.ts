@@ -443,7 +443,7 @@ function emitInstallResult(
 /** Factory for the `pluggy install` commander command. */
 export function installCommand(): Command {
   return new Command("install")
-    .aliases(["i", "add"])
+    .alias("i")
     .description("Install project dependencies or a specific plugin.")
     .argument("[plugin]", "Plugin identifier. Modrinth slug, local .jar, or maven: coordinate.")
     .option("--force", "Force dependency install (override compatibility checks).")

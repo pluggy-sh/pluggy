@@ -137,10 +137,9 @@ export function graphCommand(name = "graph"): Command {
         .choices(["text", "mermaid"])
         .default("text"),
     )
-    .option("--mermaid", "Deprecated alias for --format mermaid.")
     .action(async function action(this: Command, options) {
       await runGraphCommand({
-        mermaid: options.mermaid === true || options.format === "mermaid",
+        mermaid: options.format === "mermaid",
         project: this.optsWithGlobals().project,
       });
     });

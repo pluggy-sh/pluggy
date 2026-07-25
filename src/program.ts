@@ -13,8 +13,6 @@ import { completeWorkspacesCommand, completionsCommand } from "./commands/comple
 import { devCommand } from "./commands/dev.ts";
 import { docsCommand } from "./commands/docs.ts";
 import { doctorCommand } from "./commands/doctor.ts";
-import { explainCommand } from "./commands/explain.ts";
-import { graphCommand } from "./commands/graph.ts";
 import { infoCommand } from "./commands/info.ts";
 import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
@@ -31,7 +29,7 @@ import { updateCommand } from "./commands/update.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { whyCommand } from "./commands/why.ts";
 import { workspaceCommand } from "./commands/workspace.ts";
-import { workspacesCommand } from "./commands/workspaces.ts";
+import { UserError } from "./errors.ts";
 import { CLI_VERSION } from "./version.ts";
 
 export const REPOSITORY = "pluggy-sh/pluggy";
@@ -98,18 +96,48 @@ export function createProgram(): Command {
   program.commandsGroup("Meta:");
   program.helpCommand("help [command]", "Show help for a command.");
 
-  // `workspaces` and `graph` moved under the `workspace` namespace. Kept
-  // reachable but hidden so existing scripts and muscle memory keep working
-  // through the next minor.
-  program.addCommand(explainCommand(), { hidden: true });
-  program.addCommand(workspacesCommand(), { hidden: true });
-  program.addCommand(graphCommand(), { hidden: true });
+  for (const [old, replacement] of MOVED_COMMANDS) {
+    program.addCommand(movedCommand(old, replacement), { hidden: true });
+  }
+
   // Hidden helper used by shell completion scripts. Lives at the top level so
   // it's invokable as `pluggy __complete-workspaces`; not surfaced in --help.
   program.addCommand(completeWorkspacesCommand(), { hidden: true });
 
   applyHelpOption(program);
   return program;
+}
+
+/** Commands that moved, and what replaced them. */
+const MOVED_COMMANDS: ReadonlyArray<readonly [string, string]> = [
+  ["workspaces", "pluggy workspace list"],
+  ["graph", "pluggy workspace graph"],
+  ["explain", "pluggy why <workspace>"],
+  ["docs", "pluggy javadoc"],
+  ["add", "pluggy install"],
+];
+
+/**
+ * A tombstone for a renamed command: hidden from `--help`, but it answers with
+ * the new spelling instead of "unknown command".
+ *
+ * Deleting these outright made the guidance worse than the rename it was
+ * meant to finish — commander's suggestion engine offered nothing for `graph`
+ * and `explain`, and confidently proposed `doctor` for `docs`.
+ */
+function movedCommand(name: string, replacement: string): Command {
+  return new Command(name)
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .argument("[args...]")
+    .description(`Moved to \`${replacement}\`.`)
+    .action(() => {
+      throw new UserError(`\`pluggy ${name}\` has moved.`, {
+        code: "E_COMMAND_MOVED",
+        hint: `Use \`${replacement}\` instead.`,
+        context: { command: name, replacement },
+      });
+    });
 }
 
 /**

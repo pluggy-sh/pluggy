@@ -19,7 +19,7 @@ import {
   type WorkspaceNode,
 } from "../workspace.ts";
 
-import { parseInteger, parseMcVersion, parsePlatform } from "./parsers.ts";
+import { parseInteger, parseMcVersion, parseMemory, parsePlatform } from "./parsers.ts";
 
 export interface DevCommandOptions {
   workspace?: string;
@@ -237,7 +237,7 @@ export function devCommand(): Command {
     .option("--platform <name>", "Override the primary platform.", parsePlatform)
     .option("--mc-version <version>", "Override the primary MC version.", parseMcVersion)
     .option("--port <n>", "Port the server listens on.", parseInteger)
-    .option("--memory <x>", "JVM heap size (e.g. 2G, 512M).")
+    .option("--memory <size>", "JVM heap size, e.g. 2G or 512M.", parseMemory)
     .option("--clean", "Wipe dev/ before starting.")
     .option("--fresh-world", "Keep dev/ but delete dev/world*.")
     .option("--no-watch", "Run once, don't watch or rebuild.")

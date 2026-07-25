@@ -191,7 +191,6 @@ export function docsCommand(): Command {
   // with `pluggy help`, with the repo's own docs/ directory, and with this
   // command's own default output directory. `javadoc` is what it runs.
   return new Command("javadoc")
-    .alias("docs")
     .description("Generate Javadoc HTML for the project.")
     .option(
       "--output <path>",

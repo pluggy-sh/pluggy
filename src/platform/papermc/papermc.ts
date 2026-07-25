@@ -1,12 +1,12 @@
 /**
  * PaperMC fill.papermc.io client. Used by every PaperMC-family platform
- * provider (paper, folia, travertine, velocity, waterfall) to list
+ * provider (paper, folia, velocity, waterfall) to list
  * versions and download server jars.
  */
 
 import { log } from "../../logging.ts";
 
-type Project = "paper" | "folia" | "travertine" | "velocity" | "waterfall";
+type Project = "paper" | "folia" | "velocity" | "waterfall";
 
 const PAPER_ENDPOINT = "https://fill.papermc.io/v3/projects";
 

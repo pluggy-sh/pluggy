@@ -19,7 +19,7 @@ against `process.cwd()`.
 | `--project-version <semver>` | `1.0.0`                           | Validated as `\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?`.                                                                                                                                                                 |
 | `--description <text>`       | `"A simple Minecraft plugin"`     | Free-form.                                                                                                                                                                                                    |
 | `--main <fqcn>`              | `com.example.Main`                | Must be a fully qualified class name; at least `package.Class`.                                                                                                                                               |
-| `--platform <id>`            | `paper`                           | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `travertine`, `sponge`. Repeatable, but must stay within one descriptor family (see error cases).                     |
+| `--platform <id>`            | `paper`                           | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `sponge`. Repeatable, but must stay within one descriptor family (see error cases).                                   |
 | `--mc-version <semver>`      | highest compatible across targets | Minecraft version written to `compatibility.versions[0]`. Accepts both the legacy `1.21.8` shape and Mojang's new calendar scheme (`26.1.2`). See below.                                                      |
 | `--template <id>`            | embedded family stub              | Scaffold from a richer template; see [Templates](#templates). Without this flag init uses the embedded family stub. Even then, init fetches each platform's latest version list unless `--mc-version` is set. |
 | `-y, --yes`                  | off                               | Skip confirmations. Always on under `--json`.                                                                                                                                                                 |
@@ -56,7 +56,7 @@ primary platform:
 
 - `paper`, `folia`, `spigot`, `bukkit`: `extends JavaPlugin`.
 - `velocity`: `@Plugin` annotated, `@Inject`-ed `ProxyServer` and `Logger`.
-- `waterfall`, `travertine`: `extends net.md_5.bungee.api.plugin.Plugin`.
+- `waterfall`: `extends net.md_5.bungee.api.plugin.Plugin`.
 - `sponge`: `@Plugin` annotated with `@Inject`-ed `Logger`.
 
 So `pluggy init --yes --platform velocity` produces a Velocity-correct stub that compiles immediately, with no manual fix-up needed.
@@ -132,15 +132,15 @@ Project "example" initialized successfully at /tmp/example
 
 ## Error cases
 
-| Trigger                           | Message                                                                                                                                                                                                                                |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Invalid `--name`                  | `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`                                                                                                                                  |
-| Invalid `--main`                  | `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`                                                                                                                                            |
-| Unknown `--platform`              | `Invalid platform: "<p>". Available platforms: paper, folia, spigot, bukkit, velocity, waterfall, travertine, sponge`                                                                                                                  |
-| Cross-family platforms            | `Platform "<b>" cannot be combined with "<a>" because they target different plugin families ("<a>" writes "<path-a>", "<b>" writes "<path-b>"). Proxy platforms like velocity, waterfall, and travertine each need their own project.` |
-| No MC version common to platforms | `No compatible Minecraft version found across platforms: <list>. Try selecting fewer platforms or specifying a version manually with --mc-version.`                                                                                    |
-| Non-empty target dir (no `-y`)    | Interactive confirm. "no" aborts with `Aborted.`.                                                                                                                                                                                      |
-| Existing project dir (no `-y`)    | As above.                                                                                                                                                                                                                              |
+| Trigger                           | Message                                                                                                                                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Invalid `--name`                  | `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`                                                                                                                     |
+| Invalid `--main`                  | `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`                                                                                                                               |
+| Unknown `--platform`              | `Invalid platform: "<p>". Available platforms: paper, folia, spigot, bukkit, velocity, waterfall, sponge`                                                                                                                 |
+| Cross-family platforms            | `Platform "<b>" cannot be combined with "<a>" because they target different plugin families ("<a>" writes "<path-a>", "<b>" writes "<path-b>"). Proxy platforms like velocity and waterfall each need their own project.` |
+| No MC version common to platforms | `No compatible Minecraft version found across platforms: <list>. Try selecting fewer platforms or specifying a version manually with --mc-version.`                                                                       |
+| Non-empty target dir (no `-y`)    | Interactive confirm. "no" aborts with `Aborted.`.                                                                                                                                                                         |
+| Existing project dir (no `-y`)    | As above.                                                                                                                                                                                                                 |
 
 Network failures during `getVersions()` propagate from the platform
 provider. See [Troubleshooting](../troubleshooting.md#network-errors-during-init-or-dev).

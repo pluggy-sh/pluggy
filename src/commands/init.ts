@@ -458,7 +458,7 @@ export function initCommand(): Command {
         throw new InvalidArgumentError(
           `Platform "${alien}" cannot be combined with "${selectedPlatforms[0]}": they target different plugin families ` +
             `("${selectedPlatforms[0]}" writes "${primaryPath}", "${alien}" writes "${platforms.get(alien).descriptor.path}"). ` +
-            `Proxy platforms like velocity, waterfall, and travertine each need their own project.`,
+            `Proxy platforms like velocity and waterfall each need their own project.`,
         );
       }
 

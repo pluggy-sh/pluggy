@@ -11,11 +11,11 @@ const MODRINTH_API = "https://api.modrinth.com/v2";
  * `supported_project_types` containing "plugin").
  *
  * `--platform` filters a Modrinth query, so it has to be validated against
- * Modrinth's vocabulary rather than pluggy's. Validating against pluggy's
- * platform registry accepted `travertine`, which Modrinth doesn't index, and
- * the search then returned zero hits as though nothing matched the query.
- * It also rejected `purpur`, `bungeecord`, and `geyser`, which Modrinth does
- * index but pluggy cannot build for.
+ * Modrinth's vocabulary rather than pluggy's: the two sets overlap but are not
+ * the same. Modrinth indexes `purpur`, `bungeecord`, and `geyser`, which
+ * pluggy cannot build for, and pluggy's registry accepted ids Modrinth has
+ * never heard of, which returned zero hits as though the query matched
+ * nothing.
  */
 const MODRINTH_PLUGIN_LOADERS = [
   "bukkit",
@@ -30,18 +30,9 @@ const MODRINTH_PLUGIN_LOADERS = [
   "waterfall",
 ] as const;
 
-/** pluggy platform ids with no Modrinth loader, mapped to the nearest one. */
-const LOADER_SUBSTITUTES: Record<string, string> = { travertine: "waterfall" };
-
 export function parseSearchLoader(value: string): string {
   const id = value.toLowerCase();
   if ((MODRINTH_PLUGIN_LOADERS as readonly string[]).includes(id)) return id;
-  const substitute = LOADER_SUBSTITUTES[id];
-  if (substitute !== undefined) {
-    throw new InvalidArgumentError(
-      `Modrinth does not index "${id}" plugins. Search "${substitute}" instead.`,
-    );
-  }
   throw new InvalidArgumentError(
     `"${value}" is not a Modrinth plugin loader. Available: ${MODRINTH_PLUGIN_LOADERS.join(", ")}.`,
   );

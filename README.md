@@ -113,7 +113,7 @@ pluggy folds every step of plugin development into one binary: scaffolding, depe
 - **Modrinth in one line.** `pluggy install worldedit` resolves the latest stable version, downloads it, and locks the integrity hash. No registry config, no version pinning required up front.
 - **Maven without XML.** `pluggy install maven:net.kyori:adventure-api@4.17.0` reads the published POM, follows imports, and lands every required jar (the [transitive dependencies](./docs/glossary.md#transitive-dependency)) on the classpath. SNAPSHOT versions resolve through Maven's per-version metadata.
 - **Live server in one command.** `pluggy dev` downloads the matching Paper, Spigot, Velocity, or Sponge jar, accepts the EULA, links your plugin and runtime deps into `plugins/`, and boots the server. File saves trigger a debounced rebuild and restart.
-- **Eight server platforms.** paper, folia, spigot, bukkit, velocity, waterfall, travertine, and sponge, each with its own descriptor and Maven coordinate. Switch by editing `compatibility.platforms` in `project.json`.
+- **Seven server platforms.** paper, folia, spigot, bukkit, velocity, waterfall, and sponge, each with its own descriptor and Maven coordinate. Switch by editing `compatibility.platforms` in `project.json`.
 - **Cross-platform, identically.** The same binary runs on macOS, Linux, and Windows. Paths normalise to forward slashes, generated files use LF line endings, and shutdown handling works the same on every OS.
 - **Reproducible by default.** Every resolved dependency is recorded in `pluggy.lock` with a SHA-256 hash. The lockfile is sorted, LF-terminated, and written atomically. Diffs stay small and merges stay sane.
 - **IDE-aware.** List editors in `"ide": ["vscode", "eclipse", "intellij"]` and `pluggy build` writes the right project files for every entry.
@@ -123,26 +123,32 @@ pluggy folds every step of plugin development into one binary: scaffolding, depe
 
 pluggy exposes a small set of commands. Every command supports `--json` for structured output and `--help` for inline help.
 
-| Command                      | Summary                                            |
-| ---------------------------- | -------------------------------------------------- |
-| `pluggy init`                | Scaffold a new project.                            |
-| `pluggy install [plugin]`    | Add a dependency or reconcile the lockfile.        |
-| `pluggy remove <plugin>`     | Drop a dependency and its cached jar.              |
-| `pluggy info <plugin>`       | Inspect a source.                                  |
-| `pluggy search <query>`      | Search Modrinth.                                   |
-| `pluggy list`                | Show declared deps, resolved versions, registries. |
-| `pluggy why <name>`          | Trace which top-level dep pulled in a transitive.  |
-| `pluggy outdated`            | List locked deps with a newer upstream version.    |
-| `pluggy audit`               | Verify cached jars against the lockfile hashes.    |
-| `pluggy build`               | Compile, package resources, and produce a jar.     |
-| `pluggy test`                | Compile and run JUnit tests under `test/`.         |
-| `pluggy docs`                | Generate Javadoc HTML for the project.             |
-| `pluggy dev`                 | Run a live server that rebuilds on save.           |
-| `pluggy sdk`                 | Manage the JDKs pluggy provisions for builds.      |
-| `pluggy cache`               | Inspect and prune the download cache.              |
-| `pluggy doctor`              | Check the environment and every workspace.         |
-| `pluggy upgrade`             | Replace the binary with the latest release.        |
-| `pluggy completions <shell>` | Print a shell completion script.                   |
+| Command                      | Summary                                                   |
+| ---------------------------- | --------------------------------------------------------- |
+| `pluggy init`                | Scaffold a new project.                                   |
+| `pluggy platforms`           | Show targetable platforms and the versions they publish.  |
+| `pluggy templates`           | Show the scaffolds `init --template` accepts.             |
+| `pluggy install [plugin]`    | Add a dependency or reconcile the lockfile.               |
+| `pluggy update [names...]`   | Move dependencies to their latest version.                |
+| `pluggy remove <plugin>`     | Drop a dependency and its cached jar.                     |
+| `pluggy info <plugin>`       | Inspect a source.                                         |
+| `pluggy search <query>`      | Search Modrinth.                                          |
+| `pluggy list`                | Show declared deps, resolved versions, registries.        |
+| `pluggy why <name>`          | Trace where a dependency or workspace field came from.    |
+| `pluggy outdated`            | List locked deps with a newer upstream version.           |
+| `pluggy audit`               | Verify cached jars against the lockfile hashes.           |
+| `pluggy run [script]`        | Invoke a script from `project.scripts`.                   |
+| `pluggy build`               | Compile, package resources, and produce a jar.            |
+| `pluggy test`                | Compile and run JUnit tests under `test/`.                |
+| `pluggy javadoc`             | Generate Javadoc HTML for the project.                    |
+| `pluggy dev`                 | Run a live server that rebuilds on save.                  |
+| `pluggy workspace`           | List and change the workspace graph.                      |
+| `pluggy sdk`                 | Manage the JDKs pluggy provisions for builds.             |
+| `pluggy cache`               | Inspect and prune the download cache.                     |
+| `pluggy clean [target]`      | Delete build outputs, docs, the dev server, or the cache. |
+| `pluggy doctor`              | Check the environment and every workspace.                |
+| `pluggy upgrade`             | Replace the binary with the latest release.               |
+| `pluggy completions <shell>` | Print a shell completion script.                          |
 
 For per-command flags, JSON envelopes, and sample output, see the [command reference](./docs/commands/).
 

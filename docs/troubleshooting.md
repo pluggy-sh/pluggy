@@ -55,7 +55,7 @@ pluggy couldn't find a Minecraft version that every selected platform publishes.
 
 ### `Platform "<b>" cannot be combined with "<a>" because they target different plugin families ...`
 
-`--platform` was given values from two different descriptor families (for example `paper` and `velocity`). A single plugin jar can only target one family: server plugins (`paper`, `folia`, `spigot`, `bukkit`), BungeeCord proxy plugins (`waterfall`, `travertine`), Velocity plugins, or Sponge plugins. Re-run init for the second family in a sibling directory, or split an existing monorepo using [workspaces](./workspaces.md#multi-family-monorepos).
+`--platform` was given values from two different descriptor families (for example `paper` and `velocity`). A single plugin jar can only target one family: server plugins (`paper`, `folia`, `spigot`, `bukkit`), BungeeCord proxy plugins (`waterfall`), Velocity plugins, or Sponge plugins. Re-run init for the second family in a sibling directory, or split an existing monorepo using [workspaces](./workspaces.md#multi-family-monorepos).
 
 ### BuildTools fails mid-init or during `pluggy dev` on a freshly scaffolded spigot project
 
@@ -116,7 +116,7 @@ At a multi-workspace root, `remove` refuses to guess. Pick one workspace with `-
 
 ### `build: project "<name>" declares platforms from different descriptor families ("<a>" uses "<path1>", "<b>" uses "<path2>"). Split them into separate workspaces, one per family.`
 
-`compatibility.platforms` contains a mix of Bukkit-family (paper, folia, spigot, bukkit), BungeeCord-family (waterfall, travertine), Velocity, and Sponge. One plugin, one descriptor. Move the others into separate workspaces. See [Workspaces > Multi-family monorepos](./workspaces.md#multi-family-monorepos).
+`compatibility.platforms` contains a mix of Bukkit-family (paper, folia, spigot, bukkit), BungeeCord-family (waterfall), Velocity, and Sponge. One plugin, one descriptor. Move the others into separate workspaces. See [Workspaces > Multi-family monorepos](./workspaces.md#multi-family-monorepos).
 
 ### `compile: javac exited with code <n> for project "<name>" (last 40 lines): ...`
 
