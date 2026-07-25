@@ -9,7 +9,7 @@ import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 
-import { Command } from "commander";
+import { Argument, Command } from "commander";
 
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, log } from "../logging.ts";
@@ -21,12 +21,15 @@ import {
   type WorkspaceNode,
 } from "../workspace.ts";
 
+/** What `pluggy clean [target]` deletes. */
+export type CleanTarget = "outputs" | "docs" | "dev" | "cache" | "all";
+
 export interface CleanCommandOptions {
+  /** Defaults to `outputs`. */
+  target?: CleanTarget;
   workspace?: string[];
   exclude?: string[];
   workspaces?: boolean;
-  /** Also remove generated `<workspace>/docs/<name>-<version>/` directories. */
-  docs?: boolean;
   /** Print paths that would be removed without touching disk. */
   dryRun?: boolean;
   /** Global `--project <path>` flag: resolve the project from this file instead of cwd. */
@@ -61,22 +64,42 @@ export async function runCleanCommand(opts: CleanCommandOptions = {}): Promise<C
     });
   }
 
+  const what = opts.target ?? "outputs";
   const targets = selectWorkspaceTargets(context, opts, "clean");
   const entries: CleanedEntry[] = [];
   const skippedDocs: string[] = [];
   const dryRun = opts.dryRun === true;
 
+  if (what === "cache") {
+    throw new UserError("Cleaning the global cache is a separate, machine-wide operation.", {
+      code: "E_CLEAN_CACHE",
+      hint: "Run `pluggy cache clean` (it confirms first), or `pluggy cache prune` to evict only stale entries.",
+    });
+  }
+
   for (const target of targets) {
-    const binPath = join(target.root, "bin");
-    if (!(await pathExists(binPath))) {
-      entries.push({ workspace: target.name, path: binPath, removed: false });
-    } else {
-      if (!dryRun) await removePath(binPath);
-      entries.push({ workspace: target.name, path: binPath, removed: true });
+    if (what === "outputs" || what === "all") {
+      const binPath = join(target.root, "bin");
+      if (!(await pathExists(binPath))) {
+        entries.push({ workspace: target.name, path: binPath, removed: false });
+      } else {
+        if (!dryRun) await removePath(binPath);
+        entries.push({ workspace: target.name, path: binPath, removed: true });
+      }
     }
 
-    if (opts.docs === true) {
+    if (what === "docs" || what === "all") {
       await cleanDocs(target, entries, skippedDocs, dryRun);
+    }
+
+    if (what === "dev" || what === "all") {
+      const devPath = join(target.root, "dev");
+      if (!(await pathExists(devPath))) {
+        entries.push({ workspace: target.name, path: devPath, removed: false });
+      } else {
+        if (!dryRun) await removePath(devPath);
+        entries.push({ workspace: target.name, path: devPath, removed: true });
+      }
     }
   }
 
@@ -102,7 +125,7 @@ export async function runCleanCommand(opts: CleanCommandOptions = {}): Promise<C
     }
     const verb = dryRun ? "would remove" : "removed";
     if (removedPaths.length === 0) {
-      log.info(dim(`${verb}: nothing (no build outputs present)`));
+      log.info(dim(`${verb}: nothing (no ${what} present)`));
     } else {
       log.heading(
         `${bold("clean")} ${verb} ${removedPaths.length} path${removedPaths.length === 1 ? "" : "s"}`,
@@ -202,13 +225,26 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-/** Factory for the `pluggy clean` commander command. */
+/**
+ * Factory for the `pluggy clean` commander command.
+ *
+ * Six things were called "clean": this command, the `--clean` flags on
+ * build/test/docs/dev, and `cache clean` — and `clean --docs` deleted the same
+ * directory as `docs --clean`, with the tokens transposed. The help footer had
+ * become a disambiguation table, which is a naming problem wearing a docs
+ * costume. An explicit target replaces it.
+ */
 export function cleanCommand(): Command {
   return new Command("clean")
-    .description("Remove bin/ build outputs across the selected workspaces.")
+    .description("Delete generated output: build artifacts, docs, the dev server, or the cache.")
+    .addArgument(
+      new Argument("[target]", "What to delete.")
+        .choices(["outputs", "docs", "dev", "cache", "all"])
+        .default("outputs"),
+    )
     .addHelpText(
       "after",
-      "\nRelated: `pluggy build --clean` wipes the build cache; `pluggy dev --clean` wipes the dev server directory (dev/).",
+      "\nTargets:\n  outputs  bin/ jars (default)\n  docs     generated docs/<name>-<version>/\n  dev      the dev server directory\n  cache    pluggy's global download cache (all projects)\n  all      everything above except cache\n\nThe --clean flags on build, test, docs, and dev mean \"start this run fresh\"; they don't delete and stop.",
     )
     .option(
       "--workspace <names>",
@@ -221,15 +257,14 @@ export function cleanCommand(): Command {
       workspaceListOption,
     )
     .option("--workspaces", "Explicit all-workspaces clean.")
-    .option("--docs", "Also remove docs/<name>-<version>/ output generated by `pluggy docs`.")
     .option("--dry-run", "Print paths that would be removed without touching disk.")
-    .action(async function action(this: Command, options) {
+    .action(async function action(this: Command, target: CleanTarget, options) {
       const globalOpts = this.optsWithGlobals();
       await runCleanCommand({
+        target,
         workspace: options.workspace as string[],
         exclude: options.exclude as string[],
         workspaces: options.workspaces === true,
-        docs: options.docs === true,
         dryRun: options.dryRun === true,
         project: globalOpts.project,
       });

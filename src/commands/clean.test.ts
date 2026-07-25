@@ -94,7 +94,7 @@ describe("runCleanCommand", () => {
     await mkdir(join(rootDir, "api", "docs", "other-1.0.0"), { recursive: true });
     await writeFile(join(rootDir, "api", "docs", "notes.md"), "keep me");
 
-    const res = await runCleanCommand({ cwd: rootDir, docs: true });
+    const res = await runCleanCommand({ cwd: rootDir, target: "all" });
     // api/bin + core/bin + the two api-* generated docs dirs
     expect(res.removed?.length).toBe(4);
     expect(res.skippedDocs?.sort()).toEqual([
@@ -120,7 +120,7 @@ describe("runCleanCommand", () => {
     await mkdir(join(rootDir, "docs", "solo-1.0.0-beta.1"), { recursive: true });
     await writeFile(join(rootDir, "docs", "solo-1.0.0-beta.1", "index.html"), "x");
 
-    const res = await runCleanCommand({ cwd: rootDir, docs: true });
+    const res = await runCleanCommand({ cwd: rootDir, target: "all" });
     expect(res.removed).toContain(join(rootDir, "docs", "solo-1.0.0-beta.1"));
     expect(res.skippedDocs).toBeUndefined();
     await expect(stat(join(rootDir, "docs", "solo-1.0.0-beta.1"))).rejects.toThrow();
@@ -131,7 +131,7 @@ describe("runCleanCommand", () => {
     await mkdir(join(rootDir, "api", "docs", "api-0.1.0"), { recursive: true });
     await writeFile(join(rootDir, "api", "docs", "api-0.1.0", "index.html"), "x");
 
-    const res = await runCleanCommand({ cwd: rootDir, docs: true });
+    const res = await runCleanCommand({ cwd: rootDir, target: "all" });
     expect(res.skippedDocs).toBeUndefined();
     await expect(stat(join(rootDir, "api", "docs"))).rejects.toThrow();
   });
@@ -140,7 +140,7 @@ describe("runCleanCommand", () => {
     await writeMulti();
     await mkdir(join(rootDir, "api", "docs", "api-0.1.0"), { recursive: true });
 
-    const res = await runCleanCommand({ cwd: rootDir, docs: true, dryRun: true });
+    const res = await runCleanCommand({ cwd: rootDir, target: "all", dryRun: true });
     expect(res.wouldRemove).toContain(join(rootDir, "api", "docs", "api-0.1.0"));
     await stat(join(rootDir, "api", "docs", "api-0.1.0"));
   });
