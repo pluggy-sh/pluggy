@@ -1,13 +1,15 @@
 import { relative } from "node:path";
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
 import { buildProject, checkPlatformCompile, type BuildResult } from "../build/index.ts";
 import { watchProject } from "../dev/watch.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, log, red } from "../logging.ts";
 import { runWorkspaces } from "../runner.ts";
+
+import { concurrencyOption } from "./parsers.ts";
 import {
   projectStartDir,
   resolveWorkspaceContext,
@@ -400,17 +402,7 @@ export function buildCommand(): Command {
       workspaceListOption,
     )
     .option("--workspaces", "Every workspace, even from inside one.")
-    .option(
-      "--concurrency <n>",
-      "Cap on workspaces building simultaneously. Use 1 for serial output.",
-      (raw: string) => {
-        const n = Number.parseInt(raw, 10);
-        if (!Number.isFinite(n) || n < 1) {
-          throw new InvalidArgumentError("--concurrency must be a positive integer");
-        }
-        return n;
-      },
-    )
+    .addOption(concurrencyOption())
     .option(
       "--watch",
       "After the initial build, watch source and rebuild affected workspaces on change.",

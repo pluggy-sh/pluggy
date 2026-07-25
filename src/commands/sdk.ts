@@ -58,6 +58,7 @@ export function sdkCommand(): Command {
   cmd.addCommand(infoSubcommand());
   cmd.addCommand(installSubcommand());
   cmd.addCommand(listSubcommand());
+  cmd.addCommand(outdatedSubcommand());
   cmd.addCommand(pathSubcommand());
   cmd.addCommand(useSubcommand());
   cmd.addCommand(removeSubcommand());
@@ -272,6 +273,72 @@ async function renderCachedJdks(): Promise<void> {
     log.info("");
     log.info(dim(`stored under ${cachePath} — manage with \`pluggy cache\``));
   });
+}
+
+// ---------------------------------------------------------------------------
+// outdated
+// ---------------------------------------------------------------------------
+
+/**
+ * The JDK analogue of `pluggy outdated`. A cached JDK's `fullVersion` was
+ * shown by `sdk list` but never compared against upstream, so the only way to
+ * refresh one was a blind `sdk install --force`.
+ */
+function outdatedSubcommand(): Command {
+  return new Command("outdated")
+    .description("Show cached JDKs that have a newer build upstream.")
+    .action(async function action() {
+      const installed = (await listInstalled()).filter((e) => e.present);
+      const rows = await Promise.all(
+        installed.map(async (entry) => {
+          try {
+            const releases = await listAvailableReleases(entry.distribution);
+            const latest = releases.find((r) => r.major === entry.major)?.fullVersion;
+            return {
+              ...entry,
+              latest,
+              stale: latest !== undefined && latest !== entry.fullVersion,
+            };
+          } catch {
+            return { ...entry, latest: undefined, stale: false };
+          }
+        }),
+      );
+      const stale = rows.filter((r) => r.stale);
+
+      emit(
+        {
+          status: "success",
+          outdated: stale.map((r) => ({
+            distribution: r.distribution,
+            major: r.major,
+            current: r.fullVersion,
+            latest: r.latest,
+          })),
+        },
+        () => {
+          if (installed.length === 0) {
+            log.info("No cached JDKs.");
+            log.info(dim("See what's installable: pluggy sdk info"));
+            return;
+          }
+          if (stale.length === 0) {
+            log.success(`All ${installed.length} cached JDKs are current.`);
+            return;
+          }
+          log.heading("Outdated");
+          for (const row of stale) {
+            log.info(
+              `  ${bold(`${row.distribution} ${row.major}`)}  ${row.fullVersion} ${dim("→")} ${row.latest}`,
+            );
+          }
+          log.info("");
+          log.info(
+            dim(`Update: pluggy sdk install ${stale[0]?.distribution}@${stale[0]?.major} --force`),
+          );
+        },
+      );
+    });
 }
 
 // ---------------------------------------------------------------------------

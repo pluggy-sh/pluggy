@@ -236,6 +236,10 @@ function printHumanInfo(result: InfoResult): void {
       if (versions.length > shown.length) {
         log.info(dim(`  … and ${versions.length - shown.length} more (use --json for all)`));
       }
+      // `search` ends with an install hint; the command that actually lists
+      // the version numbers stopped without saying what to do with them.
+      log.info("");
+      log.info(dim(`Install: pluggy install ${result.slug as string}`));
       break;
     }
     case "maven": {

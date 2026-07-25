@@ -6,7 +6,7 @@ import { runTests, type TestRunOutcome } from "../test/index.ts";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, green, log, red, yellow } from "../logging.ts";
 
-import { mcVersionListOption, platformListOption } from "./parsers.ts";
+import { concurrencyOption, mcVersionListOption, platformListOption } from "./parsers.ts";
 import { platforms } from "../platform/index.ts";
 import type { ResolvedProject } from "../project.ts";
 import { runWorkspaces } from "../runner.ts";
@@ -597,17 +597,7 @@ export function testCommand(): Command {
       "Narrow the matrix to these platforms (repeatable; comma-separated).",
       platformListOption,
     )
-    .option(
-      "--concurrency <n>",
-      "Cap on workspaces running simultaneously. Ignored under --fail-fast.",
-      (raw: string) => {
-        const n = Number.parseInt(raw, 10);
-        if (!Number.isFinite(n) || n < 1) {
-          throw new InvalidArgumentError("--concurrency must be a positive integer");
-        }
-        return n;
-      },
-    )
+    .addOption(concurrencyOption())
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
       const result = await runTestCommand({

@@ -1,10 +1,12 @@
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
 import { generateDocs, type DocsResult } from "../docs/index.ts";
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces } from "../runner.ts";
+
+import { concurrencyOption } from "./parsers.ts";
 import {
   projectStartDir,
   resolveWorkspaceContext,
@@ -213,13 +215,7 @@ export function docsCommand(): Command {
       workspaceListOption,
     )
     .option("--workspaces", "Every workspace, even from inside one.")
-    .option("--concurrency <n>", "Cap on workspaces documenting simultaneously.", (raw: string) => {
-      const n = Number.parseInt(raw, 10);
-      if (!Number.isFinite(n) || n < 1) {
-        throw new InvalidArgumentError("--concurrency must be a positive integer");
-      }
-      return n;
-    })
+    .addOption(concurrencyOption())
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
       const result = await runDocsCommand({

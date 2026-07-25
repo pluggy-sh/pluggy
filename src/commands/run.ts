@@ -24,6 +24,8 @@ import { Command, InvalidArgumentError } from "commander";
 import { UserError } from "../errors.ts";
 import { bold, dim, emit, emitErr, log } from "../logging.ts";
 import { runWorkspaces, type RunResult } from "../runner.ts";
+
+import { concurrencyOption } from "./parsers.ts";
 import { getCachedJdk } from "../sdk/index.ts";
 import { selectJdkForProject } from "../sdk/resolve.ts";
 import { replace } from "../template.ts";
@@ -207,8 +209,10 @@ function listScripts(context: ReturnType<typeof resolveWorkspaceContext>): RunCo
   };
   emit(result as unknown as Record<string, unknown>, () => {
     if (scripts.length === 0) {
-      log.info(dim("No scripts defined. Add a `scripts` block to project.json."));
-      log.info(dim("To start a dev server, use `pluggy dev`."));
+      log.info("No scripts defined.");
+      log.info(
+        dim('Add a `scripts` block to project.json, e.g. {"scripts": {"fmt": "java -version"}}'),
+      );
       return;
     }
     log.heading("Available scripts");
@@ -333,13 +337,7 @@ export function runCommand(): Command {
       workspaceListOption,
     )
     .option("--workspaces", "Every workspace, even from inside one.")
-    .option("--concurrency <n>", "Cap on workspaces running simultaneously.", (raw: string) => {
-      const n = Number.parseInt(raw, 10);
-      if (!Number.isFinite(n) || n < 1) {
-        throw new InvalidArgumentError("--concurrency must be a positive integer");
-      }
-      return n;
-    })
+    .addOption(concurrencyOption())
     .action(async function action(
       this: Command,
       name: string | undefined,

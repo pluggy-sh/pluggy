@@ -4,7 +4,9 @@
  * return value into the parsed option.
  */
 
-import { InvalidArgumentError } from "commander";
+import process from "node:process";
+
+import { InvalidArgumentError, Option } from "commander";
 
 import { platforms } from "../platform/index.ts";
 import { parseIdentifier } from "../source.ts";
@@ -88,4 +90,28 @@ export function parseInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed)) throw new InvalidArgumentError(`Invalid integer: ${value}`);
   return parsed;
+}
+
+/**
+ * Shared `--concurrency` option.
+ *
+ * Four commands each declared their own copy with a separate inline validator
+ * and a subtly different description, one of which contradicted its own
+ * docblock. Concurrency is also a property of the machine rather than of a
+ * single invocation, so `PLUGGY_CONCURRENCY` supplies the default — matching
+ * the existing `PLUGGY_NO_AUTO_INSTALL` / `PLUGGY_NO_UPDATE_CHECK` pattern.
+ */
+export function concurrencyOption(): Option {
+  const option = new Option(
+    "--concurrency <n>",
+    "Cap on workspaces running simultaneously. Use 1 for serial output.",
+  ).argParser((raw: string) => {
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      throw new InvalidArgumentError("--concurrency must be a positive integer");
+    }
+    return n;
+  });
+  const fromEnv = Number.parseInt(process.env.PLUGGY_CONCURRENCY ?? "", 10);
+  return Number.isFinite(fromEnv) && fromEnv >= 1 ? option.default(fromEnv) : option;
 }
