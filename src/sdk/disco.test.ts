@@ -11,7 +11,7 @@
 
 import { describe, expect, test } from "vite-plus/test";
 
-import { resolveJdk, targetForHost } from "./disco.ts";
+import { listAvailableReleases, resolveJdk, targetForHost } from "./disco.ts";
 
 describe("targetForHost", () => {
   test("returns a non-empty os and arch for the running host", () => {
@@ -34,6 +34,42 @@ describe("resolveJdk (live)", () => {
 
   test("propagates a clean error for a non-existent distribution+major combo", async () => {
     // Major 7 is below Temurin's published range; Disco returns no matches.
-    await expect(resolveJdk({ major: 7 })).rejects.toThrow(/[Nn]o temurin JDK 7/);
+    await expect(resolveJdk({ major: 7 })).rejects.toThrow(/temurin has no Java 7/);
   }, 15_000);
+
+  // Disco answers a wildly out-of-range major with a 400 rather than an empty
+  // result. That used to surface as E_DISCO_HTTP telling the user to check
+  // their network connection, for what is a typo.
+  test("an out-of-range major reports availability, not a connectivity problem", async () => {
+    await expect(resolveJdk({ major: 99 })).rejects.toThrow(/temurin has no Java 99/);
+    await expect(resolveJdk({ major: 99 })).rejects.toMatchObject({
+      code: "E_DISCO_NO_MATCH",
+      hint: expect.stringContaining("Available:"),
+    });
+  }, 20_000);
+});
+
+describe("listAvailableReleases (live)", () => {
+  test("returns one entry per published major, newest first", async () => {
+    const releases = await listAvailableReleases("temurin");
+
+    expect(releases.length).toBeGreaterThan(0);
+    expect(releases.map((r) => r.major)).toEqual(
+      releases.map((r) => r.major).sort((a, b) => b - a),
+    );
+    expect(new Set(releases.map((r) => r.major)).size).toBe(releases.length);
+    expect(releases.some((r) => r.major === 21)).toBe(true);
+    for (const release of releases) expect(release.fullVersion).toMatch(/^\d+/);
+  }, 20_000);
+
+  // The allowlist is host-agnostic, so it happily named distributions that
+  // publish nothing for the running machine. This is the query that filters.
+  test("is filtered to the host", async () => {
+    const linux = await listAvailableReleases("temurin", { os: "linux", arch: "x64" });
+    const macArm = await listAvailableReleases("temurin", { os: "macos", arch: "aarch64" });
+
+    expect(linux.length).toBeGreaterThan(0);
+    expect(macArm.length).toBeGreaterThan(0);
+    expect(linux.map((r) => r.major)).not.toEqual(macArm.map((r) => r.major));
+  }, 20_000);
 });

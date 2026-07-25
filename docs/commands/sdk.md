@@ -14,14 +14,65 @@ Set `PLUGGY_NO_AUTO_INSTALL=1` to make a cache miss raise instead of downloading
 
 Every subcommand supports the global `--json` flag for structured output.
 
-| Subcommand                     | Purpose                                                  |
-| ------------------------------ | -------------------------------------------------------- |
-| `pluggy sdk install [<major>]` | Download and cache a JDK.                                |
-| `pluggy sdk list`              | Show cached JDKs, with their full versions and last use. |
-| `pluggy sdk list --available`  | Show distributions pluggy can install.                   |
-| `pluggy sdk path <major>`      | Print `JAVA_HOME` for a cached JDK.                      |
-| `pluggy sdk use <major>`       | Pin a JDK in `project.json`.                             |
-| `pluggy sdk remove <major>`    | Delete a cached JDK.                                     |
+| Subcommand                         | Purpose                                                   |
+| ---------------------------------- | --------------------------------------------------------- |
+| `pluggy sdk info [<distribution>]` | Show what's installable here, and what this project uses. |
+| `pluggy sdk install [<coord>]`     | Download and cache a JDK.                                 |
+| `pluggy sdk list`                  | Show cached JDKs, with their full versions and last use.  |
+| `pluggy sdk path <coord>`          | Print `JAVA_HOME` for a cached JDK.                       |
+| `pluggy sdk use <coord>`           | Pin a JDK in `project.json`.                              |
+| `pluggy sdk remove <coord>`        | Delete a cached JDK.                                      |
+
+Bare `pluggy sdk` runs `sdk list`.
+
+## Coordinates
+
+Every subcommand that names a JDK takes a coordinate: either a bare major, or
+`<distribution>@<major>`. This is the same `<name>@<version>` shape
+[`pluggy install`](./install.md) uses for dependencies.
+
+```text
+pluggy sdk install 21              # default distribution (temurin)
+pluggy sdk install temurin@21      # explicit
+pluggy sdk use zulu@17
+pluggy sdk remove zulu@17
+```
+
+## `info`
+
+Answers "what can I install, and what is this project going to use?" Availability
+is queried per host, so a major published for Linux but not for your OS and
+architecture does not appear.
+
+```text
+$ pluggy sdk info
+Distributions installable on macos/aarch64
+  temurin            26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 11 (default)
+  zulu               26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 13, 11, 8
+  liberica           26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 11, 8
+  corretto           26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 11, 8
+  microsoft          25, 21, 17, 16, 11
+  graalvm_community  25, 24, 23, 22, 21, 20, 17
+
+This project uses temurin 25 — required by the Minecraft version's build manifest.
+Pin a different one: pluggy sdk use <distribution>@<major>
+```
+
+Pass a distribution for its full versions and cache state:
+
+```text
+$ pluggy sdk info temurin
+temurin
+  available for macos/aarch64:  26.0.1+8, 25.0.3+9, 24.0.2+12, 21.0.11+10, …
+  cached:                       21.0.11+10, 25.0.3+9
+  used by this project:         25
+
+Install: pluggy sdk install temurin@26
+```
+
+The trailing sentence names _why_ the project resolved to that major: a `jdk`
+pin in `project.json`, the Minecraft version's build manifest, pluggy's version
+table, or the default.
 
 ## `install`
 
@@ -34,9 +85,9 @@ sdk: extracting JDK…
 ✓ sdk: installed temurin 21 at /Users/you/Library/Caches/pluggy/jdk/temurin-21-macos-aarch64/Contents/Home
 ```
 
-Pass `--distribution <name>` to install a non-default distribution, or use the `sdk list` row shape positionally: `pluggy sdk install temurin 21`. Pass `--force` to reinstall — the replacement is downloaded and verified before the existing JDK is removed, so a failed download never leaves you without one.
+Pass a `<distribution>@<major>` coordinate for a non-default distribution. Pass `--force` to reinstall; the replacement is downloaded and verified before the existing JDK is removed, so a failed download never leaves you without one.
 
-The allowlist is `temurin` (default), `zulu`, `liberica`, `corretto`, `microsoft`, and `graalvm_community`. Run `pluggy sdk list --available` to see the current set.
+The allowlist is `temurin` (default), `zulu`, `liberica`, `corretto`, `microsoft`, and `graalvm_community`. Run `pluggy sdk info` to see which majors each one publishes for your machine.
 
 ## `list`
 
@@ -53,7 +104,7 @@ stored under /Users/you/Library/Caches/pluggy/jdk — manage with `pluggy cache`
 
 A red `✗` means the manifest still references the slot but the directory is gone. `pluggy cache prune --category jdk` cleans those up.
 
-`pluggy sdk list --available` switches to the install allowlist.
+For what you _could_ install rather than what you have, use [`sdk info`](#info).
 
 ## `path`
 
@@ -66,14 +117,14 @@ $ pluggy sdk path 21
 $ export JAVA_HOME=$(pluggy sdk path 21)
 ```
 
-Pass `--distribution <name>` to disambiguate when multiple distributions of the same major are installed.
+Use a `<distribution>@<major>` coordinate to disambiguate when multiple distributions of the same major are installed.
 
 ## `use`
 
 Pin a JDK in the current `project.json` so teammates land on the same one.
 
 ```text
-$ pluggy sdk use 21 --distribution zulu
+$ pluggy sdk use zulu@21
 ✓ Pinned Java 21 (zulu) in /Users/you/my-plugin/project.json
 ```
 
@@ -93,11 +144,11 @@ See [`jdk` in the `project.json` reference](../project-json.md#jdk-optional) for
 Delete a cached JDK.
 
 ```text
-$ pluggy sdk remove 17 --distribution zulu
+$ pluggy sdk remove zulu@17
 ✓ Removed zulu 17 (freed 301.20 MB) from /Users/you/Library/Caches/pluggy/jdk/zulu-17-macos-aarch64
 ```
 
-`remove` always honors the `--distribution` value, so you can prune one distribution while keeping another.
+The coordinate selects the slot, so you can prune one distribution while keeping another.
 
 ## CI escape hatch
 

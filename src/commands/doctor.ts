@@ -806,7 +806,7 @@ export async function checkSdk(project: ResolvedProject): Promise<CheckResult> {
   const selection = await selectJdkForProject(project);
   const cached = getCachedJdk(selection.major, selection.distribution);
   const noAutoInstall = process.env.PLUGGY_NO_AUTO_INSTALL === "1";
-  const remedy = `pluggy sdk install ${selection.major}${selection.distribution === "temurin" ? "" : ` --distribution ${selection.distribution}`}`;
+  const remedy = `pluggy sdk install ${selection.distribution}@${selection.major}`;
 
   if (cached !== undefined) {
     return {

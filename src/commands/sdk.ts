@@ -4,20 +4,20 @@
  * `pluggy cache prune` / `cache info` / `cache clean --category jdk`.
  *
  * Subcommands:
- *   install [<major>]         Download + cache a JDK. With no arg, derives
+ *   info [<distribution>]     What can be installed here, and what this
+ *                             project will use (and why).
+ *   install [<coordinate>]    Download + cache a JDK. With no arg, derives
  *                             the major from the current project.
- *   list                      Show cached JDKs (and on `--available`, what
- *                             majors Disco can serve for this host).
- *   path <major>              Print the absolute javaHome for a cached JDK.
- *   use <major>               Pin a JDK in the current project.json.
- *   remove <major>            Delete a cached JDK.
+ *   list                      Show cached JDKs. Default when `sdk` is bare.
+ *   path <coordinate>         Print the absolute javaHome for a cached JDK.
+ *   use <coordinate>          Pin a JDK in the current project.json.
+ *   remove <coordinate>       Delete a cached JDK.
  *
- * Every subcommand taking a major also accepts `<distribution> <major>`
- * positionally (`pluggy sdk install temurin 21`), mirroring `sdk list` rows.
- *
- * `--distribution` is an opt-in override; defaults to Temurin. Only the
- * curated allowlist is accepted (see `ALLOWED_DISTRIBUTIONS`). Adding
- * distributions later is non-breaking; narrowing isn't.
+ * A coordinate is `<major>` or `<distribution>@<major>`, mirroring the
+ * `<name>@<version>` grammar `pluggy install` already uses for dependencies.
+ * Only the curated allowlist of distributions is accepted (see
+ * `ALLOWED_DISTRIBUTIONS`). Adding distributions later is non-breaking;
+ * narrowing isn't.
  */
 
 import { readFile } from "node:fs/promises";
@@ -36,8 +36,9 @@ import { bold, dim, emit, emitErr, green, log, red } from "../logging.ts";
 
 import { dirSize, formatBytes } from "../cache/index.ts";
 import { jdkCacheRoot } from "../sdk/cache.ts";
+import { listAvailableReleases, targetForHost } from "../sdk/disco.ts";
 import { ensureJdk, getCachedJdk, listInstalled, removeJdk } from "../sdk/index.ts";
-import { selectJdkForProject } from "../sdk/resolve.ts";
+import { selectJdkForProject, type ProjectJdkSelection } from "../sdk/resolve.ts";
 import {
   ALLOWED_DISTRIBUTIONS,
   parseDistribution,
@@ -50,15 +51,133 @@ interface SdkGlobalOpts {
 
 /** Top-level `sdk` command. Subcommands attached below. */
 export function sdkCommand(): Command {
-  const cmd = new Command("sdk").description("Manage JDK toolchains (install, list, pin, remove).");
+  const cmd = new Command("sdk").description(
+    "Manage JDK toolchains (see what's available, install, pin, remove).",
+  );
 
+  cmd.addCommand(infoSubcommand());
   cmd.addCommand(installSubcommand());
   cmd.addCommand(listSubcommand());
   cmd.addCommand(pathSubcommand());
   cmd.addCommand(useSubcommand());
   cmd.addCommand(removeSubcommand());
 
+  // Bare `pluggy sdk` shows what's installed rather than printing help, the
+  // same way bare `pluggy cache` shows `cache info`.
+  cmd.action(async function action(this: Command) {
+    await renderCachedJdks();
+  });
+
   return cmd;
+}
+
+// ---------------------------------------------------------------------------
+// info
+// ---------------------------------------------------------------------------
+
+function infoSubcommand(): Command {
+  return new Command("info")
+    .description(
+      "Show which JDKs can be installed on this machine, and which one this project uses.",
+    )
+    .argument("[distribution]", "Limit to one distribution and list its full versions.")
+    .addHelpText(
+      "after",
+      `\nExamples:\n  $ pluggy sdk info\n  $ pluggy sdk info temurin\n\nAvailability is queried per host: a distribution may publish a major for Linux\nbut not for this machine's OS and architecture.`,
+    )
+    .action(async function action(this: Command, distributionArg: string | undefined) {
+      const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
+      const host = targetForHost();
+      const selection = await projectSelection(globalOpts);
+      const installed = await listInstalled();
+
+      if (distributionArg !== undefined) {
+        const distribution = parseDistribution(distributionArg);
+        const releases = await listAvailableReleases(distribution);
+        const cached = installed.filter((e) => e.distribution === distribution && e.present);
+        emit(
+          {
+            status: "success",
+            distribution,
+            host,
+            available: releases,
+            cached: cached.map((c) => ({ major: c.major, fullVersion: c.fullVersion })),
+            project: selection,
+          },
+          () => {
+            log.heading(distribution);
+            log.info(
+              `  ${dim(`available for ${host.os}/${host.arch}:`)}  ${
+                releases.length === 0 ? "(none)" : releases.map((r) => r.fullVersion).join(", ")
+              }`,
+            );
+            log.info(
+              `  ${dim("cached:")}                       ${
+                cached.length === 0 ? "(none)" : cached.map((c) => c.fullVersion).join(", ")
+              }`,
+            );
+            if (selection !== undefined && selection.distribution === distribution) {
+              log.info(`  ${dim("used by this project:")}         ${selection.major}`);
+            }
+            log.info("");
+            const example = releases[0]?.major ?? 21;
+            log.info(dim(`Install: pluggy sdk install ${distribution}@${example}`));
+          },
+        );
+        return;
+      }
+
+      const rows = await Promise.all(
+        ALLOWED_DISTRIBUTIONS.map(async (distribution) => {
+          try {
+            const releases = await listAvailableReleases(distribution);
+            return { distribution, majors: releases.map((r) => r.major) };
+          } catch {
+            // One unreachable distribution shouldn't blank the whole table.
+            return { distribution, majors: undefined };
+          }
+        }),
+      );
+
+      emit({ status: "success", host, distributions: rows, project: selection }, () => {
+        log.heading(`Distributions installable on ${host.os}/${host.arch}`);
+        const width = Math.max(...ALLOWED_DISTRIBUTIONS.map((d) => d.length));
+        for (const row of rows) {
+          const label = row.distribution.padEnd(width);
+          const majors =
+            row.majors === undefined
+              ? dim("(unavailable)")
+              : row.majors.length === 0
+                ? dim("(none)")
+                : row.majors.join(", ");
+          const marker = row.distribution === "temurin" ? dim(" (default)") : "";
+          log.info(`  ${label}  ${majors}${marker}`);
+        }
+        log.info("");
+        if (selection === undefined) {
+          log.info(dim("Run inside a project to see which JDK it uses."));
+        } else {
+          log.info(
+            `This project uses ${bold(`${selection.distribution} ${selection.major}`)} — ${explainSelection(selection)}.`,
+          );
+          log.info(dim("Pin a different one: pluggy sdk use <distribution>@<major>"));
+        }
+      });
+    });
+}
+
+/** Plain-English rendering of where the project's Java major came from. */
+function explainSelection(selection: ProjectJdkSelection): string {
+  switch (selection.source) {
+    case "project-pin":
+      return "pinned by the `jdk` block in project.json";
+    case "spigot-manifest":
+      return "required by the Minecraft version's build manifest";
+    case "fallback-table":
+      return "derived from the project's Minecraft version";
+    case "fallback-default":
+      return "pluggy's default, since the Minecraft version implies nothing";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -67,36 +186,23 @@ export function sdkCommand(): Command {
 
 function installSubcommand(): Command {
   return new Command("install")
-    .description("Download and cache a JDK. With no <major>, derives it from project.json.")
-    .argument(
-      "[major-or-distribution]",
-      "Java major release (e.g. 21), or distribution if <major> follows. Omit to derive from project.json.",
+    .description("Download and cache a JDK. With no argument, derives it from project.json.")
+    .argument("[coordinate]", "`<major>` or `<distribution>@<major>`, e.g. 21 or temurin@21.")
+    .option("--force", "Reinstall even if already cached.")
+    .addHelpText(
+      "after",
+      "\nExamples:\n  $ pluggy sdk install\n  $ pluggy sdk install 21\n  $ pluggy sdk install temurin@21\n\nRun `pluggy sdk info` to see what's installable here.",
     )
-    .argument("[major]", "Java major release (when the first arg is a distribution).")
-    .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
-    .option(
-      "--force",
-      "Reinstall even if already cached. The replacement is downloaded and verified before the old JDK is removed.",
-    )
-    .action(async function action(
-      this: Command,
-      firstArg: string | undefined,
-      secondArg: string | undefined,
-      options,
-    ) {
+    .action(async function action(this: Command, coordinate: string | undefined, options) {
       const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
-      const positionals =
-        firstArg !== undefined
-          ? splitMajorAndDistribution(firstArg, secondArg)
+      const parsed =
+        coordinate !== undefined
+          ? parseCoordinate(coordinate)
           : { major: await majorFromProject(globalOpts), distribution: undefined };
-      const distribution =
-        resolveDistribution(
-          positionals.distribution,
-          options.distribution as AllowedDistribution | undefined,
-        ) ?? "temurin";
+      const distribution = parsed.distribution ?? "temurin";
 
       // Explicit installs always write to the cache; never accept JAVA_HOME.
-      const resolved = await ensureJdk(positionals.major, {
+      const resolved = await ensureJdk(parsed.major, {
         distribution,
         ignoreSystemJava: true,
         force: options.force === true,
@@ -135,41 +241,37 @@ function listSubcommand(): Command {
   return new Command("list")
     .alias("ls")
     .description("Show cached JDKs.")
-    .option("--available", "Show distributions pluggy will install.")
-    .action(async function action(this: Command, options) {
-      if (options.available === true) {
-        emit({ status: "success", available: ALLOWED_DISTRIBUTIONS }, () => {
-          log.info(bold("Distributions pluggy can install:"));
-          for (const d of ALLOWED_DISTRIBUTIONS) log.info(`  ${d}`);
-        });
-        return;
-      }
-
-      const installed = await listInstalled();
-      const rows = await Promise.all(
-        installed.map(async (e) => ({
-          ...e,
-          sizeBytes: e.present ? await dirSize(e.slotPath) : 0,
-        })),
-      );
-      const cachePath = jdkCacheRoot();
-      emit({ status: "success", installed: rows, cachePath }, () => {
-        if (rows.length === 0) {
-          log.info("No cached JDKs. Run `pluggy sdk install <major>` to install one.");
-        } else {
-          log.info(bold("Cached JDKs:"));
-          for (const e of rows) {
-            const status = e.present ? green("✓") : red("✗");
-            const used = formatRelative(e.lastUsed);
-            log.info(
-              `  ${status} ${e.distribution} ${e.major}  ${dim(`(${e.fullVersion})`)}  ${formatBytes(e.sizeBytes)}  ${dim(`last used ${used}`)}`,
-            );
-          }
-        }
-        log.info("");
-        log.info(dim(`stored under ${cachePath} — manage with \`pluggy cache\``));
-      });
+    .action(async function action() {
+      await renderCachedJdks();
     });
+}
+
+async function renderCachedJdks(): Promise<void> {
+  const installed = await listInstalled();
+  const rows = await Promise.all(
+    installed.map(async (e) => ({
+      ...e,
+      sizeBytes: e.present ? await dirSize(e.slotPath) : 0,
+    })),
+  );
+  const cachePath = jdkCacheRoot();
+  emit({ status: "success", installed: rows, cachePath }, () => {
+    if (rows.length === 0) {
+      log.info("No cached JDKs.");
+      log.info(dim("See what's installable: pluggy sdk info"));
+      return;
+    }
+    log.info(bold("Cached JDKs:"));
+    for (const e of rows) {
+      const status = e.present ? green("✓") : red("✗");
+      const used = formatRelative(e.lastUsed);
+      log.info(
+        `  ${status} ${e.distribution} ${e.major}  ${dim(`(${e.fullVersion})`)}  ${formatBytes(e.sizeBytes)}  ${dim(`last used ${used}`)}`,
+      );
+    }
+    log.info("");
+    log.info(dim(`stored under ${cachePath} — manage with \`pluggy cache\``));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -179,29 +281,18 @@ function listSubcommand(): Command {
 function pathSubcommand(): Command {
   return new Command("path")
     .description("Print JAVA_HOME for a cached JDK. Exits 1 if not installed.")
-    .argument("<major-or-distribution>", "Java major release, or distribution if <major> follows.")
-    .argument("[major]", "Java major release (when the first arg is a distribution).")
-    .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
-    .action(async function action(
-      this: Command,
-      firstArg: string,
-      secondArg: string | undefined,
-      options,
-    ) {
-      const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
-      const distribution = resolveDistribution(positional, options.distribution) ?? "temurin";
+    .argument("<coordinate>", "`<major>` or `<distribution>@<major>`.")
+    .action(async function action(this: Command, coordinate: string) {
+      const { major, distribution: parsed } = parseCoordinate(coordinate);
+      const distribution = parsed ?? "temurin";
 
       const cached = getCachedJdk(major, distribution);
       if (cached === undefined) {
         emitErr(
-          {
-            status: "error",
-            message: `${distribution} ${major} not installed`,
-            exitCode: 1,
-          },
+          { status: "error", message: `${distribution} ${major} not installed`, exitCode: 1 },
           () => {
             log.error(
-              `${distribution} ${major} is not installed. Run: pluggy sdk install ${major}${distribution === "temurin" ? "" : ` --distribution ${distribution}`}`,
+              `${distribution} ${major} is not installed. Run: pluggy sdk install ${distribution}@${major}`,
             );
           },
         );
@@ -230,18 +321,10 @@ function pathSubcommand(): Command {
 function useSubcommand(): Command {
   return new Command("use")
     .description("Pin a JDK in the current project.json so teammates land on the same one.")
-    .argument("<major-or-distribution>", "Java major release, or distribution if <major> follows.")
-    .argument("[major]", "Java major release (when the first arg is a distribution).")
-    .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
-    .action(async function action(
-      this: Command,
-      firstArg: string,
-      secondArg: string | undefined,
-      options,
-    ) {
+    .argument("<coordinate>", "`<major>` or `<distribution>@<major>`.")
+    .action(async function action(this: Command, coordinate: string) {
       const globalOpts = this.optsWithGlobals() as SdkGlobalOpts;
-      const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
-      const distribution = resolveDistribution(positional, options.distribution);
+      const { major, distribution } = parseCoordinate(coordinate);
 
       const project = loadProject(globalOpts);
 
@@ -271,17 +354,10 @@ function removeSubcommand(): Command {
   return new Command("remove")
     .alias("rm")
     .description("Delete a cached JDK.")
-    .argument("<major-or-distribution>", "Java major release, or distribution if <major> follows.")
-    .argument("[major]", "Java major release (when the first arg is a distribution).")
-    .option("--distribution <name>", "JDK distribution.", parseDistribution, undefined)
-    .action(async function action(
-      this: Command,
-      firstArg: string,
-      secondArg: string | undefined,
-      options,
-    ) {
-      const { major, distribution: positional } = splitMajorAndDistribution(firstArg, secondArg);
-      const distribution = resolveDistribution(positional, options.distribution) ?? "temurin";
+    .argument("<coordinate>", "`<major>` or `<distribution>@<major>`.")
+    .action(async function action(this: Command, coordinate: string) {
+      const { major, distribution: parsed } = parseCoordinate(coordinate);
+      const distribution = parsed ?? "temurin";
 
       const result = await removeJdk(major, distribution);
 
@@ -314,46 +390,40 @@ function removeSubcommand(): Command {
 
 function parseMajor(value: string): number {
   const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n) || n < 6 || n > 99) {
-    throw new InvalidArgumentError(`"${value}" is not a valid Java major release`);
+  if (Number.isNaN(n) || String(n) !== value.trim() || n < 6 || n > 99) {
+    throw new InvalidArgumentError(
+      `"${value}" is not a Java major release. Run \`pluggy sdk info\` to see what's installable.`,
+    );
   }
   return n;
 }
 
 /**
- * Split the two positional slots into `{ major, distribution }`. Mirrors how
- * `sdk list` formats entries (`<distribution> <major>`) so users can copy a
- * line straight off the listing. Two shapes:
- *   pluggy sdk use 21
- *   pluggy sdk use temurin 21
- * Commander can't model `[opt] <req>` directly (single args always fill the
- * first slot), so we accept `<first> [second]` and disambiguate here.
+ * Parse `<major>` or `<distribution>@<major>`, the same `name@version` shape
+ * `pluggy install` uses for dependencies.
+ *
+ * This replaced a two-positional overload disambiguated by argument *count*,
+ * which meant a lone `pluggy sdk install temurin` was parsed as a major and
+ * rejected with `"temurin" is not a valid Java major release` — for a value
+ * the help text invited.
  */
-function splitMajorAndDistribution(
-  first: string,
-  second: string | undefined,
-): { major: number; distribution: AllowedDistribution | undefined } {
-  if (second === undefined) {
-    return { major: parseMajor(first), distribution: undefined };
+export function parseCoordinate(value: string): {
+  major: number;
+  distribution: AllowedDistribution | undefined;
+} {
+  const at = value.indexOf("@");
+  if (at === -1) {
+    if ((ALLOWED_DISTRIBUTIONS as readonly string[]).includes(value)) {
+      throw new InvalidArgumentError(
+        `"${value}" is a distribution, not a version. Add a major, e.g. ${value}@21 — or run \`pluggy sdk info ${value}\` to see what's available.`,
+      );
+    }
+    return { major: parseMajor(value), distribution: undefined };
   }
-  return { major: parseMajor(second), distribution: parseDistribution(first) };
-}
-
-/**
- * Reconcile a distribution from the positional `[distribution]` arg and the
- * `--distribution` option. Errors when both are given and disagree so users
- * don't get a silent winner.
- */
-function resolveDistribution(
-  positional: AllowedDistribution | undefined,
-  fromOption: AllowedDistribution | undefined,
-): AllowedDistribution | undefined {
-  if (positional !== undefined && fromOption !== undefined && positional !== fromOption) {
-    throw new InvalidArgumentError(
-      `distribution given twice and disagrees: "${positional}" vs --distribution ${fromOption}`,
-    );
-  }
-  return positional ?? fromOption;
+  return {
+    distribution: parseDistribution(value.slice(0, at)),
+    major: parseMajor(value.slice(at + 1)),
+  };
 }
 
 function loadProject(globalOpts: SdkGlobalOpts): ResolvedProject {
@@ -364,6 +434,17 @@ function loadProject(globalOpts: SdkGlobalOpts): ResolvedProject {
     throw new Error("sdk: no project.json found. Run from inside a pluggy project");
   }
   return project;
+}
+
+/** The project's JDK selection, or `undefined` outside a project. */
+async function projectSelection(
+  globalOpts: SdkGlobalOpts,
+): Promise<ProjectJdkSelection | undefined> {
+  const fromFile =
+    globalOpts.project !== undefined ? resolveProjectFile(globalOpts.project) : undefined;
+  const project = fromFile ?? getCurrentProject();
+  if (project === undefined) return undefined;
+  return selectJdkForProject(project);
 }
 
 async function majorFromProject(globalOpts: SdkGlobalOpts): Promise<number> {

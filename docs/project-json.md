@@ -256,7 +256,7 @@ Pin the [JDK](./glossary.md#jdk) pluggy installs for `build`, `test`, and `dev`.
 | `major`        | derived     | Java major release. Overrides the version-derived default.                                                                 |
 | `distribution` | `"temurin"` | One of `temurin`, `zulu`, `liberica`, `corretto`, `microsoft`, `graalvm_community`. See [`pluggy sdk`](./commands/sdk.md). |
 
-`pluggy sdk use 21 --distribution zulu` writes this block for you. Pin
+`pluggy sdk use zulu@21` writes this block for you. Pin
 when your team has standardized on a non-default distribution, or when a
 project must build against a specific Java major regardless of the MC
 version.
