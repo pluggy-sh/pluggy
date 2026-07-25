@@ -238,7 +238,7 @@ export function devCommand(): Command {
     )
     .option("--platform <name>", "Override the primary platform.", parsePlatform)
     .option("--mc-version <version>", "Override the primary MC version.", parseMcVersion)
-    .option("--port <n>", "Server listen port.", parseInteger)
+    .option("--port <n>", "Port the server listens on.", parseInteger)
     .option("--memory <x>", "JVM heap size (e.g. 2G, 512M).")
     .option("--clean", "Wipe dev/ before starting.")
     .option("--fresh-world", "Keep dev/ but delete dev/world*.")
@@ -249,7 +249,7 @@ export function devCommand(): Command {
       parseFallback,
     )
     .option("--reload", "Legacy alias for --fallback reload (uses the deprecated /reload command).")
-    .option("--no-hotswap", "Disable hotswap (JBR + agent); rebuild-and-restart on change.")
+    .option("--no-hotswap", "Rebuild and restart the server on change instead of hotswapping.")
     .option(
       "--debug [port]",
       "Attach a JDWP debug agent for IDE breakpoints (default port 5005).",
@@ -258,9 +258,9 @@ export function devCommand(): Command {
     .option("--debug-suspend", "With --debug, wait for a debugger to attach before starting.")
     .option(
       "--debug-expose",
-      "Bind the JDWP agent to all interfaces instead of loopback (unauthenticated; container/WSL2 only).",
+      "Let a debugger on another machine attach. The debug port is unauthenticated: anything that can reach it can run code.",
     )
-    .option("--offline", "Set online-mode=false in server.properties.")
+    .option("--offline", "Let accounts connect without Mojang authentication.")
     .action(async function action(this: Command, options) {
       const globalOpts = this.optsWithGlobals();
       await runDevCommand({

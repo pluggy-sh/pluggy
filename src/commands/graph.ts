@@ -132,7 +132,7 @@ function mermaidId(name: string): string {
 export function graphCommand(): Command {
   return new Command("graph")
     .description("Render the workspace dependency graph (text by default).")
-    .option("--mermaid", "Emit a Mermaid `graph TD` definition instead of the text rendering.")
+    .option("--mermaid", "Emit Mermaid syntax for embedding in Markdown.")
     .action(async function action(this: Command, options) {
       await runGraphCommand({
         mermaid: options.mermaid === true,

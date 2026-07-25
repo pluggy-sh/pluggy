@@ -170,9 +170,14 @@ export function parseWorkspaceList(input: string[]): string[] {
   return out;
 }
 
-/** Commander callback that funnels into `parseWorkspaceList`. */
-export function workspaceListOption(value: string, prev: string[]): string[] {
-  return parseWorkspaceList([...prev, value]);
+/**
+ * Commander callback that funnels into `parseWorkspaceList`. `prev` is
+ * `undefined` on the first occurrence because these options declare no default
+ * — seeding them with `[]` made commander render a meaningless
+ * "(default: [])" in every help listing.
+ */
+export function workspaceListOption(value: string, prev: string[] | undefined): string[] {
+  return parseWorkspaceList([...(prev ?? []), value]);
 }
 
 export interface WorkspaceFilterOptions {

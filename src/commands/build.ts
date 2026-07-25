@@ -370,20 +370,18 @@ export function buildCommand(): Command {
   return new Command("build")
     .alias("b")
     .description("Build the project and output a plugin jar.")
-    .option("--output <path>", "Output jar path.")
+    .option("--output <path>", "Write the jar here instead of bin/<name>-<version>.jar.")
     .option("--clean", "Wipe build cache before building.")
     .option("--skip-classpath", "Don't regenerate the Eclipse .classpath file.")
     .option(
       "--workspace <names>",
       "Build one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from an all-workspaces build (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option("--workspaces", "Explicit all-workspaces build.")
     .option(

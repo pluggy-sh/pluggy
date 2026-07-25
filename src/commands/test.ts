@@ -575,7 +575,7 @@ export function testCommand(): Command {
     .description("Compile and run JUnit tests under test/.")
     .addHelpText(
       "after",
-      "\nTest stdout (System.out.println) is not shown: results are re-rendered from the JUnit XML reports. Put diagnostics in assertion messages instead.",
+      "\nTest stdout is not shown. Put diagnostics in assertion messages instead.",
     )
     .option(
       "--filter <pattern>",
@@ -587,13 +587,11 @@ export function testCommand(): Command {
       "--workspace <names>",
       "Test one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from an all-workspaces test run (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option("--workspaces", "Explicit all-workspaces test.")
     .option(

@@ -192,24 +192,21 @@ export function docsCommand(): Command {
       "Output directory for the generated site (default: docs/<name>-<version>/ in each workspace).",
     )
     .option("--clean", "Wipe the output directory before generating.")
-    .option("--private", "Include private members (passes -private to javadoc).")
+    .option("--private", "Document private members too.")
     .option(
       "--link <url>",
       "Cross-link to an external javadoc site. Repeatable.",
-      (value: string, prev: string[]) => prev.concat(value),
-      [] as string[],
+      (value: string, prev: string[] | undefined) => (prev ?? []).concat(value),
     )
     .option(
       "--workspace <names>",
       "Document one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from the default sweep (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option("--workspaces", "Explicit all-workspaces docs run.")
     .option("--concurrency <n>", "Cap on workspaces documenting simultaneously.", (raw: string) => {

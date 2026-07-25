@@ -1565,11 +1565,8 @@ function escapeCell(value: string): string {
 export function doctorCommand(options: { pluggyVersion: string; repository: string }): Command {
   return new Command("doctor")
     .description("Check your environment and project for common issues.")
-    .option("--report", "Print a paste-friendly markdown report for issue filing (--json wins).")
-    .option(
-      "--fix",
-      "Apply safe, non-destructive remediations (lockfile prune, missing workspaces).",
-    )
+    .option("--report", "Print a paste-friendly markdown report for issue filing.")
+    .option("--fix", "Apply the fixes that can be made automatically.")
     .addHelpText(
       "after",
       "\nDoctor exits 0 when every check passes (warnings allowed) and 1 when any check fails.",

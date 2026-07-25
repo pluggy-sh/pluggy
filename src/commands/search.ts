@@ -160,8 +160,8 @@ export function searchCommand(): Command {
   return new Command("search")
     .description("Search Modrinth for plugins by keyword.")
     .argument("<query>", "Search query.")
-    .option("--size <size>", "Page size (default: 10).", parseInteger, 10)
-    .option("--page <page>", "Page number (default: 0).", parseInteger, 0)
+    .option("--size <size>", "Results per page.", parseInteger, 10)
+    .option("--page <page>", "Zero-based page to fetch.", parseInteger, 0)
     .option("--platform <name>", "Filter by platform.", parsePlatform)
     .option("--mc-version <version>", "Filter by Minecraft version (e.g. 1.21.8).", parseMcVersion)
     .action(async function action(this: Command, query: string, options) {

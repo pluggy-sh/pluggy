@@ -432,7 +432,7 @@ export function installCommand(): Command {
     .description("Install project dependencies or a specific plugin.")
     .argument("[plugin]", "Plugin identifier. Modrinth slug, local .jar, or maven: coordinate.")
     .option("--force", "Force dependency install (override compatibility checks).")
-    .option("--beta", "Include pre-release versions during Modrinth resolution.")
+    .option("--beta", "Include pre-release versions.")
     .option("--workspace <name>", "Target a specific workspace.")
     .option("--workspaces", "Run across all workspaces explicitly.")
     .addHelpText(

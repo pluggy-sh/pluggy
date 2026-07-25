@@ -211,7 +211,7 @@ export function removeCommand(): Command {
   return new Command("remove")
     .alias("rm")
     .description("Remove a plugin from the project config and optionally delete its jar.")
-    .argument("<plugin>", "Plugin identifier.")
+    .argument("<plugin>", "Plugin name as shown by `pluggy list`.")
     .option("--keep-file", "Keep the cached jar on disk instead of deleting it.")
     .option("--workspace <name>", "Target a specific workspace.")
     .option("--workspaces", "Remove from every workspace that declares it.")

@@ -14,7 +14,7 @@
 
 import process from "node:process";
 
-import { Command, InvalidArgumentError } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import { confirm } from "@inquirer/prompts";
 
 import {
@@ -23,7 +23,6 @@ import {
   type CategoryId,
   cleanCache,
   formatBytes,
-  isCategoryId,
   listCacheEntries,
   parseDurationMs,
   parseSizeBytes,
@@ -113,7 +112,7 @@ function listSubcommand(): Command {
   return new Command("list")
     .alias("ls")
     .description("List individual cache entries.")
-    .option("--category <name>", "Limit to one category.", parseCategoryArg)
+    .addOption(new Option("--category <name>", "Limit to one category.").choices(CATEGORY_IDS))
     .action(async function action(this: Command, options) {
       const category: CategoryId | "all" = (options.category as CategoryId | undefined) ?? "all";
       const groups = await listCacheEntries(category);
@@ -162,7 +161,9 @@ function pathSubcommand(): Command {
 function cleanSubcommand(): Command {
   return new Command("clean")
     .description("Delete all cached entries (or just one category).")
-    .option("--category <name>", "Limit cleaning to one category.", parseCategoryArg)
+    .addOption(
+      new Option("--category <name>", "Limit cleaning to one category.").choices(CATEGORY_IDS),
+    )
     .option("--dry-run", "Print what would be removed without touching disk.")
     .option("-y, --yes", "Skip the confirmation prompt. Required with --json.")
     .action(async function action(this: Command, options) {
@@ -250,7 +251,7 @@ function pruneSubcommand(): Command {
     )
     .option(
       "--max-age <duration>",
-      `Drop entries older than this (e.g. 90d, 12h, 30m, 1w). Default: ${DEFAULT_MAX_AGE}. Use 0 to disable.`,
+      "Drop entries older than this (e.g. 90d, 12h, 30m, 1w). Use 0 to disable.",
       DEFAULT_MAX_AGE,
     )
     .option(
@@ -259,11 +260,13 @@ function pruneSubcommand(): Command {
     )
     .option(
       "--keep-latest <n>",
-      "JDK-only: keep the N most-recently-used JDKs per major regardless of age. Default: 2.",
+      "Keep the N most-recently-used JDKs per major regardless of age. JDKs only.",
       parseKeepLatest,
       2,
     )
-    .option("--category <name>", "Limit pruning to one category.", parseCategoryArg)
+    .addOption(
+      new Option("--category <name>", "Limit pruning to one category.").choices(CATEGORY_IDS),
+    )
     .option("--dry-run", "Print what would be removed without touching disk.")
     .action(async function action(this: Command, options) {
       const maxAgeMs = parseDurationOrZero(options.maxAge as string);
@@ -296,15 +299,6 @@ function pruneSubcommand(): Command {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function parseCategoryArg(value: string): CategoryId {
-  if (!isCategoryId(value)) {
-    throw new InvalidArgumentError(
-      `unknown category "${value}". Allowed: ${CATEGORY_IDS.join(", ")}`,
-    );
-  }
-  return value;
-}
 
 function parseKeepLatest(value: string): number {
   const n = Number.parseInt(value, 10);

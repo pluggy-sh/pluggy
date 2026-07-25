@@ -245,10 +245,10 @@ export function initCommand(): Command {
   return new Command("init")
     .description("Initialize a new project with interactive prompts.")
     .argument("[path]", "Target directory for the new project.")
-    .option("--name <name>", "Project name.")
+    .option("--name <name>", "Plugin name. Letters, numbers, underscores, and hyphens.")
     .option("--project-version <semver>", "Version to write to project.json.", parseSemver)
-    .option("--description <description>", "Project description.")
-    .option("--main <main>", "Main class name.")
+    .option("--description <description>", "One-line summary written into the descriptor.")
+    .option("--main <main>", "Fully-qualified entry-point class, e.g. com.example.shop.Main.")
     .addOption(
       new Option("--platform <platform>", "Target platform, repeatable.")
         .argParser((val: string, prev: string[]) => {
@@ -260,12 +260,12 @@ export function initCommand(): Command {
     .option("--mc-version <version>", "Minecraft version for compatibility.", parseMcVersion)
     .option(
       "--template <id>",
-      "Scaffold from a template (`pluggy init --template paper-mockbukkit`). Without this flag init writes the embedded family stub.",
+      "Scaffold from a named template instead of the default starter plugin.",
     )
     .option("-y, --yes", "Skip prompts and use defaults.")
     .addHelpText(
       "after",
-      `\nUse -y to skip prompts and take the defaults. We recommend --main <main> to set the main class explicitly.\nUnless --mc-version is set, init fetches each platform's latest Minecraft version list from the network, even with -y.\n\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --mc-version 1.21.8\n  $ pluggy init --template paper-mockbukkit`,
+      `\nUnless --mc-version is set, init fetches each platform's latest Minecraft version list from the network — including under -y.\n\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --mc-version 1.21.8\n  $ pluggy init --template paper-mockbukkit`,
     )
     .action(async function action(this: Command, path: string | undefined, options) {
       const globalOpts = this.optsWithGlobals();

@@ -315,7 +315,7 @@ export function runCommand(): Command {
     .description("Invoke a script defined under project.scripts across the selected workspaces.")
     .addHelpText(
       "after",
-      '\nScripts run without a shell: pipes, `&&`, and redirection are not supported. Put multi-step work in a script file and reference it (e.g. "deploy": "node scripts/deploy.mjs").\nTo start a dev server, use `pluggy dev`.',
+      '\nScripts run without a shell: pipes, `&&`, and redirection are not supported. Put multi-step work in a script file and reference it (e.g. "deploy": "node scripts/deploy.mjs").',
     )
     .argument("[name]", "Script name. Omit to list available scripts.")
     .argument(
@@ -326,13 +326,11 @@ export function runCommand(): Command {
       "--workspace <names>",
       "Run in one or more workspaces (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option(
       "--exclude <names>",
       "Exclude workspaces from an all-workspaces run (repeatable; comma-separated).",
       workspaceListOption,
-      [] as string[],
     )
     .option("--workspaces", "Explicit all-workspaces run.")
     .option("--concurrency <n>", "Cap on workspaces running simultaneously.", (raw: string) => {
