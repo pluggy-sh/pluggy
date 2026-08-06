@@ -19,25 +19,31 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - target: linux-amd64
+            runner: ubuntu-latest
             bun-target: bun-linux-x64
             artifact: pluggy-linux-amd64
           - target: linux-arm64
+            runner: ubuntu-latest
             bun-target: bun-linux-arm64
             artifact: pluggy-linux-arm64
           - target: darwin-amd64
+            runner: macos-14
             bun-target: bun-darwin-x64
             artifact: pluggy-darwin-amd64
           - target: darwin-arm64
+            runner: macos-14
             bun-target: bun-darwin-arm64
             artifact: pluggy-darwin-arm64
           - target: windows-amd64
+            runner: ubuntu-latest
             bun-target: bun-windows-x64
             artifact: pluggy-windows-amd64.exe
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout code
@@ -77,6 +83,21 @@ jobs:
             --target ${{ matrix.bun-target }} \
             --outfile bin/${{ matrix.artifact }} \
             ./src/index.ts
+
+      - name: Re-sign macOS binary for the host platform
+        if: startsWith(matrix.target, 'darwin-')
+        run: |
+          # Bun embeds an ad-hoc signature while cross-compiling. Replacing it
+          # on macOS makes the CodeDirectory match the runner's page layout.
+          codesign --remove-signature "bin/${{ matrix.artifact }}" || true
+          codesign --force --sign - "bin/${{ matrix.artifact }}"
+          codesign --verify --verbose=4 "bin/${{ matrix.artifact }}"
+
+      - name: Smoke-test macOS ARM64 binary
+        if: matrix.target == 'darwin-arm64'
+        run: |
+          bin/${{ matrix.artifact }} -V
+          bin/${{ matrix.artifact }} --help >/dev/null
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
