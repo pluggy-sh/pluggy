@@ -31,11 +31,11 @@ jobs:
             bun-target: bun-linux-arm64
             artifact: pluggy-linux-arm64
           - target: darwin-amd64
-            runner: macos-14
+            runner: macos-latest
             bun-target: bun-darwin-x64
             artifact: pluggy-darwin-amd64
           - target: darwin-arm64
-            runner: macos-14
+            runner: macos-latest
             bun-target: bun-darwin-arm64
             artifact: pluggy-darwin-arm64
           - target: windows-amd64
@@ -62,7 +62,12 @@ jobs:
 
       - name: Update CLI version in src/version.ts
         run: |
-          sed -i -E 's/const CLI_VERSION(: string)? = ".*";/const CLI_VERSION: string = "${{ steps.get_version.outputs.version }}";/' src/version.ts
+          # Not `sed -i -E`: BSD sed on the macOS runners reads `-E` as the
+          # `-i` backup suffix, silently skips the substitution, and leaves a
+          # stray src/version.ts-E behind.
+          sed -E 's/const CLI_VERSION(: string)? = ".*";/const CLI_VERSION: string = "${{ steps.get_version.outputs.version }}";/' \
+            src/version.ts > src/version.ts.new
+          mv src/version.ts.new src/version.ts
           # grep -F fails the build if the substitution didn't take, so a
           # drifted declaration can't ship a binary that reports 0.0.0.
           grep -F 'const CLI_VERSION: string = "${{ steps.get_version.outputs.version }}";' src/version.ts
